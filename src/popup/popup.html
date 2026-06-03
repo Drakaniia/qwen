@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Qwin Video Downloader</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Qwin Video Downloader</h1>
+        <p id="helperStatus" class="helper-status">Checking helper...</p>
+      </div>
+      <button id="settingsToggle" class="icon-button" type="button" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.5-2.4 1a8 8 0 0 0-2.6-1.5L14 2h-4l-.4 2.5A8 8 0 0 0 7 6L4.6 5 2.6 8.5l2 1.5a9.8 9.8 0 0 0 0 3l-2 1.5 2 3.5L7 18a8 8 0 0 0 2.6 1.5L10 22h4l.4-2.5A8 8 0 0 0 17 18l2.4 1 2-3.5-2-1.5ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"></path>
+        </svg>
+      </button>
+    </header>
+
+    <section id="settingsPanel" class="settings-panel" hidden>
+      <label for="downloadFolder">Download folder</label>
+      <input id="downloadFolder" type="text" spellcheck="false" placeholder="Default: Windows Downloads">
+      <button id="saveSettings" type="button">Save</button>
+      <p class="hint">Use a Windows path such as C:\Users\You\Downloads\Videos.</p>
+    </section>
+
+    <nav class="view-toggle" aria-label="Popup view">
+      <button id="showVideos" class="active" type="button" aria-pressed="true">Videos</button>
+      <button id="showDownloads" type="button" aria-pressed="false">Downloads</button>
+    </nav>
+
+    <main>
+      <div id="message" class="message">Scanning for videos...</div>
+      <div id="videoList" class="video-list"></div>
+      <div id="downloadList" class="download-list"></div>
+    </main>
+
+    <section id="qualityDialog" class="quality-dialog" hidden>
+      <div class="quality-card">
+        <h2 id="qualityTitle">Choose quality</h2>
+        <div id="qualityList" class="quality-list"></div>
+        <div class="quality-actions">
+          <button id="cancelQuality" type="button">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <button id="rescan" type="button">Rescan</button>
+      <button id="clear" type="button">Clear</button>
+    </footer>
+
+    <script src="../shared/video_filters.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
