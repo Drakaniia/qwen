@@ -279,6 +279,58 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(parsed["stage"], "download")
         self.assertEqual(parsed["percent"], 57.3)
         self.assertIn("57.3%", parsed["line"])
+        self.assertEqual(parsed["totalSize"], "10.00MiB")
+        self.assertEqual(parsed["speed"], "1.2MiB/s")
+        self.assertEqual(parsed["eta"], "00:03")
+
+    def test_parse_aria2_progress_line_extracts_percent(self):
+        parsed = host.parse_yt_dlp_line("[#123abc 8.1MiB/40MiB(20%) CN:16 DL:2.0MiB ETA:16s]")
+
+        self.assertEqual(parsed["stage"], "download")
+        self.assertEqual(parsed["percent"], 20.0)
+        self.assertIn("20%", parsed["line"])
+        self.assertEqual(parsed["downloadedSize"], "8.1MiB")
+        self.assertEqual(parsed["totalSize"], "40MiB")
+        self.assertEqual(parsed["connections"], 16)
+        self.assertEqual(parsed["speed"], "2.0MiB/s")
+        self.assertEqual(parsed["eta"], "16s")
+
+    def test_parse_aria2_progress_line_with_leading_text_extracts_percent(self):
+        parsed = host.parse_yt_dlp_line("  [#123abc 8.1MiB/40MiB(20%) CN:16 DL:2.0MiB ETA:16s]")
+
+        self.assertEqual(parsed["stage"], "download")
+        self.assertEqual(parsed["percent"], 20.0)
+        self.assertIn("20%", parsed["line"])
+
+    def test_parse_carriage_return_progress_uses_latest_status(self):
+        parsed = host.parse_yt_dlp_line(
+            "\r[#123abc 4.0MiB/40MiB(10%) CN:16 DL:2.0MiB ETA:18s]"
+            "\r[#123abc 8.1MiB/40MiB(20%) CN:16 DL:2.0MiB ETA:16s]"
+        )
+
+        self.assertEqual(parsed["stage"], "download")
+        self.assertEqual(parsed["percent"], 20.0)
+        self.assertIn("20%", parsed["line"])
+
+    def test_process_output_iterator_splits_carriage_return_progress(self):
+        lines = list(
+            host.iter_process_output_lines(
+                io.StringIO(
+                    "[#123abc 4.0MiB/40MiB(10%) CN:16 DL:2.0MiB ETA:18s]\r"
+                    "[#123abc 8.1MiB/40MiB(20%) CN:16 DL:2.0MiB ETA:16s]\n"
+                    "[download] 100% of 40MiB"
+                )
+            )
+        )
+
+        self.assertEqual(
+            lines,
+            [
+                "[#123abc 4.0MiB/40MiB(10%) CN:16 DL:2.0MiB ETA:18s]",
+                "[#123abc 8.1MiB/40MiB(20%) CN:16 DL:2.0MiB ETA:16s]",
+                "[download] 100% of 40MiB",
+            ],
+        )
 
     def test_parse_after_move_filepath_marker(self):
         parsed = host.parse_yt_dlp_line("__QWIN_FILEPATH__:C:\\Users\\Viewer\\Downloads\\clip.mp4")
