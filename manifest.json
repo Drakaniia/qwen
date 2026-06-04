@@ -11,7 +11,8 @@
     "storage",
     "webRequest",
     "nativeMessaging",
-    "tabs"
+    "tabs",
+    "cookies"
   ],
   "host_permissions": [
     "<all_urls>"
