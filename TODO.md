@@ -5,3 +5,5 @@ when delete should completely delete all including the leftover artifacts that d
 whwen downlaolding, even if the download path is /Downloads. when donwloding, should always be in the folder and the name of the folder is the title.. and inside the folder is the video
 
 FIX CANT CANCEL OR RESUME AGAIN THE  PAUSED DOWNLOAD
+
+do we need to gitignre /config?
