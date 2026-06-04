@@ -21,6 +21,22 @@ DEFAULT_FORMAT_SELECTOR = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b"
 OUTGOING_LOCK = threading.Lock()
 ACTIVE_DOWNLOADS = {}
 ACTIVE_DOWNLOADS_LOCK = threading.Lock()
+HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
+NATIVE_HEADER_NAMES = {
+    "accept",
+    "accept-language",
+    "authorization",
+    "cookie",
+    "origin",
+    "referer",
+    "sec-fetch-dest",
+    "sec-fetch-mode",
+    "sec-fetch-site",
+    "sec-fetch-user",
+    "user-agent",
+    "x-requested-with",
+}
+MAX_HEADER_VALUE_LENGTH = 8192
 
 
 class HostError(Exception):
@@ -163,6 +179,55 @@ def resolve_ffmpeg_location():
     raise HostError("ffmpeg is not installed. Run scripts\\install.bat, then restart your browser.")
 
 
+def canonical_header_name(name):
+    return "-".join(part[:1].upper() + part[1:].lower() for part in str(name).split("-") if part)
+
+
+def clean_header_value(value):
+    cleaned = re.sub(r"[\r\n]+", " ", str(value or "")).strip()
+    return cleaned[:MAX_HEADER_VALUE_LENGTH]
+
+
+def clean_request_headers(headers):
+    cleaned = {}
+    if not isinstance(headers, list):
+        return []
+
+    for header in headers:
+        if not isinstance(header, dict):
+            continue
+        raw_name = str(header.get("name") or "").strip()
+        name = raw_name.lower()
+        value = clean_header_value(header.get("value"))
+        if not name or not value:
+            continue
+        if name not in NATIVE_HEADER_NAMES or not HEADER_NAME_RE.match(raw_name):
+            continue
+        cleaned[name] = {
+            "name": canonical_header_name(raw_name),
+            "value": value,
+        }
+
+    return list(cleaned.values())
+
+
+def append_browser_context_options(command, referer=None, user_agent=None, request_headers=None):
+    headers = {header["name"].lower(): header for header in clean_request_headers(request_headers)}
+    cleaned_referer = clean_header_value(referer)
+    cleaned_user_agent = clean_header_value(user_agent)
+
+    if cleaned_referer and "referer" not in headers:
+        headers["referer"] = {"name": "Referer", "value": cleaned_referer}
+    if cleaned_user_agent and "user-agent" not in headers:
+        headers["user-agent"] = {"name": "User-Agent", "value": cleaned_user_agent}
+
+    if cleaned_user_agent:
+        command.extend(["--user-agent", cleaned_user_agent])
+
+    for header in headers.values():
+        command.extend(["--add-header", f"{header['name']}:{header['value']}"])
+
+
 def has_yt_dlp():
     return bool(shutil.which("yt-dlp") or importlib.util.find_spec("yt_dlp"))
 
@@ -177,14 +242,16 @@ def build_yt_dlp_command(
     download_dir,
     referer=None,
     user_agent=None,
+    request_headers=None,
     yt_dlp_command=None,
     ffmpeg_location=None,
     selected_format=None,
 ):
-    output_template = str(Path(download_dir) / "%(title).180B [%(id)s].%(ext)s")
+    output_template = str(Path(download_dir) / "%(title).180B" / "%(title).180B [%(id)s].%(ext)s")
     format_selector = format_selector_for_choice(selected_format)
     command = [
         *(yt_dlp_command or ["yt-dlp"]),
+        "--ignore-config",
         "--newline",
         "--no-color",
         "--progress",
@@ -192,7 +259,6 @@ def build_yt_dlp_command(
         "--restrict-filenames",
         "--trim-filenames",
         "180",
-        "--prefer-ffmpeg",
         "--no-keep-fragments",
         "--no-playlist",
         "-f",
@@ -209,10 +275,7 @@ def build_yt_dlp_command(
 
     if ffmpeg_location:
         command.extend(["--ffmpeg-location", str(ffmpeg_location)])
-    if referer:
-        command.extend(["--referer", referer])
-    if user_agent:
-        command.extend(["--user-agent", user_agent])
+    append_browser_context_options(command, referer=referer, user_agent=user_agent, request_headers=request_headers)
 
     command.append(url)
     return command
@@ -227,9 +290,17 @@ def format_selector_for_choice(selected_format):
     return f"{selected}+bestaudio/best"
 
 
-def build_formats_command(url, referer=None, user_agent=None, yt_dlp_command=None, ffmpeg_location=None):
+def build_formats_command(
+    url,
+    referer=None,
+    user_agent=None,
+    request_headers=None,
+    yt_dlp_command=None,
+    ffmpeg_location=None,
+):
     command = [
         *(yt_dlp_command or ["yt-dlp"]),
+        "--ignore-config",
         "--dump-single-json",
         "--no-warnings",
         "--no-color",
@@ -239,10 +310,7 @@ def build_formats_command(url, referer=None, user_agent=None, yt_dlp_command=Non
 
     if ffmpeg_location:
         command.extend(["--ffmpeg-location", str(ffmpeg_location)])
-    if referer:
-        command.extend(["--referer", referer])
-    if user_agent:
-        command.extend(["--user-agent", user_agent])
+    append_browser_context_options(command, referer=referer, user_agent=user_agent, request_headers=request_headers)
 
     command.append(url)
     return command
@@ -360,7 +428,12 @@ def summarize_formats(info):
 def parse_yt_dlp_line(line):
     line = line.rstrip("\r\n")
     if line.startswith(FILEPATH_MARKER):
-        return {"stage": "filepath", "filepath": line[len(FILEPATH_MARKER) :]}
+        filepath = line[len(FILEPATH_MARKER) :]
+        return {
+            "stage": "filepath",
+            "filepath": filepath,
+            "artifactRoot": str(Path(filepath).parent) if filepath else "",
+        }
 
     percent_match = re.search(r"\[download\]\s+(\d+(?:\.\d+)?)%", line)
     if percent_match:
@@ -374,7 +447,13 @@ def parse_yt_dlp_line(line):
         return {"stage": "postprocess", "line": line}
 
     if line.startswith("[download] Destination:"):
-        return {"stage": "destination", "line": line}
+        filepath = line.split(":", 1)[1].strip()
+        return {
+            "stage": "destination",
+            "line": line,
+            "filepath": filepath,
+            "artifactRoot": str(Path(filepath).parent) if filepath else "",
+        }
 
     if line.startswith("[hls") or line.startswith("[dash") or line.startswith("[generic]"):
         return {"stage": "extract", "line": line}
@@ -435,6 +514,8 @@ class DownloadTask:
         self.process = None
         self.state = "queued"
         self.final_path = None
+        self.current_path = None
+        self.artifact_root = None
         self.recent_lines = deque(maxlen=25)
         self.thread = None
 
@@ -545,6 +626,10 @@ class DownloadTask:
         assert process.stdout is not None
         for line in process.stdout:
             parsed = parse_yt_dlp_line(line)
+            if parsed.get("filepath"):
+                self.current_path = parsed["filepath"]
+            if parsed.get("artifactRoot"):
+                self.artifact_root = parsed["artifactRoot"]
             if parsed["stage"] == "filepath":
                 self.final_path = parsed["filepath"]
             else:
@@ -564,6 +649,8 @@ class DownloadTask:
             {
                 "type": "paused",
                 "status": "paused",
+                "filepath": self.current_path or self.final_path or "",
+                "artifactRoot": self.artifact_root or "",
                 "message": "Download paused. Resume will continue the partial file when yt-dlp can reuse it.",
             }
         )
@@ -594,13 +681,29 @@ class DownloadTask:
 
                 if self.cancel_requested.is_set():
                     self.set_state("canceled")
-                    self.send_message({"type": "canceled", "status": "canceled", "message": "Download canceled."})
+                    self.send_message(
+                        {
+                            "type": "canceled",
+                            "status": "canceled",
+                            "filepath": self.current_path or self.final_path or "",
+                            "artifactRoot": self.artifact_root or "",
+                            "message": "Download canceled.",
+                        }
+                    )
                     return
 
                 if self.pause_requested.is_set():
                     if not self.wait_for_resume_or_cancel():
                         self.set_state("canceled")
-                        self.send_message({"type": "canceled", "status": "canceled", "message": "Download canceled."})
+                        self.send_message(
+                            {
+                                "type": "canceled",
+                                "status": "canceled",
+                                "filepath": self.current_path or self.final_path or "",
+                                "artifactRoot": self.artifact_root or "",
+                                "message": "Download canceled.",
+                            }
+                        )
                         return
                     continue
 
@@ -616,6 +719,7 @@ class DownloadTask:
                         "type": "done",
                         "status": "done",
                         "filepath": self.final_path,
+                        "artifactRoot": self.artifact_root or (str(Path(self.final_path).parent) if self.final_path else ""),
                         "message": "Download complete.",
                     }
                 )
@@ -623,13 +727,37 @@ class DownloadTask:
         except HostError as exc:
             if self.cancel_requested.is_set():
                 self.set_state("canceled")
-                self.send_message({"type": "canceled", "status": "canceled", "message": "Download canceled."})
+                self.send_message(
+                    {
+                        "type": "canceled",
+                        "status": "canceled",
+                        "filepath": self.current_path or self.final_path or "",
+                        "artifactRoot": self.artifact_root or "",
+                        "message": "Download canceled.",
+                    }
+                )
             else:
                 self.set_state("error")
-                self.send_message({"type": "error", "status": "error", "error": str(exc)})
+                self.send_message(
+                    {
+                        "type": "error",
+                        "status": "error",
+                        "filepath": self.current_path or self.final_path or "",
+                        "artifactRoot": self.artifact_root or "",
+                        "error": str(exc),
+                    }
+                )
         except Exception as exc:
             self.set_state("error")
-            self.send_message({"type": "error", "status": "error", "error": f"Unexpected helper error: {exc}"})
+            self.send_message(
+                {
+                    "type": "error",
+                    "status": "error",
+                    "filepath": self.current_path or self.final_path or "",
+                    "artifactRoot": self.artifact_root or "",
+                    "error": f"Unexpected helper error: {exc}",
+                }
+            )
         finally:
             with ACTIVE_DOWNLOADS_LOCK:
                 if ACTIVE_DOWNLOADS.get(self.id) is self:
@@ -683,6 +811,105 @@ def open_download_path(message, reveal=False):
     send_native_message({"type": "opened", "id": request_id, "path": str(target)})
 
 
+def resolve_artifact_path(value):
+    return Path(os.path.expandvars(os.path.expanduser(str(value)))).resolve()
+
+
+def is_dangerous_delete_target(target):
+    if not target or target.parent == target:
+        return True
+
+    lowered_name = target.name.lower()
+    dangerous_names = {
+        "",
+        ".",
+        "..",
+        "downloads",
+        "desktop",
+        "documents",
+        "videos",
+        "music",
+        "pictures",
+    }
+    if lowered_name in dangerous_names:
+        return True
+
+    try:
+        if target == Path.home().resolve() or target == default_download_dir().resolve():
+            return True
+    except OSError:
+        pass
+
+    return False
+
+
+def should_delete_parent_folder_for_file(path):
+    parent = path.parent
+    if is_dangerous_delete_target(parent):
+        return False
+
+    parent_name = parent.name.lower()
+    file_stem = path.stem.lower()
+    return bool(parent_name and (file_stem.startswith(parent_name) or parent_name in file_stem))
+
+
+def unique_delete_targets(message):
+    roots = []
+    for key in ["artifactRoot", "artifactDir", "outputDirectory"]:
+        value = message.get(key)
+        if value:
+            roots.append(resolve_artifact_path(value))
+
+    raw_paths = []
+    for key in ["path", "filepath"]:
+        value = message.get(key)
+        if value:
+            raw_paths.append(resolve_artifact_path(value))
+    for value in message.get("artifactPaths") or []:
+        if value:
+            raw_paths.append(resolve_artifact_path(value))
+
+    if not roots:
+        for path in raw_paths:
+            roots.append(path.parent if should_delete_parent_folder_for_file(path) else path)
+
+    candidates = []
+    for target in roots:
+        if is_dangerous_delete_target(target):
+            continue
+        if target not in candidates:
+            candidates.append(target)
+
+    candidates.sort(key=lambda item: len(item.parts))
+    collapsed = []
+    for target in candidates:
+        if any(parent == target or parent in target.parents for parent in collapsed):
+            continue
+        collapsed.append(target)
+    return collapsed
+
+
+def delete_download_artifacts(message, send=send_native_message):
+    request_id = str(message.get("id") or message.get("requestId") or "")
+    deleted = []
+    missing = []
+
+    for target in unique_delete_targets(message):
+        if not target.exists():
+            missing.append(str(target))
+            continue
+        try:
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+        except OSError as exc:
+            raise HostError(f"Could not delete downloaded artifacts at {target}: {exc}") from exc
+        deleted.append(str(target))
+
+    send({"type": "deletedArtifacts", "id": request_id, "deleted": deleted, "missing": missing})
+
+
 def control_download(message, action):
     request_id = str(message.get("id") or message.get("requestId") or "")
     with ACTIVE_DOWNLOADS_LOCK:
@@ -716,6 +943,7 @@ def run_download(message):
         download_dir=download_dir,
         referer=message.get("pageUrl"),
         user_agent=message.get("userAgent"),
+        request_headers=message.get("requestHeaders"),
         yt_dlp_command=yt_dlp_command,
         ffmpeg_location=ffmpeg_location,
         selected_format=message.get("formatId"),
@@ -736,6 +964,7 @@ def run_format_list(message):
         url=url,
         referer=message.get("pageUrl"),
         user_agent=message.get("userAgent"),
+        request_headers=message.get("requestHeaders"),
         yt_dlp_command=resolve_yt_dlp_command(),
         ffmpeg_location=resolve_ffmpeg_location(),
     )
@@ -806,6 +1035,10 @@ def handle_message(message):
 
     if message_type == "showFile":
         open_download_path(message, reveal=True)
+        return
+
+    if message_type == "deleteArtifacts":
+        delete_download_artifacts(message)
         return
 
     if message_type == "formats":
