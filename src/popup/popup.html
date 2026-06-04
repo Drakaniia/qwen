@@ -33,6 +33,20 @@
 
     <main>
       <div id="message" class="message">Scanning for videos...</div>
+      <div id="videoToolbar" class="video-toolbar" hidden>
+        <div class="layout-toggle" role="group" aria-label="Video list layout">
+          <button id="showListLayout" class="active" type="button" aria-pressed="true" aria-label="List view" title="List view">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 5h3v3H4V5Zm5 0h11v3H9V5ZM4 11h3v3H4v-3Zm5 0h11v3H9v-3ZM4 17h3v3H4v-3Zm5 0h11v3H9v-3Z"></path>
+            </svg>
+          </button>
+          <button id="showBoxLayout" type="button" aria-pressed="false" aria-label="Box view" title="Box view">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 4h8v8H4V4Zm10 0h6v8h-6V4ZM4 14h8v6H4v-6Zm10 0h6v6h-6v-6Z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
       <div id="videoList" class="video-list"></div>
       <div id="downloadList" class="download-list"></div>
     </main>

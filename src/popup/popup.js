@@ -8,6 +8,8 @@ let activeTabId = null;
 let currentVideos = [];
 let currentDownloads = [];
 let viewMode = "videos";
+let videoLayoutMode = "list";
+let qualityRequestSerial = 0;
 
 const elements = {
   helperStatus: document.getElementById("helperStatus"),
@@ -18,6 +20,9 @@ const elements = {
   downloadFolder: document.getElementById("downloadFolder"),
   saveSettings: document.getElementById("saveSettings"),
   message: document.getElementById("message"),
+  videoToolbar: document.getElementById("videoToolbar"),
+  showListLayout: document.getElementById("showListLayout"),
+  showBoxLayout: document.getElementById("showBoxLayout"),
   videoList: document.getElementById("videoList"),
   downloadList: document.getElementById("downloadList"),
   qualityDialog: document.getElementById("qualityDialog"),
@@ -80,6 +85,33 @@ function sourceLabel(video) {
   return video.source || "detected";
 }
 
+function videoSizeLabel(video) {
+  if (videoFilters && typeof videoFilters.displayVideoSize === "function") {
+    return videoFilters.displayVideoSize(video);
+  }
+  return video.size || "";
+}
+
+function videoThumbnailUrl(video) {
+  const value = video && (video.thumbnailUrl || video.poster || video.image || "");
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (!["http:", "https:", "blob:", "data:"].includes(parsed.protocol)) {
+      return "";
+    }
+    if (/\.(?:gif|gifv)(?:$|[?#])/i.test(parsed.href)) {
+      return "";
+    }
+    return parsed.href;
+  } catch (_error) {
+    return "";
+  }
+}
+
 function setMessage(text, isError = false) {
   elements.message.textContent = text;
   elements.message.classList.toggle("error", isError);
@@ -97,14 +129,59 @@ function setViewMode(mode) {
   elements.videoList.hidden = downloadsOnly;
   elements.downloadList.hidden = !downloadsOnly;
   elements.message.hidden = downloadsOnly;
+  elements.videoToolbar.hidden = downloadsOnly || !currentVideos.length;
   elements.showVideos.classList.toggle("active", !downloadsOnly);
   elements.showDownloads.classList.toggle("active", downloadsOnly);
   elements.showVideos.setAttribute("aria-pressed", String(!downloadsOnly));
   elements.showDownloads.setAttribute("aria-pressed", String(downloadsOnly));
 }
 
+function setVideoLayoutMode(mode) {
+  videoLayoutMode = mode === "boxes" ? "boxes" : "list";
+  const boxes = videoLayoutMode === "boxes";
+  elements.videoList.classList.toggle("boxes", boxes);
+  elements.showListLayout.classList.toggle("active", !boxes);
+  elements.showBoxLayout.classList.toggle("active", boxes);
+  elements.showListLayout.setAttribute("aria-pressed", String(!boxes));
+  elements.showBoxLayout.setAttribute("aria-pressed", String(boxes));
+}
+
 function jobForVideo(videoId) {
   return currentDownloads.find((job) => job.videoId === videoId && ["queued", "connecting", "running"].includes(job.status));
+}
+
+function appendVideoPlaceholder(container) {
+  const placeholder = document.createElement("div");
+  placeholder.className = "video-placeholder";
+  const icon = document.createElement("span");
+  icon.className = "video-placeholder-icon";
+  placeholder.append(icon);
+  container.append(placeholder);
+}
+
+function createVideoPreview(video) {
+  const preview = document.createElement("div");
+  preview.className = "video-preview";
+  preview.setAttribute("aria-hidden", "true");
+
+  const thumbnail = videoThumbnailUrl(video);
+  if (!thumbnail) {
+    appendVideoPlaceholder(preview);
+    return preview;
+  }
+
+  const thumb = document.createElement("img");
+  thumb.className = "video-thumbnail";
+  thumb.alt = "";
+  thumb.loading = "lazy";
+  thumb.decoding = "async";
+  thumb.src = thumbnail;
+  thumb.addEventListener("error", () => {
+    preview.textContent = "";
+    appendVideoPlaceholder(preview);
+  });
+  preview.append(thumb);
+  return preview;
 }
 
 function renderVideos() {
@@ -115,11 +192,15 @@ function renderVideos() {
     return;
   }
 
-  setMessage(`${currentVideos.length} video URL${currentVideos.length === 1 ? "" : "s"} detected.`);
+  setMessage(`${currentVideos.length} full video${currentVideos.length === 1 ? "" : "s"} detected.`);
 
   for (const video of currentVideos) {
     const item = document.createElement("section");
     item.className = "video-item";
+    item.append(createVideoPreview(video));
+
+    const content = document.createElement("div");
+    content.className = "video-content";
 
     const main = document.createElement("div");
     main.className = "video-main";
@@ -151,18 +232,26 @@ function renderVideos() {
     badge.className = `badge ${video.downloadable ? "" : "warning"}`.trim();
     badge.textContent = displayFormat(video);
     const source = document.createElement("span");
-    source.textContent = sourceLabel(video);
+    source.textContent = video.variantCount > 1 ? `${video.variantCount} versions` : sourceLabel(video);
     meta.append(badge, source);
+    const sizeLabel = videoSizeLabel(video);
+    if (sizeLabel) {
+      const size = document.createElement("span");
+      size.className = "video-size";
+      size.textContent = sizeLabel;
+      meta.append(size);
+    }
 
     if (!video.downloadable) {
       const warning = document.createElement("div");
       warning.className = "download-message error";
       warning.textContent = "Browser-only URL. Wait for a downloadable video stream. The helper saves supported streams as MP4.";
-      item.append(main, meta, warning);
+      content.append(main, meta, warning);
     } else {
-      item.append(main, meta);
+      content.append(main, meta);
     }
 
+    item.append(content);
     elements.videoList.append(item);
   }
 }
@@ -263,37 +352,137 @@ function appendDownloadAction(container, label, action, jobId, primary = false) 
 function render() {
   renderVideos();
   renderDownloads();
+  setVideoLayoutMode(videoLayoutMode);
   setViewMode(viewMode);
 }
 
 function hideQualityDialog() {
   elements.qualityDialog.hidden = true;
   elements.qualityList.textContent = "";
+  elements.cancelQuality.disabled = false;
+  elements.cancelQuality.textContent = "Cancel";
 }
 
-function chooseQuality({ title, formats }) {
+function showQualityLoading(title = "Loading versions...") {
+  const requestToken = ++qualityRequestSerial;
+  elements.qualityTitle.textContent = title;
+  elements.qualityList.textContent = "";
+
+  const loading = document.createElement("div");
+  loading.className = "quality-loading";
+  loading.textContent = "Checking available video versions...";
+  elements.qualityList.append(loading);
+
+  elements.cancelQuality.disabled = false;
+  elements.cancelQuality.textContent = "Cancel";
+  elements.cancelQuality.onclick = () => {
+    qualityRequestSerial += 1;
+    hideQualityDialog();
+  };
+  elements.qualityDialog.hidden = false;
+  return requestToken;
+}
+
+function isCurrentQualityRequest(requestToken) {
+  return requestToken === qualityRequestSerial;
+}
+
+function formatQualityValue(format) {
+  if (format.height) {
+    return `${format.height}p`;
+  }
+  if (format.width) {
+    return `${format.width}w`;
+  }
+  return format.label || format.note || format.id || "Best";
+}
+
+function formatSizeValue(format) {
+  if (videoFilters && typeof videoFilters.displayVideoSize === "function") {
+    return videoFilters.displayVideoSize(format) || "Unknown";
+  }
+  return format.size || "Unknown";
+}
+
+function formatFormatValue(format) {
+  const value = format.ext || format.format || "";
+  if (value) {
+    return String(value).toUpperCase();
+  }
+  return format.optionType === "native-format" ? "MP4" : "VIDEO";
+}
+
+function formatBitrateValue(format) {
+  const bitrate = Number(format.bitrate || format.tbr || 0);
+  if (!Number.isFinite(bitrate) || bitrate <= 0) {
+    return "Unknown";
+  }
+  return `${Math.round(bitrate)} kbps`;
+}
+
+function formatSourceValue(format) {
+  return format.source || (format.optionType === "native-format" ? "yt-dlp" : "detected");
+}
+
+function appendQualityCell(row, text, className = "") {
+  const cell = document.createElement("span");
+  cell.className = `quality-cell ${className}`.trim();
+  cell.textContent = text || "Unknown";
+  row.append(cell);
+}
+
+function appendQualityHeader(table) {
+  const header = document.createElement("div");
+  header.className = "quality-row quality-header";
+  header.setAttribute("role", "row");
+  for (const label of ["Quality", "Size", "Format", "Bitrate", "Source"]) {
+    appendQualityCell(header, label);
+  }
+  table.append(header);
+}
+
+function chooseQuality({ title, formats, nativeError }) {
   return new Promise((resolve) => {
-    elements.qualityTitle.textContent = title ? `Choose quality: ${title}` : "Choose quality";
+    elements.qualityTitle.textContent = title ? `Compare versions: ${title}` : "Compare versions";
     elements.qualityList.textContent = "";
 
     const choices = formats && formats.length ? formats : [{ id: "best", label: "Best available MP4" }];
+    const table = document.createElement("div");
+    table.className = "quality-table";
+    table.setAttribute("role", "table");
+    appendQualityHeader(table);
+
     for (const format of choices) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "quality-option";
-      button.dataset.formatId = format.id || "best";
+      button.className = "quality-row quality-option";
+      button.dataset.formatId = format.formatId || format.id || "best";
+      button.dataset.variantId = format.variantId || "";
+      button.setAttribute("role", "row");
+      button.title = format.sourceUrl || format.label || "";
 
-      const label = document.createElement("span");
-      label.textContent = format.label || format.id || "Best";
-      const meta = document.createElement("small");
-      meta.textContent = [format.size, format.note].filter(Boolean).join(" / ");
-      button.append(label, meta);
+      appendQualityCell(button, formatQualityValue(format), "primary-cell");
+      appendQualityCell(button, formatSizeValue(format));
+      appendQualityCell(button, formatFormatValue(format));
+      appendQualityCell(button, formatBitrateValue(format));
+      appendQualityCell(button, formatSourceValue(format));
 
       button.addEventListener("click", () => {
         hideQualityDialog();
-        resolve(button.dataset.formatId || "best");
+        resolve({
+          formatId: button.dataset.formatId || "best",
+          variantId: button.dataset.variantId || "",
+        });
       });
-      elements.qualityList.append(button);
+      table.append(button);
+    }
+
+    elements.qualityList.append(table);
+    if (nativeError) {
+      const note = document.createElement("div");
+      note.className = "quality-note";
+      note.textContent = nativeError;
+      elements.qualityList.append(note);
     }
 
     const cancel = () => {
@@ -359,14 +548,22 @@ elements.videoList.addEventListener("click", async (event) => {
   }
 
   button.disabled = true;
-  button.textContent = "Quality...";
+  button.textContent = "Loading...";
+  const requestToken = showQualityLoading();
   const formatsResponse = await runtimeMessage({
     type: "getVideoFormats",
     tabId: activeTabId,
     videoId: button.dataset.videoId,
   });
 
+  if (!isCurrentQualityRequest(requestToken)) {
+    button.disabled = false;
+    button.textContent = "Download";
+    return;
+  }
+
   if (!formatsResponse || !formatsResponse.ok) {
+    hideQualityDialog();
     setMessage(formatsResponse && formatsResponse.error ? formatsResponse.error : "Could not load quality choices.", true);
     button.disabled = false;
     button.textContent = "Download";
@@ -385,7 +582,8 @@ elements.videoList.addEventListener("click", async (event) => {
     type: "downloadVideo",
     tabId: activeTabId,
     videoId: button.dataset.videoId,
-    formatId: selectedFormat,
+    formatId: selectedFormat.formatId,
+    variantId: selectedFormat.variantId,
   });
 
   if (!response || !response.ok) {
@@ -455,6 +653,14 @@ elements.showDownloads.addEventListener("click", () => {
   setViewMode("downloads");
 });
 
+elements.showListLayout.addEventListener("click", () => {
+  setVideoLayoutMode("list");
+});
+
+elements.showBoxLayout.addEventListener("click", () => {
+  setVideoLayoutMode("boxes");
+});
+
 elements.saveSettings.addEventListener("click", async () => {
   const response = await runtimeMessage({
     type: "saveSettings",
@@ -487,7 +693,7 @@ api.runtime.onMessage.addListener((message) => {
     render();
   }
 
-  if (message.type === "downloadUpdated" && message.job && message.job.tabId === activeTabId) {
+  if (message.type === "downloadUpdated" && message.job) {
     const existingIndex = currentDownloads.findIndex((job) => job.id === message.job.id);
     if (existingIndex >= 0) {
       currentDownloads[existingIndex] = message.job;
