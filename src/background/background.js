@@ -708,11 +708,67 @@ function preferredNativeVideo(video) {
   );
 }
 
+function findGroupedVideoForAnyVariant(tabId, video) {
+  const ids = new Set();
+  if (video && video.id) {
+    ids.add(video.id);
+  }
+  if (video && video.groupId) {
+    ids.add(video.groupId);
+  }
+  for (const variant of variantsForVideo(video)) {
+    if (variant && variant.id) {
+      ids.add(variant.id);
+    }
+  }
+
+  return getVisibleVideosForTab(tabId).find((item) => {
+    if (ids.has(item.id)) {
+      return true;
+    }
+    return variantsForVideo(item).some((variant) => ids.has(variant.id));
+  });
+}
+
 function findVariant(video, variantId) {
   if (!variantId) {
     return preferredNativeVideo(video);
   }
   return variantsForVideo(video).find((variant) => variant.id === variantId) || null;
+}
+
+function downloadableVariants(video, attemptedUrls = new Set()) {
+  const variants = [
+    ...variantsForVideo(video),
+    ...(Array.isArray(video?.groupVariants) ? video.groupVariants : []),
+  ];
+  const seenUrls = new Set();
+  const result = [];
+
+  for (const variant of variants) {
+    const url = normalizeUrl(variant?.url || "");
+    if (!url || seenUrls.has(url) || attemptedUrls.has(url) || !variant.downloadable) {
+      continue;
+    }
+    seenUrls.add(url);
+    result.push(variant);
+  }
+
+  return result;
+}
+
+function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls) {
+  const groupedVideo = findGroupedVideoForAnyVariant(tabId, failedVideo) || failedVideo;
+  const variants = downloadableVariants(groupedVideo, attemptedUrls);
+  const fallback = variants[0];
+  if (!fallback) {
+    return null;
+  }
+  return {
+    ...fallback,
+    groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
+    groupVariants: variantsForVideo(groupedVideo),
+  };
 }
 
 async function startNativeDownload(tabId, videoId, formatId = "best", variantId = "") {
@@ -735,7 +791,11 @@ async function startNativeDownload(tabId, videoId, formatId = "best", variantId 
     );
   }
 
-  return startNativeDownloadFromVideo(tabId, { ...selectedVideo, groupId: video.id }, formatId);
+  return startNativeDownloadFromVideo(
+    tabId,
+    { ...selectedVideo, groupId: video.id, groupVariants: variantsForVideo(video) },
+    formatId
+  );
 }
 
 async function startNativeDownloadFromVideo(tabId, video, formatId = "best", options = {}) {
@@ -744,6 +804,8 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
   const jobId = options.jobId || `job_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const existingJob = downloadsById[jobId] || {};
   const pageUrl = video.pageUrl || activeTab.url || "";
+  const attemptedUrls = new Set((options.attemptedUrls || []).map((url) => normalizeUrl(url)));
+  attemptedUrls.add(normalizeUrl(video.url || ""));
   let port;
   let finished = false;
 
@@ -858,17 +920,42 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
       const errorText = message.error || "yt-dlp failed.";
       finished = true;
       delete downloadPortsById[jobId];
-      updateDownload(jobId, {
-        status: "error",
-        error: errorText,
-        ...artifactPatchFromMessage(message),
-      });
-      if (isHardAccessError(errorText)) {
-        void markVideoUrlUnavailable(tabId, video.url, errorText);
-      }
+      const artifactPatch = artifactPatchFromMessage(message);
       try {
         port.disconnect();
       } catch (_error) {}
+      if (isHardAccessError(errorText)) {
+        void (async () => {
+          await markVideoUrlUnavailable(tabId, video.url, errorText);
+          const fallbackVideo = fallbackVideoForDownload(tabId, video, attemptedUrls);
+          if (!fallbackVideo) {
+            updateDownload(jobId, {
+              status: "error",
+              error: errorText,
+              ...artifactPatch,
+            });
+            return;
+          }
+
+          updateDownload(jobId, {
+            status: "connecting",
+            error: "",
+            message: "Source expired; trying another detected source...",
+            ...artifactPatch,
+          });
+          await startNativeDownloadFromVideo(tabId, fallbackVideo, "best", {
+            jobId,
+            attemptedUrls: Array.from(attemptedUrls),
+          });
+        })();
+        return;
+      }
+
+      updateDownload(jobId, {
+        status: "error",
+        error: errorText,
+        ...artifactPatch,
+      });
     }
   });
 
@@ -1282,19 +1369,23 @@ async function getNativeFormatsForVideo(tabId, video) {
     response && response.formats && response.formats.length
       ? response.formats.map((format) => normalizeNativeFormatOption(format, lookupVideo))
       : [];
-  const refreshedVideo = findGroupedVideoForVariant(tabId, variantsForVideo(sizedVideo)[0]) || sizedVideo;
-  if (nativeError && !nativeFormats.length) {
-    if (isHardAccessError(nativeError)) {
-      await markVideoUrlUnavailable(tabId, lookupVideo.url, nativeError);
-    }
-    throw new Error(nativeError);
+  const hardNativeError = nativeError && !nativeFormats.length && isHardAccessError(nativeError);
+  if (hardNativeError) {
+    await markVideoUrlUnavailable(tabId, lookupVideo.url, nativeError);
   }
+
+  const refreshedVideo = findGroupedVideoForAnyVariant(tabId, sizedVideo) || sizedVideo;
+  const excludedUrls = hardNativeError ? new Set([normalizeUrl(lookupVideo.url || "")]) : new Set();
 
   const sourceFormats = nativeFormats.length
     ? []
-    : variantsForVideo(refreshedVideo)
-        .filter((variant) => variant.downloadable)
+    : downloadableVariants(refreshedVideo, excludedUrls)
         .map(detectedVariantOption);
+
+  if (nativeError && !nativeFormats.length && !sourceFormats.length) {
+    throw new Error(nativeError);
+  }
+
   const formats = nativeFormats.length ? nativeFormats : sourceFormats;
 
   return {
