@@ -54,6 +54,8 @@ class HostHelperTests(unittest.TestCase):
         self.assertNotIn("--prefer-ffmpeg", command)
         self.assertIn("mp4", command)
         self.assertIn("--recode-video", command)
+        self.assertIn("--concurrent-fragments", command)
+        self.assertEqual(command[command.index("--concurrent-fragments") + 1], "8")
         self.assertIn("https://cdn.example.com/master.m3u8", command)
         self.assertIn("--add-header", command)
         self.assertIn("Referer:https://example.com/watch", command)
@@ -95,6 +97,26 @@ class HostHelperTests(unittest.TestCase):
 
         format_index = command.index("-f")
         self.assertEqual(command[format_index + 1], "137+bestaudio/best")
+
+    def test_build_yt_dlp_command_uses_aria2c_fast_downloader_when_available(self):
+        command = host.build_yt_dlp_command(
+            url="https://cdn.example.com/master.m3u8",
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            yt_dlp_command=["yt-dlp"],
+            aria2c_location=r"C:\Tools\aria2c.exe",
+            concurrent_fragments=12,
+            aria2_connections=20,
+        )
+
+        self.assertIn("--downloader", command)
+        self.assertEqual(command[command.index("--downloader") + 1], r"C:\Tools\aria2c.exe")
+        self.assertEqual(command[command.index("--concurrent-fragments") + 1], "12")
+
+        args = command[command.index("--downloader-args") + 1]
+        self.assertTrue(args.startswith("aria2c:"))
+        self.assertIn("--max-connection-per-server=20", args)
+        self.assertIn("--split=20", args)
+        self.assertIn("--continue=true", args)
 
     def test_build_formats_command_uses_dump_json_without_playlist(self):
         command = host.build_formats_command(
@@ -232,6 +254,16 @@ class HostHelperTests(unittest.TestCase):
     @patch("host.get_imageio_ffmpeg_exe", return_value=r"C:\Python\site-packages\ffmpeg.exe")
     def test_resolve_ffmpeg_location_uses_imageio_ffmpeg_fallback(self, _imageio, _which, _exists):
         self.assertEqual(host.resolve_ffmpeg_location(), r"C:\Python\site-packages\ffmpeg.exe")
+
+    @patch("host.shutil.which", return_value=None)
+    def test_resolve_aria2c_location_uses_local_portable_fallback(self, _which):
+        with tempfile.TemporaryDirectory() as temp:
+            local_aria2c = Path(temp) / "tools" / "aria2" / "aria2c.exe"
+            local_aria2c.parent.mkdir(parents=True)
+            local_aria2c.write_text("portable aria2c")
+
+            with patch.object(host, "LOCAL_ARIA2C", local_aria2c), patch.dict(host.os.environ, {}, clear=True):
+                self.assertEqual(host.resolve_aria2c_location(), str(local_aria2c))
 
     def test_native_message_round_trip_uses_length_prefixed_json(self):
         payload = {"type": "progress", "percent": 42.5}
