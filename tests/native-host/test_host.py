@@ -2,6 +2,7 @@ import io
 import json
 import os
 import struct
+import tempfile
 import unittest
 import threading
 from pathlib import Path
@@ -47,13 +48,30 @@ class HostHelperTests(unittest.TestCase):
         )
 
         self.assertEqual(command[0], "yt-dlp")
+        self.assertIn("--ignore-config", command)
         self.assertIn("--merge-output-format", command)
         self.assertIn("--no-keep-fragments", command)
+        self.assertNotIn("--prefer-ffmpeg", command)
         self.assertIn("mp4", command)
         self.assertIn("--recode-video", command)
         self.assertIn("https://cdn.example.com/master.m3u8", command)
-        self.assertIn("--referer", command)
+        self.assertIn("--add-header", command)
+        self.assertIn("Referer:https://example.com/watch", command)
         self.assertTrue(any(str(Path(r"C:\Users\Viewer\Downloads")) in part for part in command))
+
+    def test_build_yt_dlp_command_places_video_inside_title_folder(self):
+        command = host.build_yt_dlp_command(
+            url="https://cdn.example.com/master.m3u8",
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            yt_dlp_command=["yt-dlp"],
+        )
+
+        output_template = command[command.index("-o") + 1]
+
+        self.assertEqual(
+            output_template,
+            str(Path(r"C:\Users\Viewer\Downloads") / "%(title).180B" / "%(title).180B [%(id)s].%(ext)s"),
+        )
 
     def test_build_yt_dlp_command_supports_python_module_and_ffmpeg_location(self):
         command = host.build_yt_dlp_command(
@@ -87,11 +105,34 @@ class HostHelperTests(unittest.TestCase):
         )
 
         self.assertEqual(command[0], "yt-dlp")
+        self.assertIn("--ignore-config", command)
         self.assertIn("--dump-single-json", command)
         self.assertIn("--no-playlist", command)
-        self.assertIn("--referer", command)
+        self.assertIn("--add-header", command)
+        self.assertIn("Referer:https://example.com/watch", command)
         self.assertIn("--ffmpeg-location", command)
         self.assertEqual(command[-1], "https://cdn.example.com/master.m3u8")
+
+    def test_build_yt_dlp_command_passes_sanitized_browser_headers(self):
+        command = host.build_yt_dlp_command(
+            url="https://cdn.example.com/master.m3u8",
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            referer="https://example.com/watch",
+            user_agent="Mozilla/5.0 Test",
+            request_headers=[
+                {"name": "Cookie", "value": "sid=abc"},
+                {"name": "Origin", "value": "https://example.com\r\nBad: nope"},
+                {"name": "Host", "value": "evil.example.com"},
+            ],
+            yt_dlp_command=["yt-dlp"],
+        )
+
+        self.assertIn("--user-agent", command)
+        self.assertIn("Mozilla/5.0 Test", command)
+        self.assertIn("Cookie:sid=abc", command)
+        self.assertIn("Origin:https://example.com Bad: nope", command)
+        self.assertIn("User-Agent:Mozilla/5.0 Test", command)
+        self.assertNotIn("Host:evil.example.com", command)
 
     def test_summarize_formats_returns_title_and_sorted_video_choices(self):
         info = {
@@ -213,6 +254,18 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(parsed["stage"], "filepath")
         self.assertEqual(parsed["filepath"], r"C:\Users\Viewer\Downloads\clip.mp4")
 
+    def test_parse_destination_line_extracts_filepath_and_artifact_root(self):
+        parsed = host.parse_yt_dlp_line(
+            r"[download] Destination: C:\Users\Viewer\Downloads\Sample Video\Sample Video [abc].f137.mp4"
+        )
+
+        self.assertEqual(parsed["stage"], "destination")
+        self.assertEqual(
+            parsed["filepath"],
+            r"C:\Users\Viewer\Downloads\Sample Video\Sample Video [abc].f137.mp4",
+        )
+        self.assertEqual(parsed["artifactRoot"], r"C:\Users\Viewer\Downloads\Sample Video")
+
     def test_download_task_pause_terminates_active_process(self):
         class FakeProcess:
             def __init__(self):
@@ -269,6 +322,32 @@ class HostHelperTests(unittest.TestCase):
             command = host.build_open_path_command(Path("/home/viewer/Downloads"), reveal=False)
 
         self.assertEqual(command, ["xdg-open", "/home/viewer/Downloads"])
+
+    def test_delete_download_artifacts_removes_title_folder(self):
+        with tempfile.TemporaryDirectory() as temp:
+            download_dir = Path(temp) / "Downloads"
+            title_dir = download_dir / "Sample Video"
+            title_dir.mkdir(parents=True)
+            final_file = title_dir / "Sample Video [abc].mp4"
+            partial_file = title_dir / "Sample Video [abc].mp4.part"
+            fragment_file = title_dir / "Sample Video [abc].f137.mp4"
+            final_file.write_text("final", encoding="utf-8")
+            partial_file.write_text("partial", encoding="utf-8")
+            fragment_file.write_text("fragment", encoding="utf-8")
+
+            sent = []
+            host.delete_download_artifacts(
+                {
+                    "id": "delete_1",
+                    "path": str(final_file),
+                    "artifactRoot": str(title_dir),
+                },
+                send=sent.append,
+            )
+
+            self.assertFalse(title_dir.exists())
+            self.assertEqual(sent[0]["type"], "deletedArtifacts")
+            self.assertEqual(sent[0]["deleted"], [str(title_dir)])
 
 
 if __name__ == "__main__":

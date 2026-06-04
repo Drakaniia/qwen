@@ -25,6 +25,207 @@ assert.equal(filters.classifyVideoUrl("https://cdn.example.com/manifest", "appli
 assert.equal(filters.displayVideoFormat({ format: "M3U8" }), "MP4");
 assert.equal(filters.displayVideoFormat({ format: "MPD" }), "MP4");
 assert.equal(filters.displayVideoFormat({ format: "WEBM" }), "WEBM");
+assert.equal(filters.displayVideoSize({ sizeBytes: 98_000_000 }), "93.5 MB");
+assert.equal(filters.displayVideoSize({ size: "1.4 GB" }), "1.4 GB");
+assert.equal(filters.displayVideoSize({ format: "M3U8", url: "https://cdn.example.com/master.m3u8", sizeBytes: 4000 }), "");
+assert.equal(
+  filters.displayVideoSize({
+    variants: [{ sizeBytes: 12_000_000 }, { sizeBytes: 98_000_000 }],
+  }),
+  "93.5 MB"
+);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://cdn.example.com/movie-1080p.mp4",
+    title: "Sample Movie",
+    duration: 420,
+  }),
+  true
+);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://cdn.example.com/movie-preview.mp4",
+    title: "Sample Movie preview",
+    duration: 420,
+  }),
+  false
+);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://cdn.example.com/movie.mp4",
+    title: "Sample Movie",
+    duration: 12,
+  }),
+  false
+);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://cdn.example.com/movie.mp4",
+    title: "Sample Movie",
+    duration: 420,
+    downloadable: false,
+  }),
+  false
+);
+
+const groupedVideos = filters.groupUniqueFullVideos([
+  {
+    id: "v_720",
+    url: "https://cdn-a.example.com/media/sample-movie-720p.mp4?token=one",
+    title: "Sample Movie",
+    pageUrl: "https://example.com/watch/sample",
+    format: "MP4",
+    source: "network",
+    duration: 420,
+    height: 720,
+    sizeBytes: 42_000_000,
+    downloadable: true,
+  },
+  {
+    id: "v_1080",
+    url: "https://cdn-b.example.com/media/sample-movie-1080p.webm?token=two",
+    title: "Sample Movie",
+    pageUrl: "https://example.com/watch/sample",
+    format: "WEBM",
+    source: "headers",
+    duration: 420,
+    height: 1080,
+    sizeBytes: 98_000_000,
+    downloadable: true,
+  },
+  {
+    id: "v_preview",
+    url: "https://cdn.example.com/media/sample-movie-preview.mp4",
+    title: "Sample Movie Preview",
+    pageUrl: "https://example.com/watch/sample",
+    format: "MP4",
+    source: "network",
+    duration: 8,
+    height: 360,
+    downloadable: true,
+  },
+]);
+
+assert.equal(groupedVideos.length, 1);
+assert.equal(groupedVideos[0].variants.length, 2);
+assert.equal(groupedVideos[0].height, 1080);
+assert.equal(groupedVideos[0].sizeBytes, 98_000_000);
+assert.equal(groupedVideos[0].variantCount, 2);
+
+const sortedVideos = filters.groupUniqueFullVideos([
+  {
+    id: "v_small_newer",
+    url: "https://cdn.example.com/media/newer-small-video.mp4",
+    title: "Newer Small Video",
+    pageUrl: "https://example.com/watch/newer-small",
+    format: "MP4",
+    duration: 420,
+    height: 720,
+    sizeBytes: 12_000_000,
+    downloadable: true,
+    lastSeen: 300,
+  },
+  {
+    id: "v_large_older",
+    url: "https://cdn.example.com/media/older-large-video.mp4",
+    title: "Older Large Video",
+    pageUrl: "https://example.com/watch/older-large",
+    format: "MP4",
+    duration: 420,
+    height: 720,
+    sizeBytes: 210_000_000,
+    downloadable: true,
+    lastSeen: 100,
+  },
+]);
+
+assert.equal(sortedVideos[0].id, "v_large_older");
+
+const sortedFullVideos = filters.groupUniqueFullVideos([
+  {
+    id: "v_direct_newer",
+    url: "https://cdn.example.com/media/direct-copy.mp4",
+    title: "Direct Copy",
+    pageUrl: "https://example.com/watch/direct-copy",
+    format: "MP4",
+    duration: 420,
+    height: 720,
+    sizeBytes: 12_000_000,
+    downloadable: true,
+    lastSeen: 300,
+  },
+  {
+    id: "v_playlist_older",
+    url: "https://cdn.example.com/media/master.m3u8",
+    title: "Playlist Full Video",
+    pageUrl: "https://example.com/watch/playlist-full",
+    format: "M3U8",
+    duration: 420,
+    downloadable: true,
+    lastSeen: 100,
+  },
+]);
+
+assert.equal(sortedFullVideos[0].id, "v_playlist_older");
+
+const sortedVariantVideos = filters.groupUniqueFullVideos([
+  {
+    id: "v_1080_smaller",
+    url: "https://cdn-a.example.com/media/feature-1080p.mp4",
+    title: "Feature Film",
+    pageUrl: "https://example.com/watch/feature",
+    format: "MP4",
+    duration: 420,
+    height: 1080,
+    sizeBytes: 98_000_000,
+    downloadable: true,
+  },
+  {
+    id: "v_720_larger",
+    url: "https://cdn-b.example.com/media/feature-720p.mp4",
+    title: "Feature Film",
+    pageUrl: "https://example.com/watch/feature",
+    format: "MP4",
+    duration: 420,
+    height: 720,
+    sizeBytes: 180_000_000,
+    downloadable: true,
+  },
+]);
+
+assert.equal(sortedVariantVideos[0].variants[0].id, "v_720_larger");
+assert.equal(sortedVariantVideos[0].sizeBytes, 180_000_000);
+
+const groupedThumbnailVideos = filters.groupUniqueFullVideos([
+  {
+    id: "v_dom",
+    url: "https://cdn.example.com/media/example-720p.mp4",
+    title: "Example Movie",
+    pageUrl: "https://example.com/watch/example",
+    format: "MP4",
+    duration: 300,
+    height: 720,
+    downloadable: true,
+    thumbnailUrl: "https://img.example.com/example.jpg",
+  },
+  {
+    id: "v_network",
+    url: "https://cdn.example.com/media/example-1080p.mp4",
+    title: "Example Movie",
+    pageUrl: "https://example.com/watch/example",
+    format: "MP4",
+    duration: 300,
+    height: 1080,
+    downloadable: true,
+  },
+]);
+
+assert.equal(groupedThumbnailVideos.length, 1);
+assert.equal(groupedThumbnailVideos[0].thumbnailUrl, "https://img.example.com/example.jpg");
 
 assert.equal(
   filters.isLikelyRealVideoBox({
