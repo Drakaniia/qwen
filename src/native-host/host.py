@@ -18,6 +18,11 @@ MAX_INCOMING_BYTES = 64 * 1024 * 1024
 MAX_OUTGOING_BYTES = 1024 * 1024
 FILEPATH_MARKER = "__QWIN_FILEPATH__:"
 DEFAULT_FORMAT_SELECTOR = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LOCAL_ARIA2C = PROJECT_ROOT / "tools" / "aria2" / "aria2c.exe"
+DEFAULT_CONCURRENT_FRAGMENTS = 8
+DEFAULT_ARIA2_CONNECTIONS = 16
+MAX_FAST_CONNECTIONS = 32
 OUTGOING_LOCK = threading.Lock()
 ACTIVE_DOWNLOADS = {}
 ACTIVE_DOWNLOADS_LOCK = threading.Lock()
@@ -179,6 +184,31 @@ def resolve_ffmpeg_location():
     raise HostError("ffmpeg is not installed. Run scripts\\install.bat, then restart your browser.")
 
 
+def bounded_int(value, default, minimum=1, maximum=MAX_FAST_CONNECTIONS):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(minimum, min(maximum, number))
+
+
+def resolve_aria2c_location():
+    configured = os.environ.get("QWIN_ARIA2C")
+    if configured:
+        configured_path = Path(os.path.expandvars(os.path.expanduser(configured)))
+        if configured_path.exists():
+            return str(configured_path)
+
+    executable = shutil.which("aria2c")
+    if executable:
+        return executable
+
+    if LOCAL_ARIA2C.exists():
+        return str(LOCAL_ARIA2C)
+
+    return None
+
+
 def canonical_header_name(name):
     return "-".join(part[:1].upper() + part[1:].lower() for part in str(name).split("-") if part)
 
@@ -237,6 +267,10 @@ def has_ffmpeg():
     return bool(shutil.which("ffmpeg") or (imageio_ffmpeg and Path(imageio_ffmpeg).exists()))
 
 
+def has_aria2c():
+    return bool(resolve_aria2c_location())
+
+
 def build_yt_dlp_command(
     url,
     download_dir,
@@ -245,10 +279,14 @@ def build_yt_dlp_command(
     request_headers=None,
     yt_dlp_command=None,
     ffmpeg_location=None,
+    aria2c_location=None,
     selected_format=None,
+    concurrent_fragments=None,
+    aria2_connections=None,
 ):
     output_template = str(Path(download_dir) / "%(title).180B" / "%(title).180B [%(id)s].%(ext)s")
     format_selector = format_selector_for_choice(selected_format)
+    fragment_count = bounded_int(concurrent_fragments, DEFAULT_CONCURRENT_FRAGMENTS)
     command = [
         *(yt_dlp_command or ["yt-dlp"]),
         "--ignore-config",
@@ -259,6 +297,8 @@ def build_yt_dlp_command(
         "--restrict-filenames",
         "--trim-filenames",
         "180",
+        "--concurrent-fragments",
+        str(fragment_count),
         "--no-keep-fragments",
         "--no-playlist",
         "-f",
@@ -275,6 +315,21 @@ def build_yt_dlp_command(
 
     if ffmpeg_location:
         command.extend(["--ffmpeg-location", str(ffmpeg_location)])
+    if aria2c_location:
+        connection_count = bounded_int(aria2_connections, DEFAULT_ARIA2_CONNECTIONS)
+        aria2_args = " ".join(
+            [
+                f"--max-connection-per-server={connection_count}",
+                f"--split={connection_count}",
+                "--min-split-size=1M",
+                "--continue=true",
+                "--file-allocation=none",
+                "--max-tries=8",
+                "--retry-wait=2",
+                "--summary-interval=1",
+            ]
+        )
+        command.extend(["--downloader", str(aria2c_location), "--downloader-args", f"aria2c:{aria2_args}"])
     append_browser_context_options(command, referer=referer, user_agent=user_agent, request_headers=request_headers)
 
     command.append(url)
@@ -936,6 +991,7 @@ def run_download(message):
 
     yt_dlp_command = resolve_yt_dlp_command()
     ffmpeg_location = resolve_ffmpeg_location()
+    aria2c_location = resolve_aria2c_location()
 
     download_dir = resolve_download_dir(message.get("downloadFolder"))
     command = build_yt_dlp_command(
@@ -946,6 +1002,7 @@ def run_download(message):
         request_headers=message.get("requestHeaders"),
         yt_dlp_command=yt_dlp_command,
         ffmpeg_location=ffmpeg_location,
+        aria2c_location=aria2c_location,
         selected_format=message.get("formatId"),
     )
 
@@ -1003,6 +1060,7 @@ def dependency_status():
     return {
         "ytDlp": has_yt_dlp(),
         "ffmpeg": has_ffmpeg(),
+        "aria2c": has_aria2c(),
     }
 
 

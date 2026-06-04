@@ -51,7 +51,7 @@ if %ERRORLEVEL% neq 0 (
   if !ERRORLEVEL! neq 0 (
     echo ffmpeg is not on PATH and winget is not available.
     echo The helper will use the imageio-ffmpeg binary installed by pip instead.
-    goto RegisterHost
+    goto InstallAria2
   )
 
   echo Installing ffmpeg with winget...
@@ -62,6 +62,14 @@ if %ERRORLEVEL% neq 0 (
   )
 ) else (
   echo ffmpeg is already installed.
+)
+
+:InstallAria2
+echo Installing or checking portable aria2 fast downloader...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-aria2.ps1" -RootDir "%ROOT_DIR%"
+if %ERRORLEVEL% neq 0 (
+  echo aria2c could not be installed.
+  echo Downloads will still work, but fast segmented mode will be unavailable.
 )
 
 :RegisterHost
