@@ -77,9 +77,9 @@ The Firefox add-on ID is fixed in the manifest as `qwin-video-downloader@example
 
 1. Visit a page with a playing video.
 2. Open the Qwin Video Downloader toolbar popup.
-3. Wait for detected URLs to appear.
+3. Wait for detected full videos to appear. Duplicate source URLs and quality variants are grouped into one video entry.
 4. Click the Download overlay on the video player, or click Download next to a detected item in the popup.
-5. Choose a quality when the quality picker appears. `Best available MP4` is recommended when you are unsure.
+5. Compare the available versions by resolution, size, format, bitrate, and source, then choose the version to download. `Best available MP4` is recommended when you are unsure.
 6. Open the Downloads view in the popup to watch progress and manage jobs. Active downloads can be paused, resumed, or canceled. Finished, failed, and canceled jobs can be retried/redownloaded, removed from history, or opened in File Explorer when a saved file path is available.
 
 Use the settings button in the popup to set a custom Windows folder path. Leave it blank to use the default Downloads folder.
@@ -110,4 +110,5 @@ node tests\extension\test_video_filters.js
 node tests\extension\test_background_download_controls.js
 node tests\extension\test_popup_css.js
 node tests\extension\test_popup_download_view.js
+node tests\extension\test_content_quality_dialog.js
 ```
