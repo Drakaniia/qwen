@@ -2,10 +2,11 @@
 
 const extensionApi = typeof browser !== "undefined" ? browser : chrome;
 const videoFilters = globalThis.QwinVideoFilters;
-const seenUrls = new Set();
+const seenUrls = new Map();
 const overlayByVideo = new WeakMap();
 const overlayRecords = new Set();
 let qualityDialog = null;
+let qualityRequestSerial = 0;
 
 function sendMessage(message) {
   try {
@@ -94,6 +95,37 @@ function titleForVideo(video, url) {
   );
 }
 
+function pageThumbnailUrl() {
+  return (
+    toAbsoluteUrl(document.querySelector('meta[property="og:image"]')?.content) ||
+    toAbsoluteUrl(document.querySelector('meta[name="twitter:image"]')?.content) ||
+    toAbsoluteUrl(document.querySelector('link[rel~="image_src"]')?.href)
+  );
+}
+
+function thumbnailForVideo(video) {
+  const poster = video
+    ? toAbsoluteUrl(video.getAttribute("poster") || video.poster || "")
+    : "";
+  const thumbnail = poster || pageThumbnailUrl();
+  if (/\.(?:gif|gifv)(?:$|[?#])/i.test(thumbnail)) {
+    return "";
+  }
+  return thumbnail;
+}
+
+function videoElementDetails(video) {
+  const rect = video.getBoundingClientRect();
+  return {
+    width: video.videoWidth || rect.width || video.clientWidth || 0,
+    height: video.videoHeight || rect.height || video.clientHeight || 0,
+    duration: Number.isFinite(video.duration) ? video.duration : 0,
+    loop: Boolean(video.loop),
+    muted: Boolean(video.muted),
+    autoplay: Boolean(video.autoplay),
+  };
+}
+
 function buildCandidate(url, source, mimeType = "", video = null) {
   const absoluteUrl = toAbsoluteUrl(url);
   if (!absoluteUrl || videoFilters.isBlockedVideoUrl(absoluteUrl, mimeType)) {
@@ -108,7 +140,7 @@ function buildCandidate(url, source, mimeType = "", video = null) {
     return null;
   }
 
-  return {
+  const candidate = {
     url: absoluteUrl,
     format: detectFormat(absoluteUrl, mimeType),
     source,
@@ -116,7 +148,25 @@ function buildCandidate(url, source, mimeType = "", video = null) {
     pageUrl: location.href,
     frameUrl: location.href,
     title: video ? titleForVideo(video, absoluteUrl) : cleanText(document.title) || titleFromUrl(absoluteUrl) || "Video",
+    thumbnailUrl: thumbnailForVideo(video),
   };
+
+  if (video) {
+    Object.assign(candidate, videoElementDetails(video));
+  }
+
+  return videoFilters.isLikelyFullLengthVideoCandidate(candidate) ? candidate : null;
+}
+
+function candidateMetadataSignature(candidate) {
+  return [
+    candidate.title || "",
+    candidate.thumbnailUrl || "",
+    candidate.width || "",
+    candidate.height || "",
+    candidate.duration || "",
+    candidate.contentType || "",
+  ].join("|");
 }
 
 function addCandidate(candidates, url, source, mimeType = "", video = null) {
@@ -125,8 +175,9 @@ function addCandidate(candidates, url, source, mimeType = "", video = null) {
     return null;
   }
 
-  if (!seenUrls.has(candidate.url)) {
-    seenUrls.add(candidate.url);
+  const signature = candidateMetadataSignature(candidate);
+  if (seenUrls.get(candidate.url) !== signature) {
+    seenUrls.set(candidate.url, signature);
     candidates.push(candidate);
   }
 
@@ -148,16 +199,10 @@ function videoHasBlockedMediaSource(video) {
 }
 
 function videoMetrics(video, candidate) {
-  const rect = video.getBoundingClientRect();
   return {
+    ...videoElementDetails(video),
     url: candidate.url,
     contentType: candidate.contentType || "",
-    width: video.videoWidth || rect.width || video.clientWidth,
-    height: video.videoHeight || rect.height || video.clientHeight,
-    duration: Number.isFinite(video.duration) ? video.duration : 0,
-    loop: Boolean(video.loop),
-    muted: Boolean(video.muted),
-    autoplay: Boolean(video.autoplay),
   };
 }
 
@@ -168,15 +213,11 @@ function findOverlayCandidate(video, candidates) {
 }
 
 function isLikelyRealPlayer(video) {
-  const rect = video.getBoundingClientRect();
-  return videoFilters.isLikelyRealVideoBox({
-    width: video.videoWidth || rect.width || video.clientWidth,
-    height: video.videoHeight || rect.height || video.clientHeight,
-    duration: Number.isFinite(video.duration) ? video.duration : 0,
-    loop: Boolean(video.loop),
-    muted: Boolean(video.muted),
-    autoplay: Boolean(video.autoplay),
-  });
+  const details = videoElementDetails(video);
+  if (details.duration > 0 && details.duration < 30) {
+    return false;
+  }
+  return videoFilters.isLikelyRealVideoBox(details);
 }
 
 function createOverlayButton(video) {
@@ -209,7 +250,8 @@ function createOverlayButton(video) {
     }
 
     button.disabled = true;
-    button.textContent = "Quality...";
+    button.textContent = "Loading...";
+    const requestToken = showQualityLoadingDialog();
     const formatsResponse = await sendMessageWithResponse(
       record.candidate
         ? {
@@ -221,7 +263,14 @@ function createOverlayButton(video) {
           }
     );
 
+    if (!isCurrentQualityRequest(requestToken)) {
+      button.disabled = false;
+      button.textContent = "Download";
+      return;
+    }
+
     if (!formatsResponse || !formatsResponse.ok) {
+      hideQualityDialog();
       button.textContent = "Error";
       button.title = formatsResponse && formatsResponse.error ? formatsResponse.error : "Could not load qualities.";
       window.setTimeout(() => {
@@ -239,18 +288,12 @@ function createOverlayButton(video) {
     }
 
     button.textContent = "Sending...";
-    const response = await sendMessageWithResponse(
-      record.candidate
-        ? {
-            type: "downloadUrl",
-            video: record.candidate,
-            formatId: selectedFormat,
-          }
-        : {
-            type: "downloadBestVideo",
-            formatId: selectedFormat,
-          }
-    );
+    const response = await sendMessageWithResponse({
+      type: "downloadVideo",
+      videoId: formatsResponse.videoId,
+      formatId: selectedFormat.formatId,
+      variantId: selectedFormat.variantId,
+    });
 
     if (!response || !response.ok) {
       button.textContent = "Error";
@@ -271,6 +314,77 @@ function createOverlayButton(video) {
   return button;
 }
 
+function formatQualityValue(format) {
+  if (format.height) {
+    return `${format.height}p`;
+  }
+  if (format.width) {
+    return `${format.width}w`;
+  }
+  return format.label || format.note || format.id || "Best";
+}
+
+function formatSizeValue(format) {
+  if (videoFilters && typeof videoFilters.displayVideoSize === "function") {
+    return videoFilters.displayVideoSize(format) || "Unknown";
+  }
+  return format.size || "Unknown";
+}
+
+function formatFormatValue(format) {
+  const value = format.ext || format.format || "";
+  if (value) {
+    return String(value).toUpperCase();
+  }
+  return format.optionType === "native-format" ? "MP4" : "VIDEO";
+}
+
+function formatBitrateValue(format) {
+  const bitrate = Number(format.bitrate || format.tbr || 0);
+  if (!Number.isFinite(bitrate) || bitrate <= 0) {
+    return "Unknown";
+  }
+  return `${Math.round(bitrate)} kbps`;
+}
+
+function formatSourceValue(format) {
+  return format.source || (format.optionType === "native-format" ? "yt-dlp" : "detected");
+}
+
+function appendQualityCell(row, text, primary = false) {
+  const cell = document.createElement("span");
+  cell.textContent = text || "Unknown";
+  cell.style.minWidth = "0";
+  cell.style.overflowWrap = "anywhere";
+  cell.style.fontSize = "11px";
+  cell.style.lineHeight = "1.25";
+  if (primary) {
+    cell.style.fontWeight = "800";
+    cell.style.color = "#171b22";
+  }
+  row.append(cell);
+}
+
+function styleQualityRow(row) {
+  row.style.display = "grid";
+  row.style.gridTemplateColumns = "1fr 0.78fr 0.68fr 0.82fr 1.18fr";
+  row.style.gap = "7px";
+  row.style.alignItems = "center";
+}
+
+function appendQualityHeader(table) {
+  const header = document.createElement("div");
+  styleQualityRow(header);
+  header.style.padding = "0 8px";
+  header.style.color = "#687386";
+  header.style.font = "800 10px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  header.style.textTransform = "uppercase";
+  for (const label of ["Quality", "Size", "Format", "Bitrate", "Source"]) {
+    appendQualityCell(header, label);
+  }
+  table.append(header);
+}
+
 function ensureQualityDialog() {
   if (qualityDialog && qualityDialog.root.isConnected) {
     return qualityDialog;
@@ -289,7 +403,7 @@ function ensureQualityDialog() {
   root.style.placeItems = "center";
   root.style.background = "rgba(0, 0, 0, 0.48)";
 
-  card.style.width = "min(360px, calc(100vw - 28px))";
+  card.style.width = "min(620px, calc(100vw - 28px))";
   card.style.maxHeight = "min(420px, calc(100vh - 28px))";
   card.style.overflow = "auto";
   card.style.padding = "12px";
@@ -305,6 +419,7 @@ function ensureQualityDialog() {
 
   list.style.display = "grid";
   list.style.gap = "7px";
+  list.style.overflowX = "auto";
 
   cancel.type = "button";
   cancel.textContent = "Cancel";
@@ -325,19 +440,68 @@ function ensureQualityDialog() {
   return qualityDialog;
 }
 
+function hideQualityDialog() {
+  if (qualityDialog && qualityDialog.root) {
+    qualityDialog.root.style.display = "none";
+    qualityDialog.list.textContent = "";
+    qualityDialog.cancel.disabled = false;
+    qualityDialog.cancel.textContent = "Cancel";
+  }
+}
+
+function showQualityLoadingDialog(title = "Loading versions...") {
+  const requestToken = ++qualityRequestSerial;
+  const dialog = ensureQualityDialog();
+  dialog.title.textContent = title;
+  dialog.list.textContent = "";
+
+  const loading = document.createElement("div");
+  loading.textContent = "Checking available video versions...";
+  loading.style.minHeight = "48px";
+  loading.style.display = "grid";
+  loading.style.placeItems = "center";
+  loading.style.padding = "12px";
+  loading.style.border = "1px solid #dce1e8";
+  loading.style.borderRadius = "6px";
+  loading.style.background = "#eef7f5";
+  loading.style.color = "#0b5e58";
+  loading.style.font = "750 12px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  dialog.list.append(loading);
+
+  dialog.cancel.disabled = false;
+  dialog.cancel.textContent = "Cancel";
+  dialog.cancel.onclick = () => {
+    qualityRequestSerial += 1;
+    hideQualityDialog();
+  };
+  dialog.root.style.display = "grid";
+  return requestToken;
+}
+
+function isCurrentQualityRequest(requestToken) {
+  return requestToken === qualityRequestSerial;
+}
+
 function showQualityDialog({ title, formats }) {
   return new Promise((resolve) => {
     const dialog = ensureQualityDialog();
-    dialog.title.textContent = title ? `Choose quality: ${title}` : "Choose quality";
+    dialog.title.textContent = title ? `Compare versions: ${title}` : "Compare versions";
     dialog.list.textContent = "";
 
     const choices = formats && formats.length ? formats : [{ id: "best", label: "Best available MP4" }];
+    const table = document.createElement("div");
+    table.style.display = "grid";
+    table.style.gap = "6px";
+    table.style.minWidth = "520px";
+    appendQualityHeader(table);
+
     for (const format of choices) {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = [format.label || format.id || "Best", format.size || "", format.note || ""]
-        .filter(Boolean)
-        .join("  ");
+      button.dataset.formatId = format.formatId || format.id || "best";
+      button.dataset.variantId = format.variantId || "";
+      button.title = format.sourceUrl || format.label || "";
+      styleQualityRow(button);
       button.style.minHeight = "34px";
       button.style.padding = "7px 9px";
       button.style.border = "1px solid #dce1e8";
@@ -347,12 +511,21 @@ function showQualityDialog({ title, formats }) {
       button.style.textAlign = "left";
       button.style.font = "600 13px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
       button.style.cursor = "pointer";
+      appendQualityCell(button, formatQualityValue(format), true);
+      appendQualityCell(button, formatSizeValue(format));
+      appendQualityCell(button, formatFormatValue(format));
+      appendQualityCell(button, formatBitrateValue(format));
+      appendQualityCell(button, formatSourceValue(format));
       button.addEventListener("click", () => {
         dialog.root.style.display = "none";
-        resolve(format.id || "best");
+        resolve({
+          formatId: button.dataset.formatId || "best",
+          variantId: button.dataset.variantId || "",
+        });
       });
-      dialog.list.append(button);
+      table.append(button);
     }
+    dialog.list.append(table);
 
     dialog.cancel.onclick = () => {
       dialog.root.style.display = "none";
