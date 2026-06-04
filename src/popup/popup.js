@@ -524,7 +524,8 @@ async function checkNativeHost() {
     return;
   }
 
-  setHelperStatus(`Helper ready (${response.version || "installed"}).`, "ok");
+  const mode = dependencies.aria2c ? "fast mode" : "standard mode";
+  setHelperStatus(`Helper ready (${response.version || "installed"}, ${mode}).`, "ok");
 }
 
 async function init() {
