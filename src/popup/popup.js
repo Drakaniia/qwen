@@ -10,6 +10,7 @@ let currentDownloads = [];
 let viewMode = "videos";
 let videoLayoutMode = "list";
 let qualityRequestSerial = 0;
+const ACTIVE_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "pausing", "canceling"]);
 
 const elements = {
   helperStatus: document.getElementById("helperStatus"),
@@ -147,7 +148,176 @@ function setVideoLayoutMode(mode) {
 }
 
 function jobForVideo(videoId) {
-  return currentDownloads.find((job) => job.videoId === videoId && ["queued", "connecting", "running"].includes(job.status));
+  return currentDownloads.find((job) => job.videoId === videoId && ACTIVE_DOWNLOAD_STATUSES.has(job.status || "queued"));
+}
+
+function hasDownloadPercent(job) {
+  return typeof job?.percent === "number" && Number.isFinite(job.percent);
+}
+
+function clampDownloadPercent(percent) {
+  return Math.max(0, Math.min(100, Number(percent)));
+}
+
+function formatDownloadPercent(percent) {
+  return `${Math.round(clampDownloadPercent(percent))}%`;
+}
+
+function downloadProgressButtonText(job) {
+  if (hasDownloadPercent(job)) {
+    return formatDownloadPercent(job.percent);
+  }
+
+  const status = job?.status || "queued";
+  if (status === "queued") {
+    return "Queued";
+  }
+  if (status === "connecting") {
+    return "Connecting";
+  }
+  if (status === "pausing") {
+    return "Pausing";
+  }
+  if (status === "canceling") {
+    return "Canceling";
+  }
+  return "Starting";
+}
+
+function downloadProgressLabel(job) {
+  return `${formatDownloadPercent(job.percent)} downloaded`;
+}
+
+function isFakeDownloadMessage(text) {
+  return /^Downloading(?:\.\.\.| to\b)/i.test(String(text || "").trim());
+}
+
+function downloadMessageText(job) {
+  if (!job) {
+    return "";
+  }
+  if (job.error) {
+    return job.error;
+  }
+  if (hasDownloadPercent(job)) {
+    return "";
+  }
+
+  const text = String(job.message || "").trim();
+  if (!text || isFakeDownloadMessage(text) || ACTIVE_DOWNLOAD_STATUSES.has(job.status || "queued")) {
+    return "";
+  }
+  return text || job.url || "";
+}
+
+function formatDownloadTimestamp(value) {
+  const timestamp = Number(value || 0);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return "";
+  }
+  return new Date(timestamp).toLocaleString();
+}
+
+function cleanDetailValue(value) {
+  return String(value || "").trim();
+}
+
+function appendDetailEntry(entries, label, value) {
+  const text = cleanDetailValue(value);
+  if (text) {
+    entries.push({ label, value: text });
+  }
+}
+
+function downloadDetailEntries(job) {
+  const entries = [];
+  if (!job) {
+    return entries;
+  }
+
+  appendDetailEntry(entries, "Status", job.status || "queued");
+  if (hasDownloadPercent(job)) {
+    appendDetailEntry(entries, "Progress", `${formatDownloadPercent(job.percent)} of 100%`);
+  }
+  if (typeof job.rawPercent === "number" && Number.isFinite(job.rawPercent)) {
+    appendDetailEntry(entries, "Tool percent", formatDownloadPercent(job.rawPercent));
+  }
+  appendDetailEntry(entries, "Speed", job.speed);
+  appendDetailEntry(entries, "ETA", job.eta);
+  appendDetailEntry(entries, "Downloaded", job.downloadedSize);
+  appendDetailEntry(entries, "Total size", job.totalSize);
+  appendDetailEntry(entries, "Connections", job.connections);
+  appendDetailEntry(entries, "Fragment", job.fragment);
+  appendDetailEntry(entries, "Stage", job.stage);
+  appendDetailEntry(entries, "Format", job.format);
+  appendDetailEntry(entries, "Quality", job.formatId);
+  appendDetailEntry(entries, "Saved file", job.filepath);
+  appendDetailEntry(entries, "Artifact folder", job.artifactRoot);
+  appendDetailEntry(entries, "Page URL", job.pageUrl);
+  appendDetailEntry(entries, "Source URL", job.url);
+  appendDetailEntry(entries, "Helper output", job.rawProgressLine);
+  appendDetailEntry(entries, "Last update", formatDownloadTimestamp(job.updatedAt));
+  return entries;
+}
+
+function appendDownloadDetails(container, job) {
+  const entries = downloadDetailEntries(job);
+  if (!entries.length) {
+    return;
+  }
+
+  const details = document.createElement("div");
+  details.className = "download-details";
+
+  for (const entry of entries) {
+    const row = document.createElement("div");
+    row.className = "download-detail";
+
+    const label = document.createElement("span");
+    label.className = "download-detail-label";
+    label.textContent = entry.label;
+
+    const value = document.createElement("span");
+    value.className = "download-detail-value";
+    value.textContent = entry.value;
+
+    row.append(label, value);
+    details.append(row);
+  }
+
+  container.append(details);
+}
+
+function appendDownloadProgress(container, job, options = {}) {
+  if (!job || job.status === "error") {
+    return;
+  }
+
+  const knownPercent = hasDownloadPercent(job);
+  if (!knownPercent) {
+    return;
+  }
+
+  const progress = document.createElement("div");
+  progress.className = `progress ${options.compact ? "compact" : ""}`.trim();
+  progress.setAttribute("role", "progressbar");
+  progress.setAttribute("aria-label", "Download progress");
+  progress.setAttribute("aria-valuemin", "0");
+  progress.setAttribute("aria-valuemax", "100");
+  progress.setAttribute("aria-valuenow", String(Math.round(clampDownloadPercent(job.percent))));
+
+  const bar = document.createElement("div");
+  bar.className = "progress-bar";
+  const fill = document.createElement("span");
+  fill.style.width = `${clampDownloadPercent(job.percent)}%`;
+  bar.append(fill);
+
+  const label = document.createElement("div");
+  label.className = "progress-label";
+  label.textContent = downloadProgressLabel(job);
+
+  progress.append(bar, label);
+  container.append(progress);
 }
 
 function appendVideoPlaceholder(container) {
@@ -221,7 +391,7 @@ function renderVideos() {
     const runningJob = jobForVideo(video.id);
     if (!video.downloadable || runningJob) {
       button.disabled = true;
-      button.textContent = runningJob ? "Downloading" : "Unsupported";
+      button.textContent = runningJob ? downloadProgressButtonText(runningJob) : "Unsupported";
     }
 
     main.append(details, button);
@@ -249,6 +419,7 @@ function renderVideos() {
       content.append(main, meta, warning);
     } else {
       content.append(main, meta);
+      appendDownloadProgress(content, runningJob, { compact: true });
     }
 
     item.append(content);
@@ -283,26 +454,21 @@ function renderDownloads() {
     title.className = "download-title";
     title.textContent = job.title || shortenUrl(job.url) || "Video";
 
+    const messageText = downloadMessageText(job);
     const message = document.createElement("div");
     message.className = `download-message ${job.status === "error" ? "error" : ""}`.trim();
-    message.textContent = job.error || job.message || job.url || "";
+    message.textContent = messageText;
 
     header.append(badge, title);
     item.append(header);
 
-    if (typeof job.percent === "number" && job.status !== "error") {
-      const progress = document.createElement("div");
-      progress.className = "progress";
-      const bar = document.createElement("div");
-      bar.className = "progress-bar";
-      const fill = document.createElement("span");
-      fill.style.width = `${Math.max(0, Math.min(100, job.percent))}%`;
-      bar.append(fill);
-      progress.append(bar);
-      item.append(progress);
+    appendDownloadProgress(item, job);
+
+    if (messageText) {
+      item.append(message);
     }
 
-    item.append(message);
+    appendDownloadDetails(item, job);
 
     const actions = document.createElement("div");
     actions.className = "download-actions";

@@ -87,6 +87,118 @@ assert.match(
 
 assert.match(
   js,
+  /function\s+appendDownloadProgress\s*\(/,
+  "popup must render download progress bars from a shared helper"
+);
+
+assert.match(
+  js,
+  /function\s+downloadProgressButtonText\s*\(/,
+  "video row download button must show numeric progress when known"
+);
+
+assert.match(
+  js,
+  /button\.textContent\s*=\s*runningJob\s*\?\s*downloadProgressButtonText\(runningJob\)\s*:\s*"Unsupported"/,
+  "active video row button must show progress instead of only a blinking Downloading label"
+);
+
+assert.match(
+  js,
+  /appendDownloadProgress\(content,\s*runningJob,\s*\{\s*compact:\s*true\s*\}\)/,
+  "active video rows must show a compact download progress bar"
+);
+
+assert.match(
+  js,
+  /appendDownloadProgress\(item,\s*job\)/,
+  "downloads list must show progress for active jobs"
+);
+
+assert.doesNotMatch(
+  css,
+  /\.progress\.indeterminate/,
+  "popup must not show a fake loading-loop progress bar when exact percent is unavailable"
+);
+
+assert.doesNotMatch(
+  js,
+  /indeterminate/,
+  "popup script must not render fake indeterminate download progress"
+);
+
+assert.doesNotMatch(
+  js,
+  /return\s+"Downloading"/,
+  "popup should not fall back to a generic Downloading label when real progress is unavailable"
+);
+
+assert.match(
+  js,
+  /function\s+downloadMessageText\s*\(/,
+  "popup must normalize download status text before rendering it"
+);
+
+assert.doesNotMatch(
+  js,
+  /message\.textContent\s*=\s*job\.error\s*\|\|\s*job\.message\s*\|\|\s*job\.url\s*\|\|\s*""/,
+  "popup must not directly render stale fake Downloading... job messages"
+);
+
+assert.match(
+  js,
+  /if\s*\(\s*messageText\s*\)\s*\{\s*item\.append\(message\);/s,
+  "popup must omit the download message row when there is no real progress or useful status text"
+);
+
+assert.doesNotMatch(
+  css,
+  /@keyframes\s+progress-indeterminate/,
+  "popup must not animate fake download progress"
+);
+
+assert.match(
+  css,
+  /\.progress-label/,
+  "popup must show a readable progress label next to the bar"
+);
+
+assert.match(
+  js,
+  /function\s+downloadDetailEntries\s*\(/,
+  "popup must collect available download metadata into detail rows"
+);
+
+assert.match(
+  js,
+  /function\s+appendDownloadDetails\s*\(/,
+  "popup must render full download details in the downloads tab"
+);
+
+assert.match(
+  js,
+  /appendDownloadDetails\(item,\s*job\)/,
+  "downloads list must include the full download detail block for each job"
+);
+
+for (const detail of ["Speed", "ETA", "Downloaded", "Total size", "Source URL", "Saved file", "Helper output"]) {
+  assert.match(js, new RegExp(detail), `popup details must include ${detail} when available`);
+}
+
+assert.match(
+  css,
+  /\.download-details/,
+  "popup must style the download detail grid"
+);
+
+assert.match(
+  css,
+  /\.download-detail/,
+  "popup must style individual download detail rows"
+);
+
+assert.match(
+  js,
   /function\s+formatQualityValue\s*\(/,
   "popup must format quality metadata for comparison rows"
 );
