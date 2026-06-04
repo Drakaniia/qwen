@@ -11,6 +11,8 @@ scripts\install.bat
 
 If Chrome is used, confirm the loaded extension ID is `dbjddokdmkodnkiaccmbjagfalmmmkmi`.
 
+If Yandex Browser is used, confirm the loaded extension ID is `dbjddokdmkodnkiaccmbjagfalmmmkmi`.
+
 If Firefox is used, confirm the manifest add-on ID is `qwin-video-downloader@example.com`.
 
 ## Missing yt-dlp Or ffmpeg
@@ -42,6 +44,7 @@ Reload the extension and re-run `scripts\install.bat`.
 The native host only allows:
 
 - Chrome extension ID `dbjddokdmkodnkiaccmbjagfalmmmkmi`
+- Yandex Browser extension ID `dbjddokdmkodnkiaccmbjagfalmmmkmi`
 - Firefox extension ID `qwin-video-downloader@example.com`
 
 If the loaded browser extension has a different ID, native messaging will be blocked.

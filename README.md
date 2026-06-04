@@ -1,6 +1,6 @@
 # Qwin Video Downloader
 
-Qwin Video Downloader is a Windows-focused Chrome/Firefox extension that detects playable video URLs on the current page and sends selected URLs to a local Python native messaging host. The helper uses `yt-dlp`, `ffmpeg`, and optional `aria2c` fast mode to save supported videos as MP4.
+Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser extension that detects playable video URLs on the current page and sends selected URLs to a local Python native messaging host. The helper uses `yt-dlp`, `ffmpeg`, and optional `aria2c` fast mode to save supported videos as MP4.
 
 ## Quickstart
 
@@ -11,9 +11,10 @@ Qwin Video Downloader is a Windows-focused Chrome/Firefox extension that detects
    scripts\install.bat
    ```
 
-2. Restart Chrome or Firefox.
+2. Restart Chrome, Firefox, or Yandex Browser.
 3. Load the extension:
    - Chrome: open `chrome://extensions`, enable Developer mode, click Load unpacked, and select `C:\Users\Qwenzy\Desktop\qwin`.
+   - Yandex Browser: open `browser://extensions`, enable Developer mode, click Upload unpacked extension, and select `C:\Users\Qwenzy\Desktop\qwin`.
    - Firefox: open `about:debugging#/runtime/this-firefox`, click Load Temporary Add-on, and select `C:\Users\Qwenzy\Desktop\qwin\manifest.json`.
 4. Visit a page with a playing video, open the Qwin popup, choose a detected video/quality, and download.
 

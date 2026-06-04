@@ -8,8 +8,8 @@
 - `src/content/content.js` - All-frame page scanner for video elements and performance resource entries.
 - `src/popup/` - Toolbar popup HTML, CSS, and JavaScript.
 - `src/native-host/` - Python native messaging host and Windows launcher.
-- `config/native-host/` - Generated Chrome and Firefox native messaging manifest files.
-- `scripts/install.bat` - Installs dependencies and registers the native host for Chrome and Firefox.
+- `config/native-host/` - Generated Chrome, Yandex Browser, and Firefox native messaging manifest files.
+- `scripts/install.bat` - Installs dependencies and registers the native host for Chrome, Yandex Browser, and Firefox.
 - `scripts/install-aria2.ps1` - Installs or verifies the portable `aria2c` fast downloader.
 - `tests/extension/` - Node-based extension structure and behavior checks.
 - `tests/native-host/` - Python unit tests for the native host helpers.
@@ -35,6 +35,7 @@ Run:
 ```bat
 node tests\extension\test_video_filters.js
 node tests\extension\test_background_download_controls.js
+node tests\extension\test_yandex_browser_support.js
 node tests\extension\test_popup_css.js
 node tests\extension\test_popup_download_view.js
 node tests\extension\test_content_quality_dialog.js
