@@ -656,6 +656,66 @@ function updateDownload(jobId, patch) {
   notifyPopup({ type: "downloadUpdated", job: downloadsById[jobId] });
 }
 
+function clampDownloadPercent(percent) {
+  const value = Number(percent);
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  return Math.max(0, Math.min(100, value));
+}
+
+function normalizeDownloadProgress(jobId, percent) {
+  const nextPercent = clampDownloadPercent(percent);
+  if (nextPercent === null) {
+    return null;
+  }
+
+  const existingPercent = clampDownloadPercent(downloadsById[jobId]?.percent);
+  const previousPercent = existingPercent === null ? 0 : existingPercent;
+  const activePercent = nextPercent >= 100 ? 99 : nextPercent;
+  return Math.max(previousPercent, activePercent);
+}
+
+function downloadProgressMessage(percent) {
+  const value = clampDownloadPercent(percent) || 0;
+  return `${Math.round(value)}% downloaded`;
+}
+
+function cleanProgressText(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > 500 ? text.slice(0, 500) : text;
+}
+
+function resetDownloadProgressDetails() {
+  return {
+    rawPercent: null,
+    downloadedSize: "",
+    totalSize: "",
+    speed: "",
+    eta: "",
+    connections: null,
+    fragment: "",
+    rawProgressLine: "",
+  };
+}
+
+function progressDetailPatchFromMessage(message) {
+  const rawPercent = clampDownloadPercent(message.percent);
+  const connections = Number(message.connections || 0);
+  const patch = {
+    rawPercent,
+    downloadedSize: cleanProgressText(message.downloadedSize),
+    totalSize: cleanProgressText(message.totalSize),
+    speed: cleanProgressText(message.speed),
+    eta: cleanProgressText(message.eta),
+    connections: Number.isFinite(connections) && connections > 0 ? connections : null,
+    fragment: cleanProgressText(message.fragment),
+    rawProgressLine: cleanProgressText(message.line),
+  };
+
+  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+}
+
 function isHardAccessError(error) {
   return HARD_ACCESS_ERROR_RE.test(String(error || ""));
 }
@@ -823,6 +883,8 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
     artifactRoot: existingJob.artifactRoot || "",
     status: "connecting",
     message: options.resume ? "Reconnecting to native helper..." : "Connecting to native helper...",
+    ...resetDownloadProgressDetails(),
+    percent: options.resume && typeof existingJob.percent === "number" ? existingJob.percent : null,
     createdAt: existingJob.createdAt || Date.now(),
   });
 
@@ -843,7 +905,7 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
     }
 
     if (message.type === "started") {
-      updateDownload(jobId, { status: "running", message: message.message || "Download started." });
+      updateDownload(jobId, { status: "running", message: "" });
       return;
     }
 
@@ -851,11 +913,12 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
       const patch = {
         status: "running",
         stage: message.stage,
-        message: message.line || message.message || "Downloading...",
         ...artifactPatchFromMessage(message),
+        ...progressDetailPatchFromMessage(message),
       };
       if (typeof message.percent === "number") {
-        patch.percent = message.percent;
+        patch.percent = normalizeDownloadProgress(jobId, message.percent);
+        patch.message = downloadProgressMessage(patch.percent);
       }
       updateDownload(jobId, patch);
       return;
@@ -906,6 +969,10 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
       updateDownload(jobId, {
         status: "done",
         percent: 100,
+        rawPercent: 100,
+        speed: "",
+        eta: "",
+        stage: "done",
         filepath: message.filepath || "",
         artifactRoot: message.artifactRoot || "",
         message: message.message || "Download complete.",

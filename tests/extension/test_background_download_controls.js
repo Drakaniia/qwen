@@ -134,4 +134,44 @@ assert.match(
   "background must hide sources that the server has refused"
 );
 
+assert.doesNotMatch(
+  source,
+  /Downloading\.\.\./,
+  "background must not store fake Downloading... text when real percent is unavailable"
+);
+
+assert.match(
+  source,
+  /function\s+downloadProgressMessage\s*\(/,
+  "background must format progress messages from actual numeric percent values"
+);
+
+assert.match(
+  source,
+  /function\s+normalizeDownloadProgress\s*\(/,
+  "background must normalize helper percent into a monotonic job-level display percent"
+);
+
+assert.match(
+  source,
+  /patch\.percent\s*=\s*normalizeDownloadProgress\(jobId,\s*message\.percent\)/,
+  "background must not render raw helper percent directly because yt-dlp can restart percent per output"
+);
+
+assert.doesNotMatch(
+  source,
+  /patch\.percent\s*=\s*message\.percent/,
+  "background must not allow raw helper percent to make visible progress jump backward"
+);
+
+assert.match(
+  source,
+  /function\s+progressDetailPatchFromMessage\s*\(/,
+  "background must preserve parsed helper progress details for the downloads tab"
+);
+
+for (const detailField of ["rawPercent", "downloadedSize", "totalSize", "speed", "eta", "connections", "rawProgressLine"]) {
+  assert.match(source, new RegExp(`${detailField}:`), `background must store ${detailField} from helper progress messages`);
+}
+
 console.log("background download control tests passed");
