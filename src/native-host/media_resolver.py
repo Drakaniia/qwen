@@ -103,38 +103,51 @@ def extract_media_candidates_from_text(text, base_url, source="page-scan"):
 def extract_dynamic_loader_candidates(text, base_url, seen=None):
     seen_urls = seen if seen is not None else set()
     candidates = []
-    loader_match = re.search(rf"\bm3u8_loader_url\s*=\s*{JS_STRING_RE}", text, re.IGNORECASE)
-    id_match = (
-        re.search(rf"\bvideo_id\s*=\s*{JS_STRING_RE}", text, re.IGNORECASE)
-        or re.search(rf"\bXS_VIDEO_ID\s*=\s*{JS_STRING_RE}", text, re.IGNORECASE)
-    )
-    if not loader_match or not id_match:
+
+    # Identify potential loader base URLs and video IDs by scanning all string literals in the script.
+    # We look for strings that look like partial loader paths and strings that look like alphanumeric IDs.
+    strings = re.findall(JS_STRING_RE, text)
+    loaders = []
+    ids = []
+
+    for s in strings:
+        decoded = decode_candidate_url(s)
+        # Loader bases often contain tokens like 'm3u8', 'loader', 'playlist', or 'xs1.php' (generic pattern).
+        # They usually end with a parameter marker like 'data=' or a path separator.
+        if decoded.startswith(("http", "//", "/")) and any(
+            token in decoded.lower() for token in ["loader", "m3u8", "playlist", "manifest", "xs1.php", "stream"]
+        ):
+            loaders.append(decoded)
+        # Video IDs are typically 10-64 characters of alphanumeric or safe characters.
+        elif re.fullmatch(r"[a-zA-Z0-9_-]{10,64}", decoded):
+            ids.append(decoded)
+
+    if not loaders or not ids:
         return candidates
 
-    loader_url = absolute_candidate_url(loader_match.group(1), base_url)
-    video_id = decode_candidate_url(id_match.group(1))
-    if not loader_url or not video_id:
-        return candidates
+    for loader in loaders:
+        loader_url = absolute_candidate_url(loader, base_url)
+        for video_id in ids:
+            url = urljoin(loader_url, video_id) if not loader_url.endswith(("=", "/", "?")) else f"{loader_url}{video_id}"
+            if url in seen_urls:
+                continue
+            try:
+                parsed = urlparse(url)
+            except ValueError:
+                continue
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                continue
 
-    url = urljoin(loader_url, video_id) if not loader_url.endswith(("=", "/", "?")) else f"{loader_url}{video_id}"
-    if url in seen_urls:
-        return candidates
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return candidates
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return candidates
+            seen_urls.add(url)
+            candidates.append(
+                {
+                    "url": url,
+                    "format": "M3U8",
+                    "source": "player-config",
+                    "confidence": 96,
+                }
+            )
 
-    seen_urls.add(url)
-    candidates.append(
-        {
-            "url": url,
-            "format": "M3U8",
-            "source": "player-config",
-            "confidence": 96,
-        }
-    )
     return candidates
 
 

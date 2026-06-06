@@ -448,22 +448,42 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(formats["https://cdn.example.com/dash/manifest.mpd"], "MPD")
         self.assertEqual(formats["https://cdn.example.com/live/channel.ism/Manifest"], "ISM")
 
-    def test_extract_media_candidates_from_text_builds_xtremestream_loader_url(self):
+    def test_extract_media_candidates_from_text_builds_dynamic_loader_url(self):
         text = """
-        window.XS_VIDEO_ID = "40542c0b28735b6a870c5cf8bc13269d";
-        var video_id = `40542c0b28735b6a870c5cf8bc13269d`;
-        var m3u8_loader_url = `https://george.xtremestream.xyz/player/xs1.php?data=`;
-        player.setup({ sources: { file: m3u8_loader_url + video_id } });
+        window.PLAYER_ID = "video_abc123456";
+        var loader = "https://example-player.xyz/api/xs1.php?data=";
+        player.setup({ sources: { file: loader + window.PLAYER_ID } });
         """
 
         candidates = host.extract_media_candidates_from_text(
             text,
-            "https://george.xtremestream.xyz/player/index.php?data=40542c0b28735b6a870c5cf8bc13269d",
+            "https://example-player.xyz/player/v123",
         )
 
         self.assertIn(
             {
-                "url": "https://george.xtremestream.xyz/player/xs1.php?data=40542c0b28735b6a870c5cf8bc13269d",
+                "url": "https://example-player.xyz/api/xs1.php?data=video_abc123456",
+                "format": "M3U8",
+                "source": "player-config",
+                "confidence": 96,
+            },
+            candidates,
+        )
+
+    def test_extract_media_candidates_from_text_builds_mogo_loader_url(self):
+        text = """
+        var data = "https://example-mogo.com/loader.php?data=";
+        var video_id = "uz9sj7xd3l1r";
+        """
+
+        candidates = host.extract_media_candidates_from_text(
+            text,
+            "https://example-mogo.com/e/uz9sj7xd3l1r",
+        )
+
+        self.assertIn(
+            {
+                "url": "https://example-mogo.com/loader.php?data=uz9sj7xd3l1r",
                 "format": "M3U8",
                 "source": "player-config",
                 "confidence": 96,
