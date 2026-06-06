@@ -3,6 +3,7 @@
 const api = typeof browser !== "undefined" ? browser : chrome;
 const isPromiseApi = typeof browser !== "undefined";
 const videoFilters = globalThis.QwinVideoFilters;
+const qualityFormat = globalThis.QwinQualityFormat;
 
 let activeTabId = null;
 let currentVideos = [];
@@ -10,7 +11,7 @@ let currentDownloads = [];
 let viewMode = "videos";
 let videoLayoutMode = "list";
 let qualityRequestSerial = 0;
-const ACTIVE_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "pausing", "canceling"]);
+const ACTIVE_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
 
 const elements = {
   helperStatus: document.getElementById("helperStatus"),
@@ -175,17 +176,75 @@ function downloadProgressButtonText(job) {
   if (status === "connecting") {
     return "Connecting";
   }
+  if (status === "paused") {
+    return "Paused";
+  }
   if (status === "pausing") {
     return "Pausing";
   }
   if (status === "canceling") {
     return "Canceling";
   }
+  if (job?.fragment) {
+    return `Frag ${job.fragment}`;
+  }
+  if (job?.speed) {
+    return job.speed;
+  }
+  if (String(job?.stage || "").trim() === "download") {
+    return "Active";
+  }
   return "Starting";
 }
 
 function downloadProgressLabel(job) {
-  return `${formatDownloadPercent(job.percent)} downloaded`;
+  if (hasDownloadPercent(job)) {
+    return `${formatDownloadPercent(job.percent)} downloaded`;
+  }
+
+  const stage = String(job?.stage || "").trim();
+  if (stage === "download") {
+    if (job?.fragment) {
+      return `Downloading fragments ${job.fragment}`;
+    }
+    if (job?.speed) {
+      return `Downloading at ${job.speed}`;
+    }
+    return "Downloading video";
+  }
+  if (stage === "extract") {
+    if (job?.fragment) {
+      return `Preparing fragments ${job.fragment}`;
+    }
+    return "Preparing video";
+  }
+  if (stage === "destination") {
+    return "Preparing file";
+  }
+  if (stage === "postprocess") {
+    return "Processing video";
+  }
+
+  const status = job?.status || "queued";
+  if (status === "queued") {
+    return "Queued";
+  }
+  if (status === "connecting") {
+    return "Connecting to helper";
+  }
+  if (status === "paused") {
+    return "Paused";
+  }
+  if (status === "pausing") {
+    return "Pausing";
+  }
+  if (status === "canceling") {
+    return "Canceling";
+  }
+  if (status === "running") {
+    return "Download running";
+  }
+  return "Starting";
 }
 
 function isFakeDownloadMessage(text) {
@@ -294,9 +353,7 @@ function appendDownloadProgress(container, job, options = {}) {
   }
 
   const knownPercent = hasDownloadPercent(job);
-  if (!knownPercent) {
-    return;
-  }
+  const displayPercent = knownPercent ? clampDownloadPercent(job.percent) : 0;
 
   const progress = document.createElement("div");
   progress.className = `progress ${options.compact ? "compact" : ""}`.trim();
@@ -304,12 +361,15 @@ function appendDownloadProgress(container, job, options = {}) {
   progress.setAttribute("aria-label", "Download progress");
   progress.setAttribute("aria-valuemin", "0");
   progress.setAttribute("aria-valuemax", "100");
-  progress.setAttribute("aria-valuenow", String(Math.round(clampDownloadPercent(job.percent))));
+  progress.setAttribute("aria-valuetext", downloadProgressLabel(job));
+  if (knownPercent) {
+    progress.setAttribute("aria-valuenow", String(Math.round(displayPercent)));
+  }
 
   const bar = document.createElement("div");
   bar.className = "progress-bar";
   const fill = document.createElement("span");
-  fill.style.width = `${clampDownloadPercent(job.percent)}%`;
+  fill.style.width = `${displayPercent}%`;
   bar.append(fill);
 
   const label = document.createElement("div");
@@ -554,40 +614,23 @@ function isCurrentQualityRequest(requestToken) {
 }
 
 function formatQualityValue(format) {
-  if (format.height) {
-    return `${format.height}p`;
-  }
-  if (format.width) {
-    return `${format.width}w`;
-  }
-  return format.label || format.note || format.id || "Best";
+  return qualityFormat.formatQualityValue(format);
 }
 
 function formatSizeValue(format) {
-  if (videoFilters && typeof videoFilters.displayVideoSize === "function") {
-    return videoFilters.displayVideoSize(format) || "Unknown";
-  }
-  return format.size || "Unknown";
+  return qualityFormat.formatSizeValue(format, videoFilters);
 }
 
 function formatFormatValue(format) {
-  const value = format.ext || format.format || "";
-  if (value) {
-    return String(value).toUpperCase();
-  }
-  return format.optionType === "native-format" ? "MP4" : "VIDEO";
+  return qualityFormat.formatFormatValue(format);
 }
 
 function formatBitrateValue(format) {
-  const bitrate = Number(format.bitrate || format.tbr || 0);
-  if (!Number.isFinite(bitrate) || bitrate <= 0) {
-    return "Unknown";
-  }
-  return `${Math.round(bitrate)} kbps`;
+  return qualityFormat.formatBitrateValue(format);
 }
 
 function formatSourceValue(format) {
-  return format.source || (format.optionType === "native-format" ? "yt-dlp" : "detected");
+  return qualityFormat.formatSourceValue(format);
 }
 
 function appendQualityCell(row, text, className = "") {

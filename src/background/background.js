@@ -3,10 +3,14 @@
 if (typeof importScripts === "function" && typeof globalThis.QwinVideoFilters === "undefined") {
   importScripts("../shared/video_filters.js");
 }
+if (typeof importScripts === "function" && typeof globalThis.QwinDownloadState === "undefined") {
+  importScripts("./download_state.js");
+}
 
 const api = typeof browser !== "undefined" ? browser : chrome;
 const isPromiseApi = typeof browser !== "undefined";
 const videoFilters = globalThis.QwinVideoFilters;
+const downloadState = globalThis.QwinDownloadState;
 
 const HOST_NAME = "com.qwin.video_downloader";
 const STORAGE_VIDEOS = "qwinVideosByTab";
@@ -35,7 +39,8 @@ const NATIVE_HEADER_NAMES = new Set([
   "x-requested-with",
 ]);
 const HARD_ACCESS_ERROR_RE =
-  /\bHTTP Error\s+(?:401|403|404|410|451)\b|\b(?:Unauthorized|Forbidden|Gone|Not Found|Unavailable For Legal Reasons)\b/i;
+  /\bHTTP Error\s+(?:401|403|404|410|451)\b|\b(?:Unauthorized|Forbidden|Gone|Not Found|Unavailable For Legal Reasons)\b|Invalid data found when processing input/i;
+const BLOCKING_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
 
 let videosByTab = {};
 let downloadsById = {};
@@ -657,63 +662,34 @@ function updateDownload(jobId, patch) {
 }
 
 function clampDownloadPercent(percent) {
-  const value = Number(percent);
-  if (!Number.isFinite(value)) {
-    return null;
-  }
-  return Math.max(0, Math.min(100, value));
+  return downloadState.clampDownloadPercent(percent);
+}
+
+function isSegmentedDownloadJob(job) {
+  const format = String(job?.format || "").toUpperCase();
+  const url = String(job?.url || "");
+  return format === "M3U8" || format === "MPD" || HLS_RE.test(url) || DASH_RE.test(url);
 }
 
 function normalizeDownloadProgress(jobId, percent) {
-  const nextPercent = clampDownloadPercent(percent);
-  if (nextPercent === null) {
-    return null;
-  }
-
-  const existingPercent = clampDownloadPercent(downloadsById[jobId]?.percent);
-  const previousPercent = existingPercent === null ? 0 : existingPercent;
-  const activePercent = nextPercent >= 100 ? 99 : nextPercent;
-  return Math.max(previousPercent, activePercent);
+  const job = downloadsById[jobId] || {};
+  return downloadState.visibleDownloadProgressPercent(job.percent, percent, isSegmentedDownloadJob(job));
 }
 
 function downloadProgressMessage(percent) {
-  const value = clampDownloadPercent(percent) || 0;
-  return `${Math.round(value)}% downloaded`;
+  return downloadState.downloadProgressMessage(percent);
 }
 
 function cleanProgressText(value) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  return text.length > 500 ? text.slice(0, 500) : text;
+  return downloadState.cleanProgressText(value);
 }
 
 function resetDownloadProgressDetails() {
-  return {
-    rawPercent: null,
-    downloadedSize: "",
-    totalSize: "",
-    speed: "",
-    eta: "",
-    connections: null,
-    fragment: "",
-    rawProgressLine: "",
-  };
+  return downloadState.resetDownloadProgressDetails();
 }
 
 function progressDetailPatchFromMessage(message) {
-  const rawPercent = clampDownloadPercent(message.percent);
-  const connections = Number(message.connections || 0);
-  const patch = {
-    rawPercent,
-    downloadedSize: cleanProgressText(message.downloadedSize),
-    totalSize: cleanProgressText(message.totalSize),
-    speed: cleanProgressText(message.speed),
-    eta: cleanProgressText(message.eta),
-    connections: Number.isFinite(connections) && connections > 0 ? connections : null,
-    fragment: cleanProgressText(message.fragment),
-    rawProgressLine: cleanProgressText(message.line),
-  };
-
-  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+  return downloadState.progressDetailPatchFromMessage(message);
 }
 
 function isHardAccessError(error) {
@@ -753,6 +729,54 @@ function artifactPatchFromMessage(message) {
     artifactRoot: message.artifactRoot,
   };
   return Object.fromEntries(Object.entries(patch).filter(([, value]) => value));
+}
+
+function cleanupPatchFromMessage(message) {
+  const patch = {
+    artifactCleanupDeleted: Array.isArray(message.artifactCleanupDeleted) ? message.artifactCleanupDeleted : undefined,
+    artifactCleanupMissing: Array.isArray(message.artifactCleanupMissing) ? message.artifactCleanupMissing : undefined,
+    artifactCleanupError: cleanProgressText(message.artifactCleanupError),
+  };
+  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined && value !== ""));
+}
+
+function clearedArtifactPatch(cleanupPatch) {
+  return Array.isArray(cleanupPatch.artifactCleanupDeleted) && cleanupPatch.artifactCleanupDeleted.length
+    ? { filepath: "", artifactRoot: "", artifactPaths: [] }
+    : {};
+}
+
+function hasDownloadArtifacts(job) {
+  return Boolean(job?.filepath || job?.artifactRoot || (Array.isArray(job?.artifactPaths) && job.artifactPaths.length));
+}
+
+async function cleanupDownloadArtifacts(jobId, job) {
+  if (!hasDownloadArtifacts(job)) {
+    return {};
+  }
+
+  const requestId = `delete_${jobId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  try {
+    const response = await nativeRequest(
+      {
+        type: "deleteArtifacts",
+        id: requestId,
+        path: job.filepath || "",
+        artifactRoot: job.artifactRoot || "",
+        artifactPaths: job.artifactPaths || [],
+        downloadFolder: job.downloadFolder || settings.downloadFolder || "",
+      },
+      30000
+    );
+    return {
+      artifactCleanupDeleted: response.deleted || [],
+      artifactCleanupMissing: response.missing || [],
+    };
+  } catch (error) {
+    return {
+      artifactCleanupError: cleanProgressText(error && error.message ? error.message : String(error)),
+    };
+  }
 }
 
 function variantsForVideo(video) {
@@ -831,6 +855,30 @@ function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls) {
   };
 }
 
+function isBlockingDownloadStatus(status) {
+  return BLOCKING_DOWNLOAD_STATUSES.has(status || "queued");
+}
+
+function findBlockingDownloadJobForVideo(video, selectedVideo) {
+  const ids = new Set();
+  for (const value of [video?.id, video?.groupId, selectedVideo?.id, selectedVideo?.groupId]) {
+    if (value) {
+      ids.add(value);
+    }
+  }
+  const selectedUrl = normalizeUrl(selectedVideo?.url || "");
+
+  return Object.values(downloadsById).find((job) => {
+    if (!job || !isBlockingDownloadStatus(job.status)) {
+      return false;
+    }
+    if ((job.videoId && ids.has(job.videoId)) || (job.variantId && ids.has(job.variantId))) {
+      return true;
+    }
+    return selectedUrl && normalizeUrl(job.url || "") === selectedUrl;
+  });
+}
+
 async function startNativeDownload(tabId, videoId, formatId = "best", variantId = "") {
   await ensureStateLoaded();
   const videos = await getTabVideos(tabId);
@@ -851,6 +899,11 @@ async function startNativeDownload(tabId, videoId, formatId = "best", variantId 
     );
   }
 
+  const blockingJob = findBlockingDownloadJobForVideo(video, selectedVideo);
+  if (blockingJob) {
+    return { jobId: blockingJob.id, existing: true };
+  }
+
   return startNativeDownloadFromVideo(
     tabId,
     { ...selectedVideo, groupId: video.id, groupVariants: variantsForVideo(video) },
@@ -864,6 +917,10 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
   const jobId = options.jobId || `job_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const existingJob = downloadsById[jobId] || {};
   const pageUrl = video.pageUrl || activeTab.url || "";
+  const requestHeaders =
+    (Array.isArray(video.requestHeaders) && video.requestHeaders.length ? video.requestHeaders : null) ||
+    (Array.isArray(existingJob.requestHeaders) && existingJob.requestHeaders.length ? existingJob.requestHeaders : null) ||
+    (await nativeRequestHeadersForVideo(video.url, pageUrl));
   const attemptedUrls = new Set((options.attemptedUrls || []).map((url) => normalizeUrl(url)));
   attemptedUrls.add(normalizeUrl(video.url || ""));
   let port;
@@ -878,6 +935,8 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
     format: video.format,
     title: video.title || "Video",
     formatId: formatId || "best",
+    downloadFolder: settings.downloadFolder || "",
+    requestHeaders: requestHeaders,
     pageUrl,
     filepath: existingJob.filepath || "",
     artifactRoot: existingJob.artifactRoot || "",
@@ -952,10 +1011,13 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
     if (message.type === "canceled") {
       finished = true;
       delete downloadPortsById[jobId];
+      const cleanupPatch = cleanupPatchFromMessage(message);
       updateDownload(jobId, {
         status: "canceled",
         message: message.message || "Download canceled.",
         ...artifactPatchFromMessage(message),
+        ...cleanupPatch,
+        ...clearedArtifactPatch(cleanupPatch),
       });
       try {
         port.disconnect();
@@ -1039,7 +1101,6 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
     }
   });
 
-  const requestHeaders = await nativeRequestHeadersForVideo(video.url, pageUrl);
   port.postMessage({
     type: "download",
     id: jobId,
@@ -1102,6 +1163,7 @@ function videoFromDownloadJob(job) {
     format: job.format || detectFormat(job.url),
     title: job.title || titleFromUrl(job.url),
     pageUrl: job.pageUrl || "",
+    requestHeaders: job.requestHeaders || [],
     downloadable: true,
   };
 }
@@ -1170,9 +1232,14 @@ async function cancelDownload(_tabId, jobId) {
     throw new Error("This download is no longer active.");
   }
 
+  const cleanupPatch = await cleanupDownloadArtifacts(jobId, job);
   updateDownload(jobId, {
     status: "canceled",
-    message: "Download canceled. No active helper connection remained.",
+    message: cleanupPatch.artifactCleanupError
+      ? `Download canceled. Could not clean leftover files: ${cleanupPatch.artifactCleanupError}`
+      : "Download canceled. No active helper connection remained.",
+    ...cleanupPatch,
+    ...clearedArtifactPatch(cleanupPatch),
   });
   return { jobId };
 }
@@ -1226,6 +1293,7 @@ async function removeDownload(jobId) {
         path: job.filepath || "",
         artifactRoot: job.artifactRoot || "",
         artifactPaths: job.artifactPaths || [],
+        downloadFolder: job.downloadFolder || settings.downloadFolder || "",
       },
       30000
     );

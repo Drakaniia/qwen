@@ -99,6 +99,24 @@ assert.match(
 
 assert.match(
   js,
+  /const\s+ACTIVE_DOWNLOAD_STATUSES\s*=\s*new Set\(\[[^\]]*"paused"/,
+  "popup must treat paused downloads as occupying the video row"
+);
+
+assert.match(
+  js,
+  /status === "paused"[\s\S]*?return "Paused"/,
+  "video row download button must show paused state instead of enabling a duplicate download"
+);
+
+assert.match(
+  js,
+  /job\?\.fragment/,
+  "video row download button must surface fragment activity when exact percent is unavailable"
+);
+
+assert.match(
+  js,
   /button\.textContent\s*=\s*runningJob\s*\?\s*downloadProgressButtonText\(runningJob\)\s*:\s*"Unsupported"/,
   "active video row button must show progress instead of only a blinking Downloading label"
 );
@@ -113,6 +131,12 @@ assert.match(
   js,
   /appendDownloadProgress\(item,\s*job\)/,
   "downloads list must show progress for active jobs"
+);
+
+assert.doesNotMatch(
+  js,
+  /const\s+knownPercent\s*=\s*hasDownloadPercent\(job\);\s*if\s*\(\s*!knownPercent\s*\)\s*\{\s*return;\s*\}/s,
+  "active downloads must still render a progress bar while exact percent is not available yet"
 );
 
 assert.doesNotMatch(
@@ -161,6 +185,18 @@ assert.match(
   css,
   /\.progress-label/,
   "popup must show a readable progress label next to the bar"
+);
+
+assert.match(
+  js,
+  /Downloading fragments/,
+  "popup progress label must show segmented download activity when fragment details are available"
+);
+
+assert.match(
+  js,
+  /Downloading at/,
+  "popup progress label must show speed-based activity when segmented downloads lack exact percent"
 );
 
 assert.match(

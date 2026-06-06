@@ -12,12 +12,30 @@ assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/hls/segment-0000
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/dash/chunk-42.m4s"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/video/frag-001.mp4"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/hls/720p/000012.mp4?token=abc"), true);
+assert.equal(
+  filters.isBlockedVideoUrl(
+    "https://rr3---sn.example.googlevideo.com/videoplayback?expire=1799999999&itag=137&mime=video%2Fmp4&range=0-1000"
+  ),
+  true
+);
+assert.equal(filters.isBlockedVideoUrl("https://www.youtube.com/manifest.webmanifest"), true);
+assert.equal(filters.isBlockedVideoUrl("https://www.youtube.com/manifest.json", "application/manifest+json"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/master.m3u8"), false);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/movie.mp4"), false);
 
 assert.equal(filters.isLikelyVideoRequest("https://cdn.example.com/hls/segment-00001.ts", "media", ""), false);
 assert.equal(filters.isLikelyVideoRequest("https://cdn.example.com/dash/chunk-42.m4s", "media", ""), false);
 assert.equal(filters.isLikelyVideoRequest("https://cdn.example.com/hls/720p/000012.mp4?token=abc", "media", ""), false);
+assert.equal(
+  filters.isLikelyVideoRequest(
+    "https://rr3---sn.example.googlevideo.com/videoplayback?expire=1799999999&itag=137&mime=video%2Fmp4&range=0-1000",
+    "media",
+    "video/mp4"
+  ),
+  false
+);
+assert.equal(filters.isLikelyVideoRequest("https://www.youtube.com/manifest.webmanifest", "media", ""), false);
+assert.equal(filters.isDownloadableUrl("https://www.youtube.com/manifest.webmanifest", ""), false);
 
 assert.equal(filters.classifyVideoUrl("https://cdn.example.com/master.m3u8", ""), "M3U8");
 assert.equal(filters.classifyVideoUrl("https://cdn.example.com/clip.webm", ""), "WEBM");
@@ -55,6 +73,14 @@ assert.equal(
 
 assert.equal(
   filters.isLikelyFullLengthVideoCandidate({
+    url: "https://www.youtube.com/manifest.webmanifest",
+    title: "YouTube Video",
+  }),
+  false
+);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
     url: "https://cdn.example.com/movie.mp4",
     title: "Sample Movie",
     duration: 12,
@@ -68,6 +94,35 @@ assert.equal(
     title: "Sample Movie",
     duration: 420,
     downloadable: false,
+  }),
+  false
+);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://cdn.example.com/movie.mp4",
+    title: "Sample Movie",
+    sizeBytes: 31,
+  }),
+  false
+);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://cdn.example.com/master.m3u8",
+    title: "Sample Movie",
+    format: "M3U8",
+    sizeBytes: 31,
+  }),
+  true
+);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://rr3---sn.example.googlevideo.com/videoplayback?expire=1799999999&itag=137&mime=video%2Fmp4",
+    title: "YouTube Video",
+    contentType: "video/mp4",
+    duration: 420,
   }),
   false
 );

@@ -5,12 +5,19 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "../../src/background/background.js"), "utf8");
 const filters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
+const downloadState = require(path.join(__dirname, "../../src/background/download_state.js"));
 
 const TAB_ID = 42;
 const PAGE_URL = "https://example.com/watch/movie";
 const STALE_URL = "https://cdn.example.com/media/movie.mp4?token=gone";
 const FRESH_URL = "https://cdn.example.com/media/movie.mp4?token=fresh";
 const ACCESS_ERROR = "ERROR: [generic] Unable to download webpage: HTTP Error 410: Gone";
+const INVALID_MEDIA_ERROR = [
+  "WARNING: [generic] Falling back on generic information extractor",
+  "WARNING: [generic] URL could be a direct video link, returning it as such.",
+  "[download] 100% of 506.00B in 00:00:00 at 988.49B/s",
+  "ERROR: Postprocessing: Error opening input files: Invalid data found when processing input",
+].join("\n");
 
 function createEvent() {
   return {
@@ -147,6 +154,7 @@ function createBackgroundHarness(nativeHandler) {
   };
   context.globalThis = context;
   context.QwinVideoFilters = filters;
+  context.QwinDownloadState = downloadState;
 
   vm.createContext(context);
   vm.runInContext(source, context, { filename: "background.js" });
@@ -246,8 +254,75 @@ async function testDownloadRetriesFreshVariantAfterHardAccessError() {
   assert.equal(downloadMessages[1].formatId, "best");
 }
 
+async function testDownloadRetriesFreshVariantAfterInvalidMediaSourceError() {
+  const downloadMessages = [];
+  const harness = createBackgroundHarness((message, native) => {
+    if (message.type !== "download") {
+      return;
+    }
+    downloadMessages.push(message);
+    if (message.url === STALE_URL) {
+      native.emit({ type: "error", id: message.id, error: INVALID_MEDIA_ERROR });
+    }
+  });
+  const groupedVideo = await addGroupedVideos(harness);
+
+  const response = await harness.sendRuntimeMessage({
+    type: "downloadVideo",
+    tabId: TAB_ID,
+    videoId: groupedVideo.id,
+    formatId: "best",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(response.ok, true);
+  assert.equal(downloadMessages.length, 2);
+  assert.equal(downloadMessages[0].url, STALE_URL);
+  assert.equal(downloadMessages[1].url, FRESH_URL);
+  assert.equal(downloadMessages[1].id, downloadMessages[0].id);
+  assert.equal(downloadMessages[1].formatId, "best");
+}
+
+async function testPausedDownloadDoesNotStartDuplicateNativeDownload() {
+  const downloadMessages = [];
+  const harness = createBackgroundHarness((message, native) => {
+    if (message.type !== "download") {
+      return;
+    }
+    downloadMessages.push(message);
+    native.emit({
+      type: "paused",
+      id: message.id,
+      status: "paused",
+      artifactRoot: "C:\\Users\\Viewer\\Downloads\\Movie",
+      message: "Download paused.",
+    });
+  });
+  const groupedVideo = await addGroupedVideos(harness);
+
+  const firstResponse = await harness.sendRuntimeMessage({
+    type: "downloadVideo",
+    tabId: TAB_ID,
+    videoId: groupedVideo.id,
+    formatId: "best",
+  });
+  const secondResponse = await harness.sendRuntimeMessage({
+    type: "downloadVideo",
+    tabId: TAB_ID,
+    videoId: groupedVideo.id,
+    formatId: "best",
+  });
+
+  assert.equal(firstResponse.ok, true);
+  assert.equal(secondResponse.ok, true);
+  assert.equal(secondResponse.jobId, firstResponse.jobId);
+  assert.equal(downloadMessages.length, 1);
+}
+
 (async () => {
   await testFormatLookupFallsBackToFreshDetectedVariant();
   await testDownloadRetriesFreshVariantAfterHardAccessError();
+  await testDownloadRetriesFreshVariantAfterInvalidMediaSourceError();
+  await testPausedDownloadDoesNotStartDuplicateNativeDownload();
   console.log("background hard access fallback tests passed");
 })();

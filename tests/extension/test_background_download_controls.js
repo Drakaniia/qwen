@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const source = fs.readFileSync(path.join(__dirname, "../../src/background/background.js"), "utf8");
+const downloadStateSource = fs.readFileSync(path.join(__dirname, "../../src/background/download_state.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../manifest.json"), "utf8"));
 
 assert.ok(
@@ -24,6 +25,11 @@ assert.match(
   source,
   /type: "deleteArtifacts"/,
   "background must ask the native host to delete downloaded files and leftover artifacts"
+);
+assert.match(
+  source,
+  /downloadFolder:\s*job\.downloadFolder\s*\|\|\s*settings\.downloadFolder\s*\|\|\s*""/,
+  "background must send the original or current download folder when deleting artifacts"
 );
 
 for (const runtimeType of [
@@ -52,8 +58,38 @@ assert.match(
 
 assert.match(
   source,
+  /function\s+findBlockingDownloadJobForVideo\s*\(/,
+  "background must detect an existing queued, running, or paused job for a selected video"
+);
+
+assert.match(
+  source,
+  /BLOCKING_DOWNLOAD_STATUSES\s*=\s*new Set\(\[[^\]]*"paused"/,
+  "background must treat paused downloads as duplicate-blocking jobs"
+);
+
+assert.match(
+  source,
   /async function cancelDownload/,
   "background must be able to cancel a paused job even when no active native port remains"
+);
+
+assert.match(
+  source,
+  /async function cleanupDownloadArtifacts\(jobId,\s*job\)/,
+  "background must clean leftover artifacts when canceling without an active native helper port"
+);
+
+assert.match(
+  source,
+  /await cleanupDownloadArtifacts\(jobId,\s*job\)/,
+  "background no-port cancellation must request artifact cleanup before recording the canceled state"
+);
+
+assert.match(
+  source,
+  /artifactCleanupDeleted/,
+  "background must consume native cleanup results from canceled downloads"
 );
 
 assert.doesNotMatch(
@@ -121,6 +157,21 @@ assert.match(
   /requestHeaders:\s*await nativeRequestHeadersForVideo/,
   "background must send browser-context headers to the native helper"
 );
+assert.match(
+  source,
+  /existingJob\.requestHeaders/,
+  "background must reuse stored request headers when resuming an existing job"
+);
+assert.match(
+  source,
+  /requestHeaders:\s*requestHeaders/,
+  "background must persist the exact native request headers with the download job"
+);
+assert.match(
+  source,
+  /requestHeaders:\s*job\.requestHeaders/,
+  "background must restore request headers from download history for retry and resume"
+);
 
 assert.match(
   source,
@@ -147,15 +198,27 @@ assert.match(
 );
 
 assert.match(
-  source,
+  downloadStateSource,
   /function\s+normalizeDownloadProgress\s*\(/,
   "background must normalize helper percent into a monotonic job-level display percent"
 );
 
 assert.match(
   source,
+  /function\s+isSegmentedDownloadJob\s*\(/,
+  "background must identify HLS and DASH downloads"
+);
+
+assert.match(
+  source,
+  /visibleDownloadProgressPercent\([^)]*isSegmentedDownloadJob\(/s,
+  "background must use raw helper percent for HLS and DASH progress"
+);
+
+assert.match(
+  source,
   /patch\.percent\s*=\s*normalizeDownloadProgress\(jobId,\s*message\.percent\)/,
-  "background must not render raw helper percent directly because yt-dlp can restart percent per output"
+  "background must route helper percent through download progress normalization"
 );
 
 assert.doesNotMatch(
@@ -171,7 +234,11 @@ assert.match(
 );
 
 for (const detailField of ["rawPercent", "downloadedSize", "totalSize", "speed", "eta", "connections", "rawProgressLine"]) {
-  assert.match(source, new RegExp(`${detailField}:`), `background must store ${detailField} from helper progress messages`);
+  assert.match(
+    downloadStateSource,
+    new RegExp(`${detailField}:`),
+    `background download state must store ${detailField} from helper progress messages`
+  );
 }
 
 console.log("background download control tests passed");

@@ -2,6 +2,7 @@
 
 const extensionApi = typeof browser !== "undefined" ? browser : chrome;
 const videoFilters = globalThis.QwinVideoFilters;
+const qualityFormat = globalThis.QwinQualityFormat;
 const seenUrls = new Map();
 const overlayByVideo = new WeakMap();
 const overlayRecords = new Set();
@@ -315,40 +316,23 @@ function createOverlayButton(video) {
 }
 
 function formatQualityValue(format) {
-  if (format.height) {
-    return `${format.height}p`;
-  }
-  if (format.width) {
-    return `${format.width}w`;
-  }
-  return format.label || format.note || format.id || "Best";
+  return qualityFormat.formatQualityValue(format);
 }
 
 function formatSizeValue(format) {
-  if (videoFilters && typeof videoFilters.displayVideoSize === "function") {
-    return videoFilters.displayVideoSize(format) || "Unknown";
-  }
-  return format.size || "Unknown";
+  return qualityFormat.formatSizeValue(format, videoFilters);
 }
 
 function formatFormatValue(format) {
-  const value = format.ext || format.format || "";
-  if (value) {
-    return String(value).toUpperCase();
-  }
-  return format.optionType === "native-format" ? "MP4" : "VIDEO";
+  return qualityFormat.formatFormatValue(format);
 }
 
 function formatBitrateValue(format) {
-  const bitrate = Number(format.bitrate || format.tbr || 0);
-  if (!Number.isFinite(bitrate) || bitrate <= 0) {
-    return "Unknown";
-  }
-  return `${Math.round(bitrate)} kbps`;
+  return qualityFormat.formatBitrateValue(format);
 }
 
 function formatSourceValue(format) {
-  return format.source || (format.optionType === "native-format" ? "yt-dlp" : "detected");
+  return qualityFormat.formatSourceValue(format);
 }
 
 function appendQualityCell(row, text, primary = false) {

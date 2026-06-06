@@ -11,6 +11,8 @@
   const HLS_RE = /\.m3u8(?:$|[?#])/i;
   const DASH_RE = /\.mpd(?:$|[?#])/i;
   const GIF_RE = /\.(gif|gifv)(?:$|[?#])/i;
+  const WEB_APP_MANIFEST_RE =
+    /(?:\.webmanifest|(?:^|[/?#._-])manifest\.json)(?:$|[?#])/i;
   const GIF_VIDEO_RE =
     /(?:^|[/?#._-])(?:gif|gifs|gifv|animated-gif|giphy|tenor|gifpreview|gif-preview|loop-preview)(?:[/?#._-]|$)/i;
   const SEGMENT_EXTENSION_RE = /\.(ts|m4s|cmfv|cmfa)(?:$|[?#])/i;
@@ -36,6 +38,7 @@
   const FORMAT_WORD_RE = /\b(?:mp4|m4v|webm|m3u8|mpd|hls|dash)\b/gi;
   const GENERIC_STEM_RE = /^(?:|video|videos|media|movie|file|download|master|playlist|index|manifest|stream)$/i;
   const MIN_FULL_LENGTH_SECONDS = 30;
+  const MIN_DIRECT_MEDIA_BYTES = 1024;
 
   function lower(value) {
     return String(value || "").toLowerCase();
@@ -87,6 +90,12 @@
     const text = String(url || "");
     const type = lower(contentType);
     if (!text) {
+      return true;
+    }
+    if (isEphemeralMediaUrl(text)) {
+      return true;
+    }
+    if (type.includes("manifest+json") || type.includes("webmanifest") || WEB_APP_MANIFEST_RE.test(text)) {
       return true;
     }
     if (type.includes("image/gif") || GIF_RE.test(text) || GIF_VIDEO_RE.test(text)) {
@@ -205,6 +214,19 @@
     }
   }
 
+  function isEphemeralMediaUrl(url) {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      return (
+        (host === "googlevideo.com" || host.endsWith(".googlevideo.com")) &&
+        parsed.pathname === "/videoplayback"
+      );
+    } catch (_error) {
+      return false;
+    }
+  }
+
   function isDownloadableUrl(url, contentType = "") {
     return isHttpUrl(url) && !isBlockedVideoUrl(url, contentType);
   }
@@ -228,6 +250,11 @@
 
     const duration = finiteNumber(details.duration);
     if (duration > 0 && duration < MIN_FULL_LENGTH_SECONDS) {
+      return false;
+    }
+
+    const directSize = numericVideoSize(details);
+    if (directSize > 0 && directSize < MIN_DIRECT_MEDIA_BYTES) {
       return false;
     }
 
