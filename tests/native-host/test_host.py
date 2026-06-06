@@ -16,6 +16,22 @@ import host
 
 
 class HostHelperTests(unittest.TestCase):
+    def test_native_host_uses_split_modules_for_core_logic(self):
+        import artifacts
+        import browser_context
+        import download_task
+        import native_paths
+        import native_protocol
+        import yt_dlp_adapter
+
+        self.assertIs(host.HostError, native_protocol.HostError)
+        self.assertIs(host.sanitize_filename, native_paths.sanitize_filename)
+        self.assertIs(host.clean_request_headers, browser_context.clean_request_headers)
+        self.assertIs(host.build_yt_dlp_command, yt_dlp_adapter.build_yt_dlp_command)
+        self.assertIs(host.parse_yt_dlp_line, yt_dlp_adapter.parse_yt_dlp_line)
+        self.assertIs(host.DownloadTask, download_task.DownloadTask)
+        self.assertIs(host.delete_download_artifacts, artifacts.delete_download_artifacts)
+
     def test_sanitize_filename_removes_windows_invalid_characters(self):
         self.assertEqual(host.sanitize_filename('bad<>:"/\\|?* name'), "bad name")
 
@@ -55,7 +71,7 @@ class HostHelperTests(unittest.TestCase):
         self.assertIn("mp4", command)
         self.assertIn("--recode-video", command)
         self.assertIn("--concurrent-fragments", command)
-        self.assertEqual(command[command.index("--concurrent-fragments") + 1], "8")
+        self.assertEqual(command[command.index("--concurrent-fragments") + 1], str(host.MAX_FAST_CONNECTIONS))
         self.assertIn("https://cdn.example.com/master.m3u8", command)
         self.assertIn("--add-header", command)
         self.assertIn("Referer:https://example.com/watch", command)
@@ -72,8 +88,27 @@ class HostHelperTests(unittest.TestCase):
 
         self.assertEqual(
             output_template,
-            str(Path(r"C:\Users\Viewer\Downloads") / "%(title).180B" / "%(title).180B [%(id)s].%(ext)s"),
+            "%(title).180B/%(title).180B [%(id)s].%(ext)s",
         )
+
+    def test_build_yt_dlp_command_keeps_fragment_temp_files_with_templated_output(self):
+        download_dir = Path(r"C:\Users\Viewer\Downloads")
+        command = host.build_yt_dlp_command(
+            url="https://cdn.example.com/master.m3u8",
+            download_dir=download_dir,
+            yt_dlp_command=["yt-dlp"],
+        )
+
+        path_values = [
+            command[index + 1]
+            for index, value in enumerate(command)
+            if value == "--paths"
+        ]
+        output_template = command[command.index("-o") + 1]
+
+        self.assertIn(f"home:{download_dir}", path_values)
+        self.assertNotIn(f"temp:{download_dir}", path_values)
+        self.assertEqual(output_template, "%(title).180B/%(title).180B [%(id)s].%(ext)s")
 
     def test_build_yt_dlp_command_supports_python_module_and_ffmpeg_location(self):
         command = host.build_yt_dlp_command(
@@ -98,6 +133,21 @@ class HostHelperTests(unittest.TestCase):
         format_index = command.index("-f")
         self.assertEqual(command[format_index + 1], "137+bestaudio/best")
 
+    def test_build_yt_dlp_command_defaults_to_full_power_parallel_downloads_when_aria2c_available(self):
+        command = host.build_yt_dlp_command(
+            url="https://cdn.example.com/video.mp4",
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            yt_dlp_command=["yt-dlp"],
+            aria2c_location=r"C:\Tools\aria2c.exe",
+        )
+
+        args = command[command.index("--downloader-args") + 1]
+
+        self.assertEqual(command[command.index("--concurrent-fragments") + 1], str(host.MAX_FAST_CONNECTIONS))
+        self.assertIn(f"--max-connection-per-server={host.MAX_FAST_CONNECTIONS}", args)
+        self.assertIn(f"--split={host.MAX_FAST_CONNECTIONS}", args)
+        self.assertIn("--min-split-size=1M", args)
+
     def test_build_yt_dlp_command_uses_aria2c_fast_downloader_when_available(self):
         command = host.build_yt_dlp_command(
             url="https://cdn.example.com/master.m3u8",
@@ -117,6 +167,23 @@ class HostHelperTests(unittest.TestCase):
         self.assertIn("--max-connection-per-server=20", args)
         self.assertIn("--split=20", args)
         self.assertIn("--continue=true", args)
+
+    def test_build_yt_dlp_command_keeps_hls_and_dash_on_native_fragment_downloader(self):
+        command = host.build_yt_dlp_command(
+            url="https://cdn.example.com/master.m3u8",
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            yt_dlp_command=["yt-dlp"],
+            aria2c_location=r"C:\Tools\aria2c.exe",
+        )
+
+        downloader_values = [
+            command[index + 1]
+            for index, value in enumerate(command)
+            if value == "--downloader"
+        ]
+
+        self.assertIn(r"C:\Tools\aria2c.exe", downloader_values)
+        self.assertIn("dash,m3u8:native", downloader_values)
 
     def test_build_formats_command_uses_dump_json_without_playlist(self):
         command = host.build_formats_command(
@@ -151,10 +218,40 @@ class HostHelperTests(unittest.TestCase):
 
         self.assertIn("--user-agent", command)
         self.assertIn("Mozilla/5.0 Test", command)
-        self.assertIn("Cookie:sid=abc", command)
+        self.assertNotIn("Cookie:sid=abc", command)
         self.assertIn("Origin:https://example.com Bad: nope", command)
         self.assertIn("User-Agent:Mozilla/5.0 Test", command)
         self.assertNotIn("Host:evil.example.com", command)
+
+    def test_build_yt_dlp_command_uses_cookie_file_instead_of_raw_cookie_header(self):
+        command = host.build_yt_dlp_command(
+            url="https://cdn.example.com/master.m3u8",
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            request_headers=[
+                {"name": "Cookie", "value": "sid=abc"},
+                {"name": "Origin", "value": "https://example.com"},
+            ],
+            yt_dlp_command=["yt-dlp"],
+            cookies_file=r"C:\Temp\qwin-cookies.txt",
+        )
+
+        self.assertIn("--cookies", command)
+        self.assertEqual(command[command.index("--cookies") + 1], r"C:\Temp\qwin-cookies.txt")
+        self.assertIn("Origin:https://example.com", command)
+        self.assertNotIn("Cookie:sid=abc", command)
+
+    def test_write_cookie_file_from_headers_scopes_cookies_to_url_host(self):
+        with tempfile.TemporaryDirectory() as temp:
+            cookie_file = host.write_cookie_file_from_headers(
+                url="https://cdn.example.com/video.mp4",
+                request_headers=[{"name": "Cookie", "value": "sid=abc; token=def"}],
+                temp_dir=Path(temp),
+            )
+
+            content = Path(cookie_file).read_text(encoding="utf-8")
+
+        self.assertIn("cdn.example.com\tFALSE\t/\tTRUE\t0\tsid\tabc", content)
+        self.assertIn("cdn.example.com\tFALSE\t/\tTRUE\t0\ttoken\tdef", content)
 
     def test_summarize_formats_returns_title_and_sorted_video_choices(self):
         info = {
@@ -255,6 +352,14 @@ class HostHelperTests(unittest.TestCase):
     def test_resolve_ffmpeg_location_uses_imageio_ffmpeg_fallback(self, _imageio, _which, _exists):
         self.assertEqual(host.resolve_ffmpeg_location(), r"C:\Python\site-packages\ffmpeg.exe")
 
+    @patch("host.Path.exists", return_value=True)
+    @patch("host.shutil.which", return_value=None)
+    def test_resolve_ffmpeg_location_uses_adapter_imageio_without_recursing(self, _which, _exists):
+        import yt_dlp_adapter
+
+        with patch.object(yt_dlp_adapter, "get_imageio_ffmpeg_exe", return_value=r"C:\Python\site-packages\ffmpeg.exe"):
+            self.assertEqual(host.resolve_ffmpeg_location(), r"C:\Python\site-packages\ffmpeg.exe")
+
     @patch("host.shutil.which", return_value=None)
     def test_resolve_aria2c_location_uses_local_portable_fallback(self, _which):
         with tempfile.TemporaryDirectory() as temp:
@@ -301,6 +406,24 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(parsed["stage"], "download")
         self.assertEqual(parsed["percent"], 20.0)
         self.assertIn("20%", parsed["line"])
+
+    def test_parse_aria2_fragment_status_without_percent_still_reports_download_activity(self):
+        parsed = host.parse_yt_dlp_line(
+            "[DL:8.2MiB][#528371 1.8MiB/0B][#d07353 1.0MiB/0B][#55c62a 1.2MiB/0B](+1)"
+        )
+
+        self.assertEqual(parsed["stage"], "download")
+        self.assertNotIn("percent", parsed)
+        self.assertEqual(parsed["speed"], "8.2MiB/s")
+        self.assertEqual(parsed["fragment"], "3 active")
+        self.assertIn("DL:8.2MiB", parsed["line"])
+
+    def test_parse_total_fragments_line_reports_fragment_count(self):
+        parsed = host.parse_yt_dlp_line("[hlsnative] Total fragments: 803")
+
+        self.assertEqual(parsed["stage"], "extract")
+        self.assertEqual(parsed["fragment"], "0/803")
+        self.assertIn("Total fragments", parsed["line"])
 
     def test_parse_carriage_return_progress_uses_latest_status(self):
         parsed = host.parse_yt_dlp_line(
@@ -395,6 +518,112 @@ class HostHelperTests(unittest.TestCase):
         self.assertFalse(task.pause_requested.is_set())
         self.assertTrue(task.resume_requested.is_set())
 
+    def test_download_task_cancel_before_process_start_reports_canceled(self):
+        sent = []
+
+        class CancelBeforeStartTask(host.DownloadTask):
+            def run_process_once(self, command=None):
+                raise AssertionError("Canceled task should not start yt-dlp")
+
+        task = CancelBeforeStartTask(
+            message={"id": "job_1"},
+            command=["yt-dlp"],
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            send=sent.append,
+        )
+
+        task.cancel()
+        task.run()
+
+        self.assertEqual(sent[-1]["type"], "canceled")
+        self.assertEqual(sent[-1]["status"], "canceled")
+
+    def test_download_task_cancel_removes_partial_artifact_folder(self):
+        with tempfile.TemporaryDirectory() as temp:
+            download_dir = Path(temp) / "Downloads"
+            title_dir = download_dir / "Sample Video"
+            title_dir.mkdir(parents=True)
+            partial_file = title_dir / "Sample Video [abc].mp4.part"
+            fragment_file = title_dir / "Sample Video [abc].mp4.part-Frag207.part"
+            state_file = title_dir / "Sample Video [abc].mp4.ytdl"
+            partial_file.write_text("partial", encoding="utf-8")
+            fragment_file.write_text("fragment", encoding="utf-8")
+            state_file.write_text("{}", encoding="utf-8")
+            sent = []
+
+            class CancelDuringProcessTask(host.DownloadTask):
+                def run_process_once(self, command=None):
+                    self.current_path = str(partial_file)
+                    self.artifact_root = str(title_dir)
+                    self.cancel_requested.set()
+                    return 1
+
+            task = CancelDuringProcessTask(
+                message={"id": "job_1"},
+                command=["yt-dlp"],
+                download_dir=download_dir,
+                send=sent.append,
+            )
+
+            task.run()
+
+            self.assertFalse(title_dir.exists())
+            self.assertEqual(sent[-1]["type"], "canceled")
+            self.assertEqual(sent[-1]["artifactCleanupDeleted"], [str(title_dir.resolve())])
+
+    def test_download_task_starts_process_with_creation_flags(self):
+        import download_task
+
+        class FakeProcess:
+            stdout = io.StringIO("")
+
+            def wait(self):
+                return 0
+
+        task = host.DownloadTask(
+            message={"id": "job_1"},
+            command=["yt-dlp"],
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            send=lambda _message: None,
+        )
+
+        with patch.object(download_task, "creation_flags", return_value=123), patch.object(
+            download_task.subprocess, "Popen", return_value=FakeProcess()
+        ) as popen:
+            task.run_process_once()
+
+        self.assertEqual(popen.call_args.kwargs["creationflags"], 123)
+        self.assertEqual(popen.call_args.kwargs["cwd"], str(Path(r"C:\Users\Viewer\Downloads")))
+
+    def test_download_task_retries_standard_command_after_aria2_access_refusal(self):
+        commands = []
+        sent = []
+
+        class FallbackTask(host.DownloadTask):
+            def run_process_once(self, command=None):
+                commands.append(command)
+                if len(commands) == 1:
+                    self.recent_lines.append("ERROR: aria2c exited with code 22")
+                    self.recent_lines.append("status=403")
+                    return 22
+                self.final_path = r"C:\Users\Viewer\Downloads\clip.mp4"
+                return 0
+
+        task = FallbackTask(
+            message={"id": "job_1"},
+            command=["yt-dlp", "--downloader", r"C:\Tools\aria2c.exe", "https://cdn.example.com/video.mp4"],
+            fallback_command=["yt-dlp", "https://cdn.example.com/video.mp4"],
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            send=sent.append,
+        )
+
+        task.run()
+
+        self.assertEqual(commands[0], ["yt-dlp", "--downloader", r"C:\Tools\aria2c.exe", "https://cdn.example.com/video.mp4"])
+        self.assertEqual(commands[1], ["yt-dlp", "https://cdn.example.com/video.mp4"])
+        self.assertEqual(sent[-1]["type"], "done")
+        self.assertTrue(any(message.get("type") == "progress" and "standard mode" in message.get("line", "") for message in sent))
+
     def test_build_open_path_command_reveals_file_on_windows(self):
         with patch.object(host.os, "name", "nt"):
             command = host.build_open_path_command(Path(r"C:\Users\Viewer\Downloads\clip.mp4"), reveal=True)
@@ -425,6 +654,7 @@ class HostHelperTests(unittest.TestCase):
                     "id": "delete_1",
                     "path": str(final_file),
                     "artifactRoot": str(title_dir),
+                    "downloadFolder": str(download_dir),
                 },
                 send=sent.append,
             )
@@ -432,6 +662,28 @@ class HostHelperTests(unittest.TestCase):
             self.assertFalse(title_dir.exists())
             self.assertEqual(sent[0]["type"], "deletedArtifacts")
             self.assertEqual(sent[0]["deleted"], [str(title_dir)])
+
+    def test_delete_download_artifacts_rejects_targets_outside_download_folder(self):
+        with tempfile.TemporaryDirectory() as temp:
+            download_dir = Path(temp) / "Downloads"
+            outside_dir = Path(temp) / "Outside"
+            download_dir.mkdir()
+            outside_dir.mkdir()
+            outside_file = outside_dir / "keep.mp4"
+            outside_file.write_text("keep", encoding="utf-8")
+
+            with self.assertRaises(host.HostError):
+                host.delete_download_artifacts(
+                    {
+                        "id": "delete_1",
+                        "path": str(outside_file),
+                        "artifactRoot": str(outside_dir),
+                        "downloadFolder": str(download_dir),
+                    },
+                    send=lambda _message: None,
+                )
+
+            self.assertTrue(outside_file.exists())
 
 
 if __name__ == "__main__":

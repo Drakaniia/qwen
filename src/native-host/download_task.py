@@ -1,0 +1,326 @@
+import subprocess
+import shutil
+import threading
+from collections import deque
+from pathlib import Path
+
+from artifacts import unique_delete_targets
+from browser_context import remove_temp_files
+from native_protocol import HostError, send_native_message
+from yt_dlp_adapter import (
+    creation_flags,
+    is_aria2_access_refusal,
+    iter_process_output_lines,
+    parse_yt_dlp_line,
+    terminate_process_tree,
+)
+
+
+class DownloadTask:
+    def __init__(self, message, command, download_dir, send=send_native_message, fallback_command=None, temp_files=None):
+        self.message = message
+        self.command = command
+        self.fallback_command = fallback_command
+        self.download_dir = download_dir
+        self.send = send
+        self.temp_files = list(temp_files or [])
+        self.id = str(message.get("id") or message.get("requestId") or "")
+        self.lock = threading.Lock()
+        self.pause_requested = threading.Event()
+        self.resume_requested = threading.Event()
+        self.cancel_requested = threading.Event()
+        self.process = None
+        self.state = "queued"
+        self.final_path = None
+        self.current_path = None
+        self.artifact_root = None
+        self.recent_lines = deque(maxlen=25)
+        self.thread = None
+
+    def start(self):
+        self.thread = threading.Thread(target=self.run, name=f"qwin-download-{self.id}", daemon=False)
+        self.thread.start()
+        return self.thread
+
+    def set_state(self, state):
+        with self.lock:
+            self.state = state
+
+    def send_message(self, message):
+        self.send({"id": self.id, **message})
+
+    def artifact_message(self):
+        return {
+            "path": self.current_path or self.final_path or "",
+            "artifactRoot": self.artifact_root or "",
+            "downloadFolder": str(self.download_dir),
+        }
+
+    def cleanup_canceled_artifacts(self):
+        cleanup = {
+            "artifactCleanupDeleted": [],
+            "artifactCleanupMissing": [],
+        }
+        artifact_message = self.artifact_message()
+        if not artifact_message["path"] and not artifact_message["artifactRoot"]:
+            return cleanup
+
+        try:
+            targets = unique_delete_targets(artifact_message, Path(self.download_dir).resolve())
+        except HostError as exc:
+            cleanup["artifactCleanupError"] = str(exc)
+            return cleanup
+
+        errors = []
+        for target in targets:
+            if not target.exists():
+                cleanup["artifactCleanupMissing"].append(str(target))
+                continue
+            try:
+                if target.is_dir():
+                    shutil.rmtree(target)
+                else:
+                    target.unlink()
+            except OSError as exc:
+                errors.append(f"{target}: {exc}")
+                continue
+            cleanup["artifactCleanupDeleted"].append(str(target))
+
+        if errors:
+            cleanup["artifactCleanupError"] = "; ".join(errors)
+        return cleanup
+
+    def send_canceled(self):
+        self.set_state("canceled")
+        self.send_message(
+            {
+                "type": "canceled",
+                "status": "canceled",
+                "filepath": self.current_path or self.final_path or "",
+                "artifactRoot": self.artifact_root or "",
+                "message": "Download canceled.",
+                **self.cleanup_canceled_artifacts(),
+            }
+        )
+
+    def pause(self):
+        with self.lock:
+            if self.state == "paused":
+                return {
+                    "type": "paused",
+                    "id": self.id,
+                    "status": "paused",
+                    "message": "Download is already paused.",
+                }
+            if self.state not in {"queued", "running", "starting", "pausing"}:
+                return {
+                    "type": "control",
+                    "id": self.id,
+                    "status": self.state,
+                    "message": "This download cannot be paused now.",
+                }
+            self.state = "pausing"
+            self.pause_requested.set()
+            process = self.process
+
+        terminate_process_tree(process)
+        return {
+            "type": "control",
+            "id": self.id,
+            "status": "pausing",
+            "message": "Pausing download...",
+        }
+
+    def resume(self):
+        with self.lock:
+            if self.state not in {"paused", "pausing"}:
+                return {
+                    "type": "control",
+                    "id": self.id,
+                    "status": self.state,
+                    "message": "This download is not paused.",
+                }
+            self.state = "running"
+            self.pause_requested.clear()
+            self.resume_requested.set()
+
+        return {
+            "type": "resumed",
+            "id": self.id,
+            "status": "running",
+            "message": "Resuming download...",
+        }
+
+    def cancel(self):
+        with self.lock:
+            if self.state in {"done", "error", "canceled"}:
+                return {
+                    "type": "control",
+                    "id": self.id,
+                    "status": self.state,
+                    "message": "This download is no longer active.",
+                }
+            self.state = "canceling"
+            self.cancel_requested.set()
+            self.pause_requested.clear()
+            self.resume_requested.set()
+            process = self.process
+
+        terminate_process_tree(process)
+        return {
+            "type": "control",
+            "id": self.id,
+            "status": "canceling",
+            "message": "Canceling download...",
+        }
+
+    def run_process_once(self, command=None):
+        active_command = command or self.command
+        self.set_state("starting")
+        try:
+            process = subprocess.Popen(
+                active_command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                cwd=str(self.download_dir),
+                creationflags=creation_flags(),
+            )
+        except OSError as exc:
+            raise HostError(f"Could not start yt-dlp: {exc}") from exc
+
+        with self.lock:
+            self.process = process
+            self.state = "running"
+
+        assert process.stdout is not None
+        for line in iter_process_output_lines(process.stdout):
+            parsed = parse_yt_dlp_line(line)
+            if parsed.get("filepath"):
+                self.current_path = parsed["filepath"]
+            if parsed.get("artifactRoot"):
+                self.artifact_root = parsed["artifactRoot"]
+            if parsed["stage"] == "filepath":
+                self.final_path = parsed["filepath"]
+            else:
+                self.recent_lines.append(parsed.get("line", ""))
+            self.send_message({"type": "progress", **parsed})
+
+        exit_code = process.wait()
+        with self.lock:
+            if self.process is process:
+                self.process = None
+        return exit_code
+
+    def wait_for_resume_or_cancel(self):
+        self.resume_requested.clear()
+        self.set_state("paused")
+        self.send_message(
+            {
+                "type": "paused",
+                "status": "paused",
+                "filepath": self.current_path or self.final_path or "",
+                "artifactRoot": self.artifact_root or "",
+                "message": "Download paused. Resume will continue the partial file when yt-dlp can reuse it.",
+            }
+        )
+
+        while not self.cancel_requested.is_set():
+            if self.resume_requested.wait(0.2):
+                self.resume_requested.clear()
+                return True
+        return False
+
+    def run(self):
+        try:
+            attempt = 0
+            fallback_used = False
+            while True:
+                if self.cancel_requested.is_set():
+                    self.send_canceled()
+                    return
+
+                attempt += 1
+                self.send_message(
+                    {
+                        "type": "started",
+                        "status": "running",
+                        "message": (
+                            f"Saving to {self.download_dir}"
+                            if attempt == 1
+                            else "Resuming download from partial files..."
+                        ),
+                    }
+                )
+                active_command = self.fallback_command if fallback_used else self.command
+                exit_code = self.run_process_once(active_command)
+
+                if self.cancel_requested.is_set():
+                    self.send_canceled()
+                    return
+
+                if self.pause_requested.is_set():
+                    if not self.wait_for_resume_or_cancel():
+                        self.send_canceled()
+                        return
+                    continue
+
+                if exit_code != 0:
+                    details = "\n".join(item for item in self.recent_lines if item).strip()
+                    if not details:
+                        details = f"yt-dlp exited with status {exit_code}."
+                    if self.fallback_command and not fallback_used and is_aria2_access_refusal(details):
+                        fallback_used = True
+                        self.recent_lines.clear()
+                        self.send_message(
+                            {
+                                "type": "progress",
+                                "stage": "log",
+                                "line": "Fast downloader was refused by the server; retrying in standard mode.",
+                            }
+                        )
+                        continue
+                    raise HostError(details)
+
+                self.set_state("done")
+                self.send_message(
+                    {
+                        "type": "done",
+                        "status": "done",
+                        "filepath": self.final_path,
+                        "artifactRoot": self.artifact_root or (str(Path(self.final_path).parent) if self.final_path else ""),
+                        "message": "Download complete.",
+                    }
+                )
+                return
+        except HostError as exc:
+            if self.cancel_requested.is_set():
+                self.send_canceled()
+            else:
+                self.set_state("error")
+                self.send_message(
+                    {
+                        "type": "error",
+                        "status": "error",
+                        "filepath": self.current_path or self.final_path or "",
+                        "artifactRoot": self.artifact_root or "",
+                        "error": str(exc),
+                    }
+                )
+        except Exception as exc:
+            self.set_state("error")
+            self.send_message(
+                {
+                    "type": "error",
+                    "status": "error",
+                    "filepath": self.current_path or self.final_path or "",
+                    "artifactRoot": self.artifact_root or "",
+                    "error": f"Unexpected helper error: {exc}",
+                }
+            )
+        finally:
+            remove_temp_files(self.temp_files)
