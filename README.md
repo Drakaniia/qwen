@@ -26,7 +26,4 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
 - [Usage, supported detection, and speed behavior](docs/usage.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Project structure and tests](docs/project-structure.md)
-
-## Honest Limits
-
-This extension does not bypass DRM, paid-access controls, browser-only `blob:` URLs without an underlying reusable media URL or supported extractor page, private authorization that `yt-dlp` cannot reproduce, or site-specific anti-download systems. The manual link fallback works only for URLs that `yt-dlp` supports and can access. Fast mode can improve downloads when the server allows multiple connections, but it cannot force a slow or rate-limited server to send data faster.
+ 

@@ -21,11 +21,22 @@ Run `scripts\install.bat` again and make sure Python and `pip` are available.
 
 The installer tries to install:
 
-- `yt-dlp`
+- `yt-dlp` with `curl-cffi` impersonation support
 - `imageio-ffmpeg`
+- `streamlink`
 - system `ffmpeg` through `winget`, when available
+- portable `N_m3u8DL-RE.exe`
 
 If `winget` is unavailable, the helper should still use the `imageio-ffmpeg` binary installed by `pip`.
+
+## Missing Stream Fallbacks
+
+If the popup says `yt-dlp only`, run `scripts\install.bat` again. Check:
+
+- `tools\n_m3u8dl-re\N_m3u8DL-RE.exe` exists, or set `QWIN_N_M3U8DL_RE` to a valid executable path.
+- `streamlink` is installed for the Python used by the native host.
+
+Downloads can still work without these tools. They only add best-effort fallbacks for accessible HLS, DASH, and Smooth Streaming manifests.
 
 ## Standard Mode Instead Of Fast Mode
 
@@ -57,7 +68,7 @@ Some pages never expose a reusable media URL. In that case the helper cannot dow
 
 ## Manual Link Fails
 
-The settings-panel link box sends the pasted URL to `yt-dlp`. If it fails, the most common causes are:
+The settings-panel link box sends the pasted URL to `yt-dlp` first, then may use stream fallbacks for supported manifest URLs. If all tools fail, the most common causes are:
 
 - The installed `yt-dlp` version does not support that site or URL shape.
 - The video needs login, age, region, app-only, or bot-check access that the helper cannot reproduce.
@@ -66,9 +77,15 @@ The settings-panel link box sends the pasted URL to `yt-dlp`. If it fails, the m
 
 For YouTube, Qwin enables yt-dlp's EJS challenge helper with `--remote-components ejs:github`. The first YouTube extraction may download yt-dlp's solver script from GitHub. If GitHub or the JavaScript runtime is blocked on the machine, YouTube may still return only storyboard/image formats.
 
-## yt-dlp Errors
+## Cloudflare Anti-Bot Challenge
 
-`yt-dlp` may fail when the site requires:
+If yt-dlp reports `Got HTTP Error 403 caused by Cloudflare anti-bot challenge`, run `scripts\install.bat` again. Qwin passes yt-dlp `--extractor-args generic:impersonate`, and the installer adds yt-dlp's `curl-cffi` dependency so those impersonation targets are available.
+
+This is still best-effort. It can help with some generic Cloudflare challenges, but it cannot bypass DRM, private login access, region blocking, or challenges that require an interactive browser session.
+
+## Helper Download Errors
+
+`yt-dlp`, N_m3u8DL-RE, or Streamlink may fail when the site requires:
 
 - DRM decryption.
 - A login session the helper cannot reproduce.
