@@ -22,6 +22,20 @@ assert.equal(filters.isBlockedVideoUrl("https://www.youtube.com/manifest.webmani
 assert.equal(filters.isBlockedVideoUrl("https://www.youtube.com/manifest.json", "application/manifest+json"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/master.m3u8"), false);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/movie.mp4"), false);
+assert.equal(filters.isYouTubeVideoPageUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), true);
+assert.equal(filters.isYouTubeVideoPageUrl("https://m.youtube.com/watch?v=dQw4w9WgXcQ&pp=abc"), true);
+assert.equal(filters.isYouTubeVideoPageUrl("https://youtu.be/dQw4w9WgXcQ?t=10"), true);
+assert.equal(filters.isYouTubeVideoPageUrl("https://www.youtube.com/results?search_query=ai"), false);
+assert.equal(
+  filters.normalizeYouTubeVideoPageUrl("https://youtu.be/dQw4w9WgXcQ?t=10"),
+  "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+);
+assert.equal(
+  filters.normalizeYouTubeVideoPageUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ?feature=share"),
+  "https://www.youtube.com/shorts/dQw4w9WgXcQ"
+);
+assert.equal(filters.classifyVideoUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ", ""), "YOUTUBE");
+assert.equal(filters.displayVideoFormat({ format: "YOUTUBE" }), "MP4");
 
 assert.equal(filters.isLikelyVideoRequest("https://cdn.example.com/hls/segment-00001.ts", "media", ""), false);
 assert.equal(filters.isLikelyVideoRequest("https://cdn.example.com/dash/chunk-42.m4s", "media", ""), false);
@@ -126,6 +140,36 @@ assert.equal(
   }),
   false
 );
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    title: "YouTube Video",
+    format: "YOUTUBE",
+    source: "youtube-page",
+    duration: 12,
+  }),
+  true
+);
+assert.equal(filters.displayVideoFormat({ format: "PAGE" }), "MP4");
+for (const url of [
+  "https://www.instagram.com/reels/ABC123/",
+  "https://www.tiktok.com/@creator/video/1234567890123456789",
+  "https://x.com/example/status/1234567890123456789",
+  "https://www.threads.net/@example/post/ABC123",
+]) {
+  assert.equal(
+    filters.isLikelyFullLengthVideoCandidate({
+      url,
+      title: "Manual social link",
+      format: "PAGE",
+      source: "manual-url",
+      duration: 8,
+    }),
+    true,
+    `manual extractor page should be accepted: ${url}`
+  );
+}
 
 const groupedVideos = filters.groupUniqueFullVideos([
   {

@@ -39,6 +39,7 @@
   const GENERIC_STEM_RE = /^(?:|video|videos|media|movie|file|download|master|playlist|index|manifest|stream)$/i;
   const MIN_FULL_LENGTH_SECONDS = 30;
   const MIN_DIRECT_MEDIA_BYTES = 1024;
+  const YOUTUBE_PAGE_PATH_RE = /^\/(?:embed|shorts|live)\/([^/?#]+)/i;
 
   function lower(value) {
     return String(value || "").toLowerCase();
@@ -114,6 +115,9 @@
   function classifyVideoUrl(url, contentType = "") {
     const text = lower(url);
     const type = lower(contentType);
+    if (isYouTubeVideoPageUrl(url)) {
+      return "YOUTUBE";
+    }
     if (HLS_RE.test(text) || type.includes("mpegurl") || type.includes("x-mpegurl")) {
       return "M3U8";
     }
@@ -142,6 +146,12 @@
         : videoOrFormat
     );
     if (format === "m3u8" || format === "mpd") {
+      return "MP4";
+    }
+    if (format === "youtube") {
+      return "MP4";
+    }
+    if (format === "page") {
       return "MP4";
     }
     return format ? format.toUpperCase() : "VIDEO";
@@ -227,6 +237,60 @@
     }
   }
 
+  function youtubeVideoIdFromPageUrl(url) {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      const pathParts = parsed.pathname.split("/").filter(Boolean);
+
+      if (host === "youtu.be") {
+        return pathParts[0] || "";
+      }
+
+      if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+        if (parsed.pathname === "/watch") {
+          return parsed.searchParams.get("v") || "";
+        }
+        const pathMatch = parsed.pathname.match(YOUTUBE_PAGE_PATH_RE);
+        return pathMatch ? pathMatch[1] : "";
+      }
+
+      if (host === "youtube-nocookie.com" || host.endsWith(".youtube-nocookie.com")) {
+        const pathMatch = parsed.pathname.match(/^\/embed\/([^/?#]+)/i);
+        return pathMatch ? pathMatch[1] : "";
+      }
+    } catch (_error) {
+      return "";
+    }
+    return "";
+  }
+
+  function isYouTubeVideoPageUrl(url) {
+    return Boolean(youtubeVideoIdFromPageUrl(url));
+  }
+
+  function normalizeYouTubeVideoPageUrl(url) {
+    const videoId = youtubeVideoIdFromPageUrl(url);
+    if (!videoId) {
+      return "";
+    }
+
+    try {
+      const parsed = new URL(url);
+      const path = parsed.pathname.toLowerCase();
+      if (path.startsWith("/shorts/")) {
+        return `https://www.youtube.com/shorts/${encodeURIComponent(videoId)}`;
+      }
+      if (path.startsWith("/live/")) {
+        return `https://www.youtube.com/live/${encodeURIComponent(videoId)}`;
+      }
+    } catch (_error) {
+      // Fall through to the canonical watch URL.
+    }
+
+    return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+  }
+
   function isDownloadableUrl(url, contentType = "") {
     return isHttpUrl(url) && !isBlockedVideoUrl(url, contentType);
   }
@@ -244,12 +308,18 @@
       return false;
     }
 
-    if (hasShortOrIncompleteSignal(details)) {
+    if (details.source === "manual-url") {
+      return true;
+    }
+
+    const youtubePage = isYouTubeVideoPageUrl(details.url || "");
+
+    if (!youtubePage && hasShortOrIncompleteSignal(details)) {
       return false;
     }
 
     const duration = finiteNumber(details.duration);
-    if (duration > 0 && duration < MIN_FULL_LENGTH_SECONDS) {
+    if (!youtubePage && duration > 0 && duration < MIN_FULL_LENGTH_SECONDS) {
       return false;
     }
 
@@ -609,5 +679,7 @@
     isLikelyRealVideoElement,
     isLikelyVideoRequest,
     isSameFullVideo,
+    isYouTubeVideoPageUrl,
+    normalizeYouTubeVideoPageUrl,
   };
 });
