@@ -2,7 +2,9 @@
 
 ## Files
 
-- `manifest.json` - Manifest V3 extension manifest for Chrome and Firefox.
+- `manifest.json` - Chromium/Yandex Manifest V3 development manifest.
+- `config/extension/` - Browser-specific extension manifest templates.
+- `dist/` - Generated browser-specific extension folders; ignored by git.
 - `src/shared/video_filters.js` - Shared media classification and ad/GIF filtering rules.
 - `src/background/background.js` - Background service worker/event page that stores detected videos and manages native downloads.
 - `src/content/content.js` - All-frame page scanner for video elements and performance resource entries.
@@ -11,10 +13,18 @@
 - `config/native-host/` - Generated Chrome, Yandex Browser, and Firefox native messaging manifest files.
 - `scripts/install.bat` - Installs dependencies and registers the native host for Chrome, Yandex Browser, and Firefox.
 - `scripts/install-aria2.ps1` - Installs or verifies the portable `aria2c` fast downloader.
+- `scripts/build-extension.ps1` - Builds loadable Chromium, Yandex Browser, and Firefox extension folders under `dist`.
+- `scripts/test.ps1` - Runs native-host tests, extension checks, and extension build checks.
 - `tests/extension/` - Node-based extension structure and behavior checks.
 - `tests/native-host/` - Python unit tests for the native host helpers.
 
 ## Native Host Tests
+
+Run every test and build generated extension folders:
+
+```powershell
+scripts\test.ps1
+```
 
 Run:
 
@@ -39,6 +49,10 @@ node tests\extension\test_yandex_browser_support.js
 node tests\extension\test_popup_css.js
 node tests\extension\test_popup_download_view.js
 node tests\extension\test_content_quality_dialog.js
+node tests\extension\test_background_download_state.js
+node tests\extension\test_manifest_build_targets.js
+node tests\extension\test_project_automation.js
+node tests\extension\test_quality_format.js
 ```
 
 To run every extension check file:

@@ -26,6 +26,7 @@ The installer:
 - Uses `winget` to install system `ffmpeg` when available.
 - Falls back to the `imageio-ffmpeg` binary when system `ffmpeg` is not available.
 - Installs a portable `aria2c` fast downloader under `tools\aria2` when possible.
+- Builds browser-specific extension folders under `dist\chromium`, `dist\yandex`, and `dist\firefox`.
 - Writes Chrome, Yandex Browser, and Firefox native messaging manifests under `config\native-host`.
 - Registers the native host in the current user's registry keys:
   - `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.qwin.video_downloader`
@@ -37,7 +38,7 @@ The installer:
 1. Open `chrome://extensions`.
 2. Turn on Developer mode.
 3. Click Load unpacked.
-4. Select `C:\Users\Qwenzy\Desktop\qwin`.
+4. Select `C:\Users\Qwenzy\Desktop\qwin\dist\chromium`.
 5. Confirm the loaded extension ID is `dbjddokdmkodnkiaccmbjagfalmmmkmi`.
 
 The fixed Chrome ID comes from the `key` in `manifest.json`. The native host registration depends on that exact ID.
@@ -47,7 +48,7 @@ The fixed Chrome ID comes from the `key` in `manifest.json`. The native host reg
 1. Open `browser://extensions`.
 2. Turn on Developer mode.
 3. Click Upload unpacked extension.
-4. Select `C:\Users\Qwenzy\Desktop\qwin`.
+4. Select `C:\Users\Qwenzy\Desktop\qwin\dist\yandex`.
 5. Confirm the loaded extension ID is `dbjddokdmkodnkiaccmbjagfalmmmkmi`.
 
 Yandex Browser uses Chromium extension IDs for unpacked extensions. The installer registers the native host under the Chromium native messaging registry key and allows the same fixed extension ID as Chrome.
@@ -56,7 +57,7 @@ Yandex Browser uses Chromium extension IDs for unpacked extensions. The installe
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Click Load Temporary Add-on.
-3. Select `C:\Users\Qwenzy\Desktop\qwin\manifest.json`.
+3. Select `C:\Users\Qwenzy\Desktop\qwin\dist\firefox\manifest.json`.
 
 The Firefox add-on ID is fixed in the manifest as `qwin-video-downloader@example.com`, which is what the native host allows. Temporary Firefox add-ons are removed when Firefox closes. Permanent Firefox installation requires packaging and signing the extension.
 

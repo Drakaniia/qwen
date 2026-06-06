@@ -57,6 +57,8 @@ The native helper uses:
 - Concurrent HLS/DASH fragments through `yt-dlp --concurrent-fragments`.
 - Optional `aria2c` segmented external downloads when `aria2c` is available.
 
+Fast mode uses up to 32 parallel fragments or byte-range connections by default. For direct MP4/WebM downloads, `aria2c` splits the file into byte ranges and downloads those ranges in parallel before assembling the final file.
+
 This can improve speed on direct MP4/WebM, HLS, and DASH sources that allow multiple connections. It cannot force a slow server, overloaded CDN, DRM-protected stream, or rate-limited site to send data faster.
 
 If the popup shows `fast mode`, `aria2c` is available. If it shows `standard mode`, downloads still work but segmented `aria2c` acceleration is unavailable.

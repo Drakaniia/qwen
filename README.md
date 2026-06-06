@@ -13,9 +13,9 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
 
 2. Restart Chrome, Firefox, or Yandex Browser.
 3. Load the extension:
-   - Chrome: open `chrome://extensions`, enable Developer mode, click Load unpacked, and select `C:\Users\Qwenzy\Desktop\qwin`.
-   - Yandex Browser: open `browser://extensions`, enable Developer mode, click Upload unpacked extension, and select `C:\Users\Qwenzy\Desktop\qwin`.
-   - Firefox: open `about:debugging#/runtime/this-firefox`, click Load Temporary Add-on, and select `C:\Users\Qwenzy\Desktop\qwin\manifest.json`.
+   - Chrome: open `chrome://extensions`, enable Developer mode, click Load unpacked, and select `C:\Users\Qwenzy\Desktop\qwin\dist\chromium`.
+   - Yandex Browser: open `browser://extensions`, enable Developer mode, click Upload unpacked extension, and select `C:\Users\Qwenzy\Desktop\qwin\dist\yandex`.
+   - Firefox: open `about:debugging#/runtime/this-firefox`, click Load Temporary Add-on, and select `C:\Users\Qwenzy\Desktop\qwin\dist\firefox\manifest.json`.
 4. Visit a page with a playing video, open the Qwin popup, choose a detected video/quality, and download.
 
 ## Full Documentation
