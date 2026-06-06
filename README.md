@@ -1,6 +1,6 @@
 # Qwin Video Downloader
 
-Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser extension that detects playable video URLs on the current page and sends selected URLs to a local Python native messaging host. The helper uses `yt-dlp`, `ffmpeg`, and optional `aria2c` fast mode to save supported videos as MP4.
+Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser extension that detects playable video URLs on the current page and sends selected URLs to a local Python native messaging host. It can also detect real YouTube video pages from the visible player. The helper uses `yt-dlp`, `ffmpeg`, and optional `aria2c` fast mode to save supported videos as MP4.
 
 ## Quickstart
 
@@ -17,6 +17,7 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
    - Yandex Browser: open `browser://extensions`, enable Developer mode, click Upload unpacked extension, and select `C:\Users\Qwenzy\Desktop\qwin\dist\yandex`.
    - Firefox: open `about:debugging#/runtime/this-firefox`, click Load Temporary Add-on, and select `C:\Users\Qwenzy\Desktop\qwin\dist\firefox\manifest.json`.
 4. Visit a page with a playing video, open the Qwin popup, choose a detected video/quality, and download.
+5. If a page is not detected, open settings and paste the video page link into `Download from link`.
 
 ## Full Documentation
 
@@ -28,4 +29,4 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
 
 ## Honest Limits
 
-This extension does not bypass DRM, paid-access controls, browser-only `blob:` URLs without an underlying reusable media URL, private authorization that `yt-dlp` cannot reproduce, or site-specific anti-download systems. Fast mode can improve downloads when the server allows multiple connections, but it cannot force a slow or rate-limited server to send data faster.
+This extension does not bypass DRM, paid-access controls, browser-only `blob:` URLs without an underlying reusable media URL or supported extractor page, private authorization that `yt-dlp` cannot reproduce, or site-specific anti-download systems. The manual link fallback works only for URLs that `yt-dlp` supports and can access. Fast mode can improve downloads when the server allows multiple connections, but it cannot force a slow or rate-limited server to send data faster.

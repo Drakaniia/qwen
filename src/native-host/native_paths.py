@@ -58,6 +58,6 @@ def validate_download_url(url):
     parsed = urlparse(url.strip())
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise HostError(
-            "Only direct http:// and https:// video or playlist URLs can be sent to yt-dlp. "
+            "Only http:// and https:// media, playlist, or supported video page URLs can be sent to yt-dlp. "
             "Browser-only blob:, data:, file:, and DRM-protected URLs cannot be downloaded this way."
         )

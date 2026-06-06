@@ -10,6 +10,8 @@ Qwin can detect:
 - Video URLs loaded in iframes where the extension is allowed to inject content scripts.
 - Video-like media requests based on response `Content-Type` and common video CDN URL patterns.
 - Real HTML5 video players on the page. A small in-player Download overlay appears when the video area looks like a real player instead of a tiny clip or GIF-style animation.
+- Real YouTube video pages from the visible YouTube player. Qwin sends the YouTube watch/embed/shorts page URL to `yt-dlp`, then the helper saves the selected version as MP4.
+- Manual video page links pasted in settings. This is a fallback for extractor-supported sites such as YouTube, Instagram, TikTok, X, Threads, and other URLs that `yt-dlp` can access.
 - Video titles from page metadata, video element labels, `yt-dlp` metadata, or filename fallback.
 
 The extension filters obvious ad/tracker media URLs, GIF/GIFV previews, common GIF-preview hosts such as Giphy and Tenor, tiny hidden media, short muted looping autoplay clips, and HLS/DASH fragment URLs such as `.ts`, `.m4s`, `segment-*`, `chunk-*`, and `frag-*`. Download the M3U8/MPD playlist or master URL, not individual segment URLs.
@@ -23,6 +25,15 @@ The extension filters obvious ad/tracker media URLs, GIF/GIFV previews, common G
 5. Compare the available versions by resolution, size, format, bitrate, and source.
 6. Choose the version to download. `Best available MP4` is recommended when you are unsure.
 7. Open the Downloads view in the popup to watch progress and manage jobs.
+
+## Download From A Link
+
+1. Open the Qwin settings panel.
+2. Paste a public or otherwise accessible video page URL into `Download from link`.
+3. Click `Download link`.
+4. Choose a quality when `yt-dlp` returns available versions.
+
+This fallback sends the pasted URL directly to `yt-dlp`. It supports any site that the installed `yt-dlp` version supports and can access from your machine. It does not make unsupported, private, DRM-protected, or blocked videos downloadable.
 
 ## Download Management
 
@@ -40,7 +51,7 @@ Pause/resume is handled by stopping `yt-dlp` and restarting the same job later. 
 
 ## Download Folder
 
-By default, videos save under the Windows Downloads folder. Use the settings button in the popup to set a custom Windows folder path.
+By default, videos save under the Windows Downloads folder. Use the settings button in the popup, then click `Browse` to choose a custom folder in the Windows folder picker.
 
 Each download is saved inside a title folder:
 
@@ -57,7 +68,7 @@ The native helper uses:
 - Concurrent HLS/DASH fragments through `yt-dlp --concurrent-fragments`.
 - Optional `aria2c` segmented external downloads when `aria2c` is available.
 
-Fast mode uses up to 32 parallel fragments or byte-range connections by default. For direct MP4/WebM downloads, `aria2c` splits the file into byte ranges and downloads those ranges in parallel before assembling the final file.
+Fast mode uses up to 32 yt-dlp fragments and up to 16 `aria2c` byte-range connections by default. For direct MP4/WebM downloads, `aria2c` splits the file into byte ranges and downloads those ranges in parallel before assembling the final file.
 
 This can improve speed on direct MP4/WebM, HLS, and DASH sources that allow multiple connections. It cannot force a slow server, overloaded CDN, DRM-protected stream, or rate-limited site to send data faster.
 
@@ -71,6 +82,6 @@ No browser extension can guarantee downloading any video on any website. This im
 - Paid-access controls.
 - Private authorization that `yt-dlp` cannot reproduce.
 - Site-specific anti-download systems.
-- Browser-only `blob:`, `data:`, or local URLs unless the extension also detects the underlying MP4, WebM, M3U8, or MPD URL.
+- Browser-only `blob:`, `data:`, or local URLs unless the extension also detects the underlying MP4, WebM, M3U8, MPD, supported extractor page URL, or you paste a supported page URL manually.
 
 Some sites require account cookies, headers, or tokens that are not available to this helper. In those cases `yt-dlp` may return an error even though the video plays in the browser.

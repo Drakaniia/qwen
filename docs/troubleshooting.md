@@ -51,9 +51,20 @@ If the loaded browser extension has a different ID, native messaging will be blo
 
 ## Browser-Only Or Blob URLs
 
-If the popup only shows `blob:`, `data:`, or local URLs, start playback and wait a few seconds so the extension can see the underlying media requests.
+If the popup only shows `blob:`, `data:`, or local URLs, start playback and wait a few seconds so the extension can see the underlying media requests or a supported extractor page. On YouTube watch/embed/shorts pages, Qwin should list the YouTube page itself instead of the temporary `googlevideo.com` playback URL.
 
 Some pages never expose a reusable media URL. In that case the helper cannot download it.
+
+## Manual Link Fails
+
+The settings-panel link box sends the pasted URL to `yt-dlp`. If it fails, the most common causes are:
+
+- The installed `yt-dlp` version does not support that site or URL shape.
+- The video needs login, age, region, app-only, or bot-check access that the helper cannot reproduce.
+- The video is DRM-protected or otherwise encrypted.
+- The site blocked the request from the helper even though browser playback still works.
+
+For YouTube, Qwin enables yt-dlp's EJS challenge helper with `--remote-components ejs:github`. The first YouTube extraction may download yt-dlp's solver script from GitHub. If GitHub or the JavaScript runtime is blocked on the machine, YouTube may still return only storyboard/image formats.
 
 ## yt-dlp Errors
 
