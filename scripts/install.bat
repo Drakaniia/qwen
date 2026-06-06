@@ -39,10 +39,10 @@ if %ERRORLEVEL%==0 (
   )
 )
 
-echo Installing or updating yt-dlp, impersonation support, and bundled ffmpeg fallback with pip...
-%PYTHON_CMD% -m pip install --upgrade pip "yt-dlp[default,curl-cffi]" imageio-ffmpeg
+echo Installing or updating yt-dlp and bundled ffmpeg fallback with pip...
+%PYTHON_CMD% -m pip install --upgrade pip yt-dlp imageio-ffmpeg
 if %ERRORLEVEL% neq 0 (
-  echo ERROR: pip could not install yt-dlp, curl-cffi impersonation support, and imageio-ffmpeg.
+  echo ERROR: pip could not install yt-dlp and imageio-ffmpeg.
   exit /b 1
 )
 
@@ -71,13 +71,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-aria2.p
 if %ERRORLEVEL% neq 0 (
   echo aria2c could not be installed.
   echo Downloads will still work, but fast segmented mode will be unavailable.
-)
-
-echo Installing or checking stream fallback downloaders...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-stream-fallbacks.ps1" -RootDir "%ROOT_DIR%"
-if %ERRORLEVEL% neq 0 (
-  echo Stream fallback tools could not be installed.
-  echo Downloads will still use yt-dlp and ffmpeg, but some stream-only fallbacks may be unavailable.
 )
 
 echo Building browser-specific extension folders...

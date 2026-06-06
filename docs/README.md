@@ -11,6 +11,6 @@ This directory contains the full documentation for Qwin Video Downloader.
 
 ## Short Summary
 
-Qwin Video Downloader detects playable MP4/WebM, HLS M3U8, DASH MPD, Smooth Streaming ISM, supported video page URLs, and manually pasted video page links, then sends supported URLs to a native Python helper. The helper uses `yt-dlp` and `ffmpeg` to save videos, can use `aria2c` for segmented fast downloads, and can use N_m3u8DL-RE or Streamlink as stream fallbacks when available.
+Qwin Video Downloader detects playable MP4/WebM, HLS M3U8, DASH MPD, supported video page URLs, and manually pasted video page links, then sends supported URLs to a native Python helper. The helper uses `yt-dlp` and `ffmpeg` to save videos, and can use `aria2c` for segmented fast downloads when available.
 
 No browser extension can guarantee downloading every video from every site. DRM, protected streams, login-only authorization, and server-side throttling may still block or slow downloads.

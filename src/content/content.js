@@ -8,8 +8,6 @@ const overlayByVideo = new WeakMap();
 const overlayRecords = new Set();
 let qualityDialog = null;
 let qualityRequestSerial = 0;
-const MEDIA_URL_TEXT_RE =
-  /(?:(?:https?:)?\\?\/\\?\/|\/)[^"'`<>\s]+(?:\.(?:mp4|m4v|webm|m3u8|mpd)(?:[?#][^"'`<>\s]*)?|\.ism(?:\\?\/Manifest)?(?:[?#][^"'`<>\s]*)?)/gi;
 
 function sendMessage(message) {
   try {
@@ -63,27 +61,6 @@ function detectFormat(url, mimeType = "") {
 
 function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
-}
-
-function decodeUrlText(value) {
-  let text = String(value || "")
-    .replace(/\\\//g, "/")
-    .replace(/&amp;/gi, "&")
-    .replace(/\\u0026/gi, "&")
-    .trim();
-  text = text.replace(/[),.;]+$/g, "");
-  for (let index = 0; index < 2; index += 1) {
-    try {
-      const decoded = decodeURIComponent(text);
-      if (decoded === text) {
-        break;
-      }
-      text = decoded;
-    } catch (_error) {
-      break;
-    }
-  }
-  return text;
 }
 
 function titleFromUrl(url) {
@@ -204,33 +181,6 @@ function youtubePageCandidateForVideo(video) {
     url: pageUrl,
     format: detectFormat(pageUrl),
     source: "youtube-page",
-    contentType: "",
-    pageUrl,
-    frameUrl: location.href,
-    title: titleForVideo(video, pageUrl),
-    thumbnailUrl: thumbnailForVideo(video),
-    downloadable: true,
-    ...details,
-  };
-
-  return videoFilters.isLikelyFullLengthVideoCandidate(candidate) ? candidate : null;
-}
-
-function pageFallbackCandidateForVideo(video) {
-  const pageUrl = toAbsoluteUrl(location.href);
-  if (!pageUrl || currentYouTubeVideoPageUrl() || !videoFilters.isDownloadableUrl(pageUrl, "")) {
-    return null;
-  }
-
-  const details = videoElementDetails(video);
-  if (!isLikelyRealPlayer(video)) {
-    return null;
-  }
-
-  const candidate = {
-    url: pageUrl,
-    format: "PAGE",
-    source: "page-fallback",
     contentType: "",
     pageUrl,
     frameUrl: location.href,
@@ -378,12 +328,11 @@ function createOverlayButton(video) {
 
     button.textContent = "Sending...";
     const response = await sendMessageWithResponse({
-          type: "downloadVideo",
-          videoId: formatsResponse.videoId,
-          formatId: selectedFormat.formatId,
-          variantId: selectedFormat.variantId,
-          backend: selectedFormat.backend,
-        });
+      type: "downloadVideo",
+      videoId: formatsResponse.videoId,
+      formatId: selectedFormat.formatId,
+      variantId: selectedFormat.variantId,
+    });
 
     if (!response || !response.ok) {
       button.textContent = "Error";
@@ -573,7 +522,6 @@ function showQualityDialog({ title, formats }) {
       button.type = "button";
       button.dataset.formatId = format.formatId || format.id || "best";
       button.dataset.variantId = format.variantId || "";
-      button.dataset.backend = format.backend || "auto";
       button.title = format.sourceUrl || format.label || "";
       styleQualityRow(button);
       button.style.minHeight = "34px";
@@ -595,7 +543,6 @@ function showQualityDialog({ title, formats }) {
         resolve({
           formatId: button.dataset.formatId || "best",
           variantId: button.dataset.variantId || "",
-          backend: button.dataset.backend || "auto",
         });
       });
       table.append(button);
@@ -698,17 +645,11 @@ function scanVideoElements() {
       videoCandidates.push(youtubeCandidate);
     }
 
-    const pageFallbackCandidate = pageFallbackCandidateForVideo(video);
-    const storedPageFallbackCandidate = addBuiltCandidate(candidates, pageFallbackCandidate);
-    if (storedPageFallbackCandidate) {
-      videoCandidates.push(storedPageFallbackCandidate);
-    }
-
     const overlayCandidate = findOverlayCandidate(video, videoCandidates);
     updateOverlay(
       video,
-      overlayCandidate || pageFallbackCandidate,
-      !overlayCandidate && !pageFallbackCandidate && !videoHasBlockedMediaSource(video) && isLikelyRealPlayer(video)
+      overlayCandidate,
+      !overlayCandidate && !videoHasBlockedMediaSource(video) && isLikelyRealPlayer(video)
     );
   }
 
@@ -733,67 +674,8 @@ function scanPerformanceEntries() {
   return candidates;
 }
 
-function scanTextForMediaUrls(text, source) {
-  const candidates = [];
-  const sourceText = String(text || "");
-  if (!sourceText) {
-    return candidates;
-  }
-
-  for (const match of sourceText.matchAll(MEDIA_URL_TEXT_RE)) {
-    const candidateUrl = decodeUrlText(match[0]);
-    addCandidate(candidates, candidateUrl, source);
-  }
-  return candidates;
-}
-
-function scanInlinePlayerScripts() {
-  const candidates = [];
-  for (const script of Array.from(document.scripts || [])) {
-    if (script.src) {
-      continue;
-    }
-    candidates.push(...scanTextForMediaUrls(script.textContent || "", "script-config"));
-  }
-  return candidates;
-}
-
-function scanVisiblePlayerFrames() {
-  const candidates = [];
-  for (const frame of Array.from(document.querySelectorAll("iframe[src]"))) {
-    const src = toAbsoluteUrl(frame.getAttribute("src") || frame.src || "");
-    if (!src || !videoFilters.isDownloadableUrl(src, "")) {
-      continue;
-    }
-    const rect = frame.getBoundingClientRect();
-    if (rect.width < 220 || rect.height < 120) {
-      continue;
-    }
-    addBuiltCandidate(candidates, {
-      url: src,
-      format: detectFormat(src),
-      source: "iframe-page",
-      contentType: "",
-      pageUrl: src,
-      frameUrl: location.href,
-      title: cleanText(frame.getAttribute("title")) || cleanText(document.title) || titleFromUrl(src) || "Video",
-      thumbnailUrl: pageThumbnailUrl(),
-      downloadable: true,
-      width: rect.width,
-      height: rect.height,
-      duration: 0,
-    });
-  }
-  return candidates;
-}
-
 function publishScan() {
-  const videos = [
-    ...scanVideoElements(),
-    ...scanPerformanceEntries(),
-    ...scanInlinePlayerScripts(),
-    ...scanVisiblePlayerFrames(),
-  ];
+  const videos = [...scanVideoElements(), ...scanPerformanceEntries()];
   if (videos.length > 0) {
     sendMessage({ type: "contentDetectedVideos", videos });
   }

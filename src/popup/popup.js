@@ -724,7 +724,6 @@ function chooseQuality({ title, formats, nativeError }) {
       button.className = "quality-row quality-option";
       button.dataset.formatId = format.formatId || format.id || "best";
       button.dataset.variantId = format.variantId || "";
-      button.dataset.backend = format.backend || "auto";
       button.setAttribute("role", "row");
       button.title = format.sourceUrl || format.label || "";
 
@@ -739,7 +738,6 @@ function chooseQuality({ title, formats, nativeError }) {
         resolve({
           formatId: button.dataset.formatId || "best",
           variantId: button.dataset.variantId || "",
-          backend: button.dataset.backend || "auto",
         });
       });
       table.append(button);
@@ -793,9 +791,7 @@ async function checkNativeHost() {
   }
 
   const mode = dependencies.aria2c ? "fast mode" : "standard mode";
-  const streamFallbacks = dependencies.nM3u8DlRe || dependencies.streamlink;
-  const fallbackMode = streamFallbacks ? "stream fallbacks" : "yt-dlp only";
-  setHelperStatus(`Helper ready (${response.version || "installed"}, ${mode}, ${fallbackMode}).`, "ok");
+  setHelperStatus(`Helper ready (${response.version || "installed"}, ${mode}).`, "ok");
 }
 
 async function init() {
@@ -852,10 +848,9 @@ elements.videoList.addEventListener("click", async (event) => {
   const response = await runtimeMessage({
     type: "downloadVideo",
     tabId: activeTabId,
-    videoId: formatsResponse.videoId || button.dataset.videoId,
+    videoId: button.dataset.videoId,
     formatId: selectedFormat.formatId,
     variantId: selectedFormat.variantId,
-    backend: selectedFormat.backend,
   });
 
   if (!response || !response.ok) {
@@ -1027,7 +1022,6 @@ elements.downloadManualUrl.addEventListener("click", async () => {
     videoId: formatsResponse.videoId,
     formatId: selectedFormat.formatId,
     variantId: selectedFormat.variantId,
-    backend: selectedFormat.backend,
   });
 
   if (!response || !response.ok) {

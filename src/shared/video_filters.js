@@ -7,14 +7,12 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createQwinVideoFilters() {
   "use strict";
 
-  const VIDEO_EXTENSION_RE = /(?:\.(?:mp4|m4v|webm|m3u8|mpd)(?:$|[?#])|\.ism(?:\/Manifest)?(?:$|[?#]))/i;
+  const VIDEO_EXTENSION_RE = /\.(mp4|m4v|webm|m3u8|mpd)(?:$|[?#])/i;
   const HLS_RE = /\.m3u8(?:$|[?#])/i;
   const DASH_RE = /\.mpd(?:$|[?#])/i;
-  const ISM_RE = /\.ism(?:\/Manifest)?(?:$|[?#])/i;
   const GIF_RE = /\.(gif|gifv)(?:$|[?#])/i;
   const WEB_APP_MANIFEST_RE =
     /(?:\.webmanifest|(?:^|[/?#._-])manifest\.json)(?:$|[?#])/i;
-  const STATIC_PLAYER_ASSET_RE = /\.(?:hlsjs|js|mjs|cjs|css|map)(?:$|[?#])/i;
   const GIF_VIDEO_RE =
     /(?:^|[/?#._-])(?:gif|gifs|gifv|animated-gif|giphy|tenor|gifpreview|gif-preview|loop-preview)(?:[/?#._-]|$)/i;
   const SEGMENT_EXTENSION_RE = /\.(ts|m4s|cmfv|cmfa)(?:$|[?#])/i;
@@ -82,10 +80,8 @@
     return (
       format === "M3U8" ||
       format === "MPD" ||
-      format === "ISM" ||
       HLS_RE.test(details.url || "") ||
       DASH_RE.test(details.url || "") ||
-      ISM_RE.test(details.url || "") ||
       type.includes("mpegurl") ||
       type.includes("dash+xml")
     );
@@ -97,26 +93,7 @@
     if (!text) {
       return true;
     }
-    if (
-      [
-        "application/javascript",
-        "application/ecmascript",
-        "application/json",
-        "application/x-javascript",
-        "text/css",
-        "text/ecmascript",
-        "text/html",
-        "text/javascript",
-      ].includes(type.split(";", 1)[0].trim()) ||
-      type.startsWith("font/") ||
-      type.startsWith("image/")
-    ) {
-      return true;
-    }
     if (isEphemeralMediaUrl(text)) {
-      return true;
-    }
-    if (STATIC_PLAYER_ASSET_RE.test(text)) {
       return true;
     }
     if (type.includes("manifest+json") || type.includes("webmanifest") || WEB_APP_MANIFEST_RE.test(text)) {
@@ -147,9 +124,6 @@
     if (DASH_RE.test(text) || type.includes("dash+xml")) {
       return "MPD";
     }
-    if (ISM_RE.test(text)) {
-      return "ISM";
-    }
     if (/\.webm(?:$|[?#])/i.test(text) || type.includes("video/webm")) {
       return "WEBM";
     }
@@ -171,7 +145,7 @@
         ? videoOrFormat.format || ""
         : videoOrFormat
     );
-    if (format === "m3u8" || format === "mpd" || format === "ism") {
+    if (format === "m3u8" || format === "mpd") {
       return "MP4";
     }
     if (format === "youtube") {

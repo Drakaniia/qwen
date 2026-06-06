@@ -20,32 +20,17 @@ class HostHelperTests(unittest.TestCase):
         import artifacts
         import browser_context
         import download_task
-        import folder_picker
-        import media_resolver
         import native_paths
         import native_protocol
-        import process_control
-        import progress_parser
-        import stream_backends
-        import yt_dlp_command
         import yt_dlp_adapter
 
         self.assertIs(host.HostError, native_protocol.HostError)
         self.assertIs(host.sanitize_filename, native_paths.sanitize_filename)
         self.assertIs(host.clean_request_headers, browser_context.clean_request_headers)
         self.assertIs(host.build_yt_dlp_command, yt_dlp_adapter.build_yt_dlp_command)
-        self.assertIs(host.build_yt_dlp_command, yt_dlp_command.build_yt_dlp_command)
         self.assertIs(host.parse_yt_dlp_line, yt_dlp_adapter.parse_yt_dlp_line)
-        self.assertIs(host.parse_yt_dlp_line, progress_parser.parse_yt_dlp_line)
         self.assertIs(host.DownloadTask, download_task.DownloadTask)
         self.assertIs(host.delete_download_artifacts, artifacts.delete_download_artifacts)
-        self.assertIs(host.creation_flags, process_control.creation_flags)
-        self.assertIs(host.choose_download_folder, folder_picker.choose_download_folder)
-        self.assertIs(host.extract_media_candidates_from_text, media_resolver.extract_media_candidates_from_text)
-        self.assertIs(host.build_n_m3u8dl_re_command, stream_backends.build_n_m3u8dl_re_command)
-        self.assertIs(host.build_streamlink_command, stream_backends.build_streamlink_command)
-        self.assertIs(download_task.parse_yt_dlp_line, progress_parser.parse_yt_dlp_line)
-        self.assertIs(artifacts.creation_flags, process_control.creation_flags)
 
     def test_sanitize_filename_removes_windows_invalid_characters(self):
         self.assertEqual(host.sanitize_filename('bad<>:"/\\|?* name'), "bad name")
@@ -101,16 +86,6 @@ class HostHelperTests(unittest.TestCase):
 
         self.assertIn("--remote-components", command)
         self.assertEqual(command[command.index("--remote-components") + 1], "ejs:github")
-
-    def test_build_yt_dlp_command_enables_generic_impersonation(self):
-        command = host.build_yt_dlp_command(
-            url="https://example.com/protected-player",
-            download_dir=Path(r"C:\Users\Viewer\Downloads"),
-            yt_dlp_command=["yt-dlp"],
-        )
-
-        self.assertIn("--extractor-args", command)
-        self.assertEqual(command[command.index("--extractor-args") + 1], "generic:impersonate")
 
     def test_build_yt_dlp_command_places_video_inside_title_folder(self):
         command = host.build_yt_dlp_command(
@@ -245,15 +220,6 @@ class HostHelperTests(unittest.TestCase):
 
         self.assertIn("--remote-components", command)
         self.assertEqual(command[command.index("--remote-components") + 1], "ejs:github")
-
-    def test_build_formats_command_enables_generic_impersonation(self):
-        command = host.build_formats_command(
-            url="https://example.com/protected-player",
-            yt_dlp_command=["yt-dlp"],
-        )
-
-        self.assertIn("--extractor-args", command)
-        self.assertEqual(command[command.index("--extractor-args") + 1], "generic:impersonate")
 
     def test_build_yt_dlp_command_passes_sanitized_browser_headers(self):
         command = host.build_yt_dlp_command(
@@ -412,156 +378,6 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(summarized["title"], "Storyboard Only")
         self.assertEqual(summarized["formats"], [])
 
-    def test_extract_media_candidates_from_text_decodes_and_filters_reusable_media_urls(self):
-        text = r"""
-        var direct = "https:\/\/cdn.example.com\/media\/movie%2Emp4?token=one";
-        var hls = "\/streams\/master.m3u8?token=two";
-        var dash = "//cdn.example.com/dash/manifest.mpd";
-        var ism = "https://cdn.example.com/live/channel.ism/Manifest";
-        var ad = "https://ads.example.com/preroll.mp4";
-        var segment = "https://cdn.example.com/hls/segment-00001.ts";
-        var blob = "blob:https://player.example.com/abc";
-        """
-
-        candidates = host.extract_media_candidates_from_text(text, "https://player.example.com/player/index.php?data=abc")
-        urls = [item["url"] for item in candidates]
-        formats = {item["url"]: item["format"] for item in candidates}
-
-        self.assertIn("https://cdn.example.com/media/movie.mp4?token=one", urls)
-        self.assertIn("https://player.example.com/streams/master.m3u8?token=two", urls)
-        self.assertIn("https://cdn.example.com/dash/manifest.mpd", urls)
-        self.assertIn("https://cdn.example.com/live/channel.ism/Manifest", urls)
-        self.assertNotIn("https://ads.example.com/preroll.mp4", urls)
-        self.assertNotIn("https://cdn.example.com/hls/segment-00001.ts", urls)
-        self.assertEqual(formats["https://cdn.example.com/media/movie.mp4?token=one"], "MP4")
-        self.assertEqual(formats["https://player.example.com/streams/master.m3u8?token=two"], "M3U8")
-        self.assertEqual(formats["https://cdn.example.com/dash/manifest.mpd"], "MPD")
-        self.assertEqual(formats["https://cdn.example.com/live/channel.ism/Manifest"], "ISM")
-
-    def test_extract_media_candidates_from_text_builds_xtremestream_loader_url(self):
-        text = """
-        window.XS_VIDEO_ID = "40542c0b28735b6a870c5cf8bc13269d";
-        var video_id = `40542c0b28735b6a870c5cf8bc13269d`;
-        var m3u8_loader_url = `https://george.xtremestream.xyz/player/xs1.php?data=`;
-        player.setup({ sources: { file: m3u8_loader_url + video_id } });
-        """
-
-        candidates = host.extract_media_candidates_from_text(
-            text,
-            "https://george.xtremestream.xyz/player/index.php?data=40542c0b28735b6a870c5cf8bc13269d",
-        )
-
-        self.assertIn(
-            {
-                "url": "https://george.xtremestream.xyz/player/xs1.php?data=40542c0b28735b6a870c5cf8bc13269d",
-                "format": "M3U8",
-                "source": "player-config",
-                "confidence": 96,
-            },
-            candidates,
-        )
-
-    def test_handle_resolve_media_candidates_fetches_page_with_browser_headers(self):
-        class FakeResponse:
-            def __init__(self):
-                self.headers = {"Content-Type": "text/html; charset=utf-8"}
-
-            def read(self, _size=-1):
-                return b'<script>var file="/hls/master.m3u8?token=abc";</script>'
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return False
-
-        requests = []
-
-        def fake_urlopen(request, timeout):
-            requests.append((request, timeout))
-            return FakeResponse()
-
-        sent = []
-        with patch.object(host, "urlopen", side_effect=fake_urlopen), patch.object(
-            host, "send_native_message", side_effect=sent.append
-        ):
-            host.handle_message(
-                {
-                    "type": "resolveMediaCandidates",
-                    "id": "resolve_1",
-                    "url": "https://player.example.com/player/index.php?data=abc",
-                    "pageUrl": "https://example.com/watch/movie",
-                    "userAgent": "Qwin Test Browser",
-                    "requestHeaders": [{"name": "Cookie", "value": "sid=abc"}],
-                }
-            )
-
-        self.assertEqual(sent[0]["type"], "mediaCandidates")
-        self.assertEqual(sent[0]["id"], "resolve_1")
-        self.assertEqual(sent[0]["candidates"][0]["url"], "https://player.example.com/hls/master.m3u8?token=abc")
-        self.assertEqual(requests[0][0].headers["User-agent"], "Qwin Test Browser")
-        self.assertEqual(requests[0][0].headers["Cookie"], "sid=abc")
-
-    @patch("host.shutil.which", return_value=None)
-    def test_resolve_n_m3u8dl_re_location_uses_local_portable_fallback(self, _which):
-        with tempfile.TemporaryDirectory() as temp:
-            local_tool = Path(temp) / "tools" / "n_m3u8dl-re" / "N_m3u8DL-RE.exe"
-            local_tool.parent.mkdir(parents=True)
-            local_tool.write_text("portable downloader", encoding="utf-8")
-
-            with patch.object(host, "LOCAL_N_M3U8DL_RE", local_tool), patch.dict(host.os.environ, {}, clear=True):
-                self.assertEqual(host.resolve_n_m3u8dl_re_location(), str(local_tool))
-
-    @patch("host.shutil.which", return_value=None)
-    @patch("host.importlib.util.find_spec")
-    def test_resolve_streamlink_command_falls_back_to_python_module(self, find_spec, _which):
-        find_spec.return_value = object()
-
-        command = host.resolve_streamlink_command()
-
-        self.assertEqual(command, [host.sys.executable, "-m", "streamlink"])
-
-    def test_build_n_m3u8dl_re_command_passes_headers_and_ffmpeg_path(self):
-        final_path = Path(r"C:\Users\Viewer\Downloads\Movie\Movie.mp4")
-        command = host.build_n_m3u8dl_re_command(
-            url="https://cdn.example.com/hls/master.m3u8",
-            output_path=final_path,
-            request_headers=[{"name": "Referer", "value": "https://example.com/watch"}],
-            n_m3u8dl_re_location=r"C:\Tools\N_m3u8DL-RE.exe",
-            ffmpeg_location=r"C:\Tools\ffmpeg.exe",
-        )
-
-        self.assertEqual(command[0], r"C:\Tools\N_m3u8DL-RE.exe")
-        self.assertIn("--save-dir", command)
-        self.assertIn(str(final_path.parent), command)
-        self.assertIn("--save-name", command)
-        self.assertIn("Movie", command)
-        self.assertIn("-H", command)
-        self.assertIn("Referer: https://example.com/watch", command)
-        self.assertIn("--ffmpeg-binary-path", command)
-        self.assertIn(r"C:\Tools\ffmpeg.exe", command)
-        self.assertEqual(command[-1], "https://cdn.example.com/hls/master.m3u8")
-
-    def test_build_streamlink_command_passes_headers_cookies_and_mp4_muxing(self):
-        command = host.build_streamlink_command(
-            url="https://cdn.example.com/hls/master.m3u8",
-            output_path=Path(r"C:\Users\Viewer\Downloads\Movie\Movie.mp4"),
-            request_headers=[{"name": "Origin", "value": "https://example.com"}],
-            cookies_file=r"C:\Temp\qwin-cookies.txt",
-            streamlink_command=["python", "-m", "streamlink"],
-            ffmpeg_location=r"C:\Tools\ffmpeg.exe",
-        )
-
-        self.assertEqual(command[:3], ["python", "-m", "streamlink"])
-        self.assertIn("--http-header", command)
-        self.assertIn("Origin=https://example.com", command)
-        self.assertIn("--http-cookies-file", command)
-        self.assertIn(r"C:\Temp\qwin-cookies.txt", command)
-        self.assertIn("--ffmpeg-ffmpeg", command)
-        self.assertIn("--ffmpeg-fout", command)
-        self.assertIn("mp4", command)
-        self.assertEqual(command[-2:], ["https://cdn.example.com/hls/master.m3u8", "best"])
-
     @patch("host.shutil.which", return_value=None)
     @patch("host.importlib.util.find_spec")
     def test_resolve_yt_dlp_command_falls_back_to_python_module(self, find_spec, _which):
@@ -631,15 +447,6 @@ class HostHelperTests(unittest.TestCase):
             host.handle_message({"type": "chooseFolder", "id": "folder_1"})
 
         self.assertEqual(sent, [{"type": "folder", "id": "folder_1", "canceled": True}])
-
-    def test_main_does_not_cancel_active_downloads_when_browser_pipe_closes(self):
-        with patch.object(host, "configure_binary_stdio"), patch.object(
-            host, "read_native_message", side_effect=EOFError
-        ), patch.object(host, "cancel_active_downloads") as cancel_active_downloads:
-            result = host.main()
-
-        self.assertEqual(result, 0)
-        cancel_active_downloads.assert_not_called()
 
     def test_parse_progress_line_extracts_percent(self):
         parsed = host.parse_yt_dlp_line("[download]  57.3% of 10.00MiB at 1.2MiB/s ETA 00:03")
@@ -834,27 +641,6 @@ class HostHelperTests(unittest.TestCase):
             self.assertEqual(sent[-1]["type"], "canceled")
             self.assertEqual(sent[-1]["artifactCleanupDeleted"], [str(title_dir.resolve())])
 
-    def test_download_task_keeps_running_when_browser_pipe_disconnects(self):
-        class CompleteAfterDisconnectTask(host.DownloadTask):
-            def run_process_once(self, command=None):
-                self.final_path = r"C:\Users\Viewer\Downloads\clip.mp4"
-                return 0
-
-        def disconnected_send(_message):
-            raise BrokenPipeError("native messaging pipe closed")
-
-        task = CompleteAfterDisconnectTask(
-            message={"id": "job_1"},
-            command=["yt-dlp"],
-            download_dir=Path(r"C:\Users\Viewer\Downloads"),
-            send=disconnected_send,
-        )
-
-        task.run()
-
-        self.assertEqual(task.state, "done")
-        self.assertEqual(task.final_path, r"C:\Users\Viewer\Downloads\clip.mp4")
-
     def test_download_task_starts_process_with_creation_flags(self):
         import download_task
 
@@ -907,42 +693,6 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(commands[1], ["yt-dlp", "https://cdn.example.com/video.mp4"])
         self.assertEqual(sent[-1]["type"], "done")
         self.assertTrue(any(message.get("type") == "progress" and "standard mode" in message.get("line", "") for message in sent))
-
-    def test_download_task_retries_stream_backend_after_retryable_yt_dlp_error(self):
-        commands = []
-        sent = []
-
-        class StreamFallbackTask(host.DownloadTask):
-            def run_process_once(self, command=None):
-                commands.append(command)
-                if len(commands) == 1:
-                    self.recent_lines.append("ERROR: Unsupported URL: https://cdn.example.com/hls/master.m3u8")
-                    return 1
-                return 0
-
-        final_path = r"C:\Users\Viewer\Downloads\Movie\Movie.mp4"
-        task = StreamFallbackTask(
-            message={"id": "job_1"},
-            command=["yt-dlp", "https://cdn.example.com/hls/master.m3u8"],
-            fallback_commands=[
-                {
-                    "command": ["N_m3u8DL-RE", "https://cdn.example.com/hls/master.m3u8"],
-                    "label": "N_m3u8DL-RE",
-                    "final_path": final_path,
-                    "artifact_root": r"C:\Users\Viewer\Downloads\Movie",
-                }
-            ],
-            download_dir=Path(r"C:\Users\Viewer\Downloads"),
-            send=sent.append,
-        )
-
-        task.run()
-
-        self.assertEqual(commands[0], ["yt-dlp", "https://cdn.example.com/hls/master.m3u8"])
-        self.assertEqual(commands[1], ["N_m3u8DL-RE", "https://cdn.example.com/hls/master.m3u8"])
-        self.assertEqual(sent[-1]["type"], "done")
-        self.assertEqual(sent[-1]["filepath"], final_path)
-        self.assertTrue(any(message.get("type") == "progress" and "N_m3u8DL-RE" in message.get("line", "") for message in sent))
 
     def test_build_open_path_command_reveals_file_on_windows(self):
         with patch.object(host.os, "name", "nt"):

@@ -57,15 +57,4 @@ assert.match(
   "installer must build browser-specific extension folders after dependency setup"
 );
 
-assert.match(
-  installScript,
-  /install-stream-fallbacks\.ps1/,
-  "installer must install or check stream fallback tools after aria2 setup"
-);
-assert.match(
-  installScript,
-  /yt-dlp\[default,curl-cffi\]/,
-  "installer must install yt-dlp with curl-cffi impersonation support"
-);
-
 console.log("manifest build target tests passed");

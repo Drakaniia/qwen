@@ -36,12 +36,6 @@ assert.match(
 
 assert.match(
   source,
-  /button\.dataset\.backend\s*=/,
-  "content overlay choices must preserve the selected downloader backend"
-);
-
-assert.match(
-  source,
   /type:\s*"downloadVideo"/,
   "content overlay should download by grouped video id after choosing a version"
 );
@@ -54,12 +48,6 @@ assert.match(
 
 assert.match(
   source,
-  /backend:\s*selectedFormat\.backend/,
-  "content overlay download requests must send the selected downloader backend"
-);
-
-assert.match(
-  source,
   /function\s+thumbnailForVideo\s*\(/,
   "content scanner must read a thumbnail or poster URL for downloadable videos"
 );
@@ -68,24 +56,6 @@ assert.match(
   source,
   /thumbnailUrl:\s*thumbnailForVideo\(video\)/,
   "content scanner must include thumbnailUrl in detected video candidates"
-);
-
-assert.match(
-  source,
-  /function\s+pageFallbackCandidateForVideo\s*\(/,
-  "content overlay must build a yt-dlp page fallback candidate when the player uses a browser-only media URL"
-);
-
-assert.match(
-  source,
-  /source:\s*"page-fallback"/,
-  "content overlay page fallback candidates must be marked so background downloads the page URL, not an unrelated detected stream"
-);
-
-assert.match(
-  source,
-  /overlayCandidate\s*\|\|\s*pageFallbackCandidate/,
-  "content overlay must prefer the clicked player's page fallback over getBestVideoFormats"
 );
 
 assert.match(

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from native_paths import default_download_dir, resolve_download_dir
 from native_protocol import HostError, send_native_message
-from process_control import creation_flags
+from yt_dlp_adapter import creation_flags
 
 
 def build_open_path_command(path, reveal=False):

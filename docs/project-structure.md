@@ -13,7 +13,6 @@
 - `config/native-host/` - Generated Chrome, Yandex Browser, and Firefox native messaging manifest files.
 - `scripts/install.bat` - Installs dependencies and registers the native host for Chrome, Yandex Browser, and Firefox.
 - `scripts/install-aria2.ps1` - Installs or verifies the portable `aria2c` fast downloader.
-- `scripts/install-stream-fallbacks.ps1` - Installs or verifies Streamlink and the portable N_m3u8DL-RE stream fallback downloader.
 - `scripts/build-extension.ps1` - Builds loadable Chromium, Yandex Browser, and Firefox extension folders under `dist`.
 - `scripts/test.ps1` - Runs native-host tests, extension checks, and extension build checks.
 - `tests/extension/` - Node-based extension structure and behavior checks.

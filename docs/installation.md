@@ -22,11 +22,10 @@
 The installer:
 
 - Finds Python 3 through `py -3` or `python`.
-- Installs or updates `yt-dlp` with `curl-cffi` impersonation support and `imageio-ffmpeg` with `pip`.
+- Installs or updates `yt-dlp` and `imageio-ffmpeg` with `pip`.
 - Uses `winget` to install system `ffmpeg` when available.
 - Falls back to the `imageio-ffmpeg` binary when system `ffmpeg` is not available.
 - Installs a portable `aria2c` fast downloader under `tools\aria2` when possible.
-- Installs `streamlink` with `pip` and a portable N_m3u8DL-RE fallback under `tools\n_m3u8dl-re` when possible.
 - Builds browser-specific extension folders under `dist\chromium`, `dist\yandex`, and `dist\firefox`.
 - Writes Chrome, Yandex Browser, and Firefox native messaging manifests under `config\native-host`.
 - Registers the native host in the current user's registry keys:
@@ -66,10 +65,8 @@ The Firefox add-on ID is fixed in the manifest as `qwin-video-downloader@example
 
 After loading the extension, open the Qwin popup. The helper status should show one of these:
 
-- `Helper ready (..., fast mode, stream fallbacks).` - `yt-dlp`, `ffmpeg`, `aria2c`, and at least one stream fallback are available.
-- `Helper ready (..., standard mode, stream fallbacks).` - `yt-dlp`, `ffmpeg`, and at least one stream fallback are available, but `aria2c` is not.
-- `Helper ready (..., fast mode, yt-dlp only).` - `yt-dlp`, `ffmpeg`, and `aria2c` are available, but stream fallbacks are not.
-- `Helper ready (..., standard mode, yt-dlp only).` - `yt-dlp` and `ffmpeg` are available, but `aria2c` and stream fallbacks are not.
+- `Helper ready (..., fast mode).` - `yt-dlp`, `ffmpeg`, and `aria2c` are available.
+- `Helper ready (..., standard mode).` - `yt-dlp` and `ffmpeg` are available, but `aria2c` is not.
 - `Helper not connected.` - run `scripts\install.bat` again and restart the browser.
 
-Fast mode and stream fallbacks are optional. Standard mode can still download supported videos.
+Fast mode is optional. Standard mode can still download supported videos.

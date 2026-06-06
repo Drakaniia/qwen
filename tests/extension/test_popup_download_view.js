@@ -183,12 +183,6 @@ assert.match(
 
 assert.match(
   js,
-  /videoId:\s*formatsResponse\.videoId\s*\|\|\s*button\.dataset\.videoId/,
-  "detected video flow must use the fallback video id returned by quality lookup"
-);
-
-assert.match(
-  js,
   /elements\.videoList\.hidden\s*=\s*downloadsOnly/,
   "downloads-only mode must hide detected videos"
 );
@@ -476,20 +470,8 @@ assert.match(
 
 assert.match(
   js,
-  /button\.dataset\.backend\s*=/,
-  "quality choices must preserve the selected downloader backend"
-);
-
-assert.match(
-  js,
   /variantId:\s*selectedFormat\.variantId/,
   "download requests must send the selected source variant id"
-);
-
-assert.match(
-  js,
-  /backend:\s*selectedFormat\.backend/,
-  "download requests must send the selected downloader backend"
 );
 
 assert.match(

@@ -11,7 +11,6 @@ assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/giphy-loop.webm"
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/hls/segment-00001.ts"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/dash/chunk-42.m4s"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/video/frag-001.mp4"), true);
-assert.equal(filters.isBlockedVideoUrl("https://george.xtremestream.xyz/player/assets/jwplayer-8.34.0/provider.hlsjs"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/hls/720p/000012.mp4?token=abc"), true);
 assert.equal(
   filters.isBlockedVideoUrl(
@@ -40,14 +39,6 @@ assert.equal(filters.displayVideoFormat({ format: "YOUTUBE" }), "MP4");
 
 assert.equal(filters.isLikelyVideoRequest("https://cdn.example.com/hls/segment-00001.ts", "media", ""), false);
 assert.equal(filters.isLikelyVideoRequest("https://cdn.example.com/dash/chunk-42.m4s", "media", ""), false);
-assert.equal(
-  filters.isLikelyVideoRequest(
-    "https://george.xtremestream.xyz/player/assets/jwplayer-8.34.0/provider.hlsjs",
-    "media",
-    "application/javascript"
-  ),
-  false
-);
 assert.equal(filters.isLikelyVideoRequest("https://cdn.example.com/hls/720p/000012.mp4?token=abc", "media", ""), false);
 assert.equal(
   filters.isLikelyVideoRequest(
@@ -63,10 +54,8 @@ assert.equal(filters.isDownloadableUrl("https://www.youtube.com/manifest.webmani
 assert.equal(filters.classifyVideoUrl("https://cdn.example.com/master.m3u8", ""), "M3U8");
 assert.equal(filters.classifyVideoUrl("https://cdn.example.com/clip.webm", ""), "WEBM");
 assert.equal(filters.classifyVideoUrl("https://cdn.example.com/manifest", "application/dash+xml"), "MPD");
-assert.equal(filters.classifyVideoUrl("https://cdn.example.com/live/channel.ism/Manifest", ""), "ISM");
 assert.equal(filters.displayVideoFormat({ format: "M3U8" }), "MP4");
 assert.equal(filters.displayVideoFormat({ format: "MPD" }), "MP4");
-assert.equal(filters.displayVideoFormat({ format: "ISM" }), "MP4");
 assert.equal(filters.displayVideoFormat({ format: "WEBM" }), "WEBM");
 assert.equal(filters.displayVideoSize({ sizeBytes: 98_000_000 }), "93.5 MB");
 assert.equal(filters.displayVideoSize({ size: "1.4 GB" }), "1.4 GB");
