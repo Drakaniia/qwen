@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from browser_context import append_browser_context_options
 from native_paths import sanitize_filename
@@ -13,11 +14,13 @@ from native_protocol import HostError
 
 FILEPATH_MARKER = "__QWIN_FILEPATH__:"
 DEFAULT_FORMAT_SELECTOR = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b"
+YOUTUBE_REMOTE_COMPONENTS = "ejs:github"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOCAL_ARIA2C = PROJECT_ROOT / "tools" / "aria2" / "aria2c.exe"
 MAX_FAST_CONNECTIONS = 32
+MAX_ARIA2_CONNECTIONS = 16
 DEFAULT_CONCURRENT_FRAGMENTS = MAX_FAST_CONNECTIONS
-DEFAULT_ARIA2_CONNECTIONS = MAX_FAST_CONNECTIONS
+DEFAULT_ARIA2_CONNECTIONS = MAX_ARIA2_CONNECTIONS
 
 
 def get_imageio_ffmpeg_exe():
@@ -90,6 +93,20 @@ def has_aria2c():
     return bool(resolve_aria2c_location())
 
 
+def is_youtube_url(url):
+    try:
+        host = urlparse(str(url or "")).hostname or ""
+    except Exception:
+        return False
+    host = host.lower()
+    return host == "youtu.be" or host.endswith(".youtube.com") or host.endswith(".youtube-nocookie.com")
+
+
+def append_youtube_ejs_options(command, url):
+    if is_youtube_url(url):
+        command.extend(["--remote-components", YOUTUBE_REMOTE_COMPONENTS])
+
+
 def build_yt_dlp_command(
     url,
     download_dir,
@@ -136,11 +153,16 @@ def build_yt_dlp_command(
         "-o",
         output_template,
     ]
+    append_youtube_ejs_options(command, url)
 
     if ffmpeg_location:
         command.extend(["--ffmpeg-location", str(ffmpeg_location)])
     if aria2c_location:
-        connection_count = bounded_int(aria2_connections, DEFAULT_ARIA2_CONNECTIONS)
+        connection_count = bounded_int(
+            aria2_connections,
+            DEFAULT_ARIA2_CONNECTIONS,
+            maximum=MAX_ARIA2_CONNECTIONS,
+        )
         aria2_args = " ".join(
             [
                 f"--max-connection-per-server={connection_count}",
@@ -202,6 +224,7 @@ def build_formats_command(
         "--no-playlist",
         "--skip-download",
     ]
+    append_youtube_ejs_options(command, url)
 
     if ffmpeg_location:
         command.extend(["--ffmpeg-location", str(ffmpeg_location)])
@@ -279,16 +302,7 @@ def summarize_formats(info):
     webpage_url = info.get("webpage_url") or info.get("original_url") or ""
     raw_formats = info.get("formats") or []
     seen_ids = set()
-    choices = [
-        {
-            "id": "best",
-            "label": "Best available MP4",
-            "ext": "mp4",
-            "height": None,
-            "size": "",
-            "note": "Recommended",
-        }
-    ]
+    choices = []
 
     video_formats = []
     for item in raw_formats:
@@ -301,6 +315,18 @@ def summarize_formats(info):
             continue
         seen_ids.add(format_id)
         video_formats.append(item)
+
+    if video_formats:
+        choices.append(
+            {
+                "id": "best",
+                "label": "Best available MP4",
+                "ext": "mp4",
+                "height": None,
+                "size": "",
+                "note": "Recommended",
+            }
+        )
 
     for item in sorted(video_formats, key=format_sort_key, reverse=True)[:25]:
         choices.append(
