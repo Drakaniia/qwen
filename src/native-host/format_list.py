@@ -22,7 +22,8 @@ def run_format_list(
     request_headers = message.get("requestHeaders")
     cookies_file = write_cookie_file_from_headers(url, request_headers)
     temp_files = [cookies_file] if cookies_file else []
-    try:
+
+    def execute_yt_dlp(nocheckcertificate=False):
         command = build_formats_command(
             url=url,
             referer=message.get("pageUrl"),
@@ -31,8 +32,9 @@ def run_format_list(
             cookies_file=cookies_file,
             yt_dlp_command=yt_dlp_command_resolver(),
             ffmpeg_location=ffmpeg_location_resolver(),
+            nocheckcertificate=nocheckcertificate,
         )
-        completed = subprocess.run(
+        return subprocess.run(
             command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -43,6 +45,13 @@ def run_format_list(
             timeout=45,
             creationflags=creation_flags(),
         )
+
+    try:
+        completed = execute_yt_dlp(nocheckcertificate=False)
+        if completed.returncode != 0:
+            details = (completed.stderr or completed.stdout or "").strip()
+            if "CERTIFICATE_VERIFY_FAILED" in details:
+                completed = execute_yt_dlp(nocheckcertificate=True)
     except subprocess.TimeoutExpired as exc:
         raise HostError("Timed out while asking yt-dlp for available qualities.") from exc
     except OSError as exc:

@@ -92,6 +92,16 @@ class HostHelperTests(unittest.TestCase):
         self.assertIn("Referer:https://example.com/watch", command)
         self.assertTrue(any(str(Path(r"C:\Users\Viewer\Downloads")) in part for part in command))
 
+    def test_build_yt_dlp_command_supports_nocheckcertificate(self):
+        command = host.build_yt_dlp_command(
+            url="https://cdn.example.com/master.m3u8",
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            yt_dlp_command=["yt-dlp"],
+            nocheckcertificate=True,
+        )
+
+        self.assertIn("--no-check-certificate", command)
+
     def test_build_yt_dlp_command_enables_youtube_ejs_remote_components(self):
         command = host.build_yt_dlp_command(
             url="https://www.youtube.com/watch?v=Aa89MC8jX2c",
@@ -943,6 +953,38 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(sent[-1]["type"], "done")
         self.assertEqual(sent[-1]["filepath"], final_path)
         self.assertTrue(any(message.get("type") == "progress" and "N_m3u8DL-RE" in message.get("line", "") for message in sent))
+
+    def test_download_task_retries_after_ssl_verification_error(self):
+        commands = []
+        sent = []
+
+        class SSLFallbackTask(host.DownloadTask):
+            def run_process_once(self, command=None):
+                commands.append(command)
+                if len(commands) == 1:
+                    self.recent_lines.append("ERROR: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")
+                    return 1
+                return 0
+
+        task = SSLFallbackTask(
+            message={"id": "job_1"},
+            command=["yt-dlp", "https://example.com/video.mp4"],
+            fallback_commands=[
+                {
+                    "command": ["yt-dlp", "--no-check-certificate", "https://example.com/video.mp4"],
+                    "label": "yt-dlp (no SSL check)",
+                }
+            ],
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            send=sent.append,
+        )
+
+        task.run()
+
+        self.assertEqual(commands[0], ["yt-dlp", "https://example.com/video.mp4"])
+        self.assertEqual(commands[1], ["yt-dlp", "--no-check-certificate", "https://example.com/video.mp4"])
+        self.assertEqual(sent[-1]["type"], "done")
+        self.assertTrue(any(message.get("type") == "progress" and "yt-dlp (no SSL check)" in message.get("line", "") for message in sent))
 
     def test_build_open_path_command_reveals_file_on_windows(self):
         with patch.object(host.os, "name", "nt"):

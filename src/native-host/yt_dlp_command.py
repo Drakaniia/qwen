@@ -63,6 +63,7 @@ def build_yt_dlp_command(
     selected_format=None,
     concurrent_fragments=None,
     aria2_connections=None,
+    nocheckcertificate=False,
 ):
     download_root = str(Path(download_dir))
     output_template = "%(title).180B/%(title).180B [%(id)s].%(ext)s"
@@ -96,6 +97,8 @@ def build_yt_dlp_command(
         "-o",
         output_template,
     ]
+    if nocheckcertificate:
+        command.append("--no-check-certificate")
     append_youtube_ejs_options(command, url)
     append_generic_impersonation_options(command)
 
@@ -149,6 +152,7 @@ def build_formats_command(
     cookies_file=None,
     yt_dlp_command=None,
     ffmpeg_location=None,
+    nocheckcertificate=False,
 ):
     command = [
         *(yt_dlp_command or ["yt-dlp"]),
@@ -159,6 +163,8 @@ def build_formats_command(
         "--no-playlist",
         "--skip-download",
     ]
+    if nocheckcertificate:
+        command.append("--no-check-certificate")
     append_youtube_ejs_options(command, url)
     append_generic_impersonation_options(command)
 

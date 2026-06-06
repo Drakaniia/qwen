@@ -40,9 +40,9 @@ if %ERRORLEVEL%==0 (
 )
 
 echo Installing or updating yt-dlp, impersonation support, and bundled ffmpeg fallback with pip...
-%PYTHON_CMD% -m pip install --upgrade pip "yt-dlp[default,curl-cffi]" imageio-ffmpeg
+%PYTHON_CMD% -m pip install --upgrade pip "yt-dlp[default,curl-cffi]" imageio-ffmpeg certifi
 if %ERRORLEVEL% neq 0 (
-  echo ERROR: pip could not install yt-dlp, curl-cffi impersonation support, and imageio-ffmpeg.
+  echo ERROR: pip could not install yt-dlp, curl-cffi impersonation support, imageio-ffmpeg, and certifi.
   exit /b 1
 )
 

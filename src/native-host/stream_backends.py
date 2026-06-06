@@ -7,7 +7,7 @@ from browser_context import clean_request_headers
 
 STREAM_URL_RE = re.compile(r"(?:\.m3u8|\.mpd|\.ism(?:/Manifest)?)(?:$|[?#])", re.IGNORECASE)
 RETRYABLE_BACKEND_ERROR_RE = re.compile(
-    r"Unsupported URL|did not find any downloadable video formats|No video formats|Requested format is not available|Invalid data found when processing input|HTTP Error\s+(?:401|403|404|410|451)",
+    r"Unsupported URL|did not find any downloadable video formats|No video formats|Requested format is not available|Invalid data found when processing input|HTTP Error\s+(?:401|403|404|410|451)|CERTIFICATE_VERIFY_FAILED",
     re.IGNORECASE,
 )
 

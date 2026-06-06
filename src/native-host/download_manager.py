@@ -101,6 +101,26 @@ def run_download(
         )
 
     fallback_commands = []
+    # Add an SSL fallback that disables certificate verification if the primary attempts fail.
+    fallback_commands.append(
+        {
+            "command": build_yt_dlp_command(
+                url=url,
+                download_dir=download_dir,
+                referer=message.get("pageUrl"),
+                user_agent=message.get("userAgent"),
+                request_headers=request_headers,
+                cookies_file=cookies_file,
+                yt_dlp_command=yt_dlp_command,
+                ffmpeg_location=ffmpeg_location,
+                aria2c_location=None,
+                selected_format=message.get("formatId"),
+                nocheckcertificate=True,
+            ),
+            "label": "yt-dlp (no SSL check)",
+        }
+    )
+
     requested_backend = str(message.get("backend") or "auto").lower()
     if requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"} and n_m3u8dl_re_location and is_stream_manifest_url(url, message.get("format")):
         final_path = stream_output_path(download_dir, message.get("title") or "Video")
