@@ -77,6 +77,16 @@ class HostHelperTests(unittest.TestCase):
         self.assertIn("Referer:https://example.com/watch", command)
         self.assertTrue(any(str(Path(r"C:\Users\Viewer\Downloads")) in part for part in command))
 
+    def test_build_yt_dlp_command_enables_youtube_ejs_remote_components(self):
+        command = host.build_yt_dlp_command(
+            url="https://www.youtube.com/watch?v=Aa89MC8jX2c",
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            yt_dlp_command=["yt-dlp"],
+        )
+
+        self.assertIn("--remote-components", command)
+        self.assertEqual(command[command.index("--remote-components") + 1], "ejs:github")
+
     def test_build_yt_dlp_command_places_video_inside_title_folder(self):
         command = host.build_yt_dlp_command(
             url="https://cdn.example.com/master.m3u8",
@@ -133,7 +143,7 @@ class HostHelperTests(unittest.TestCase):
         format_index = command.index("-f")
         self.assertEqual(command[format_index + 1], "137+bestaudio/best")
 
-    def test_build_yt_dlp_command_defaults_to_full_power_parallel_downloads_when_aria2c_available(self):
+    def test_build_yt_dlp_command_defaults_to_safe_aria2_parallel_downloads_when_available(self):
         command = host.build_yt_dlp_command(
             url="https://cdn.example.com/video.mp4",
             download_dir=Path(r"C:\Users\Viewer\Downloads"),
@@ -144,8 +154,8 @@ class HostHelperTests(unittest.TestCase):
         args = command[command.index("--downloader-args") + 1]
 
         self.assertEqual(command[command.index("--concurrent-fragments") + 1], str(host.MAX_FAST_CONNECTIONS))
-        self.assertIn(f"--max-connection-per-server={host.MAX_FAST_CONNECTIONS}", args)
-        self.assertIn(f"--split={host.MAX_FAST_CONNECTIONS}", args)
+        self.assertIn(f"--max-connection-per-server={host.MAX_ARIA2_CONNECTIONS}", args)
+        self.assertIn(f"--split={host.MAX_ARIA2_CONNECTIONS}", args)
         self.assertIn("--min-split-size=1M", args)
 
     def test_build_yt_dlp_command_uses_aria2c_fast_downloader_when_available(self):
@@ -164,8 +174,8 @@ class HostHelperTests(unittest.TestCase):
 
         args = command[command.index("--downloader-args") + 1]
         self.assertTrue(args.startswith("aria2c:"))
-        self.assertIn("--max-connection-per-server=20", args)
-        self.assertIn("--split=20", args)
+        self.assertIn(f"--max-connection-per-server={host.MAX_ARIA2_CONNECTIONS}", args)
+        self.assertIn(f"--split={host.MAX_ARIA2_CONNECTIONS}", args)
         self.assertIn("--continue=true", args)
 
     def test_build_yt_dlp_command_keeps_hls_and_dash_on_native_fragment_downloader(self):
@@ -201,6 +211,15 @@ class HostHelperTests(unittest.TestCase):
         self.assertIn("Referer:https://example.com/watch", command)
         self.assertIn("--ffmpeg-location", command)
         self.assertEqual(command[-1], "https://cdn.example.com/master.m3u8")
+
+    def test_build_formats_command_enables_youtube_ejs_remote_components(self):
+        command = host.build_formats_command(
+            url="https://www.youtube.com/watch?v=Aa89MC8jX2c",
+            yt_dlp_command=["yt-dlp"],
+        )
+
+        self.assertIn("--remote-components", command)
+        self.assertEqual(command[command.index("--remote-components") + 1], "ejs:github")
 
     def test_build_yt_dlp_command_passes_sanitized_browser_headers(self):
         command = host.build_yt_dlp_command(
@@ -337,6 +356,28 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(format_ids, ["best", "18"])
         self.assertEqual(summarized["formats"][0]["label"], "Best available MP4")
 
+    def test_summarize_formats_does_not_offer_fake_best_when_only_storyboards_exist(self):
+        info = {
+            "title": "Storyboard Only",
+            "formats": [
+                {
+                    "format_id": "sb0",
+                    "ext": "mhtml",
+                    "protocol": "mhtml",
+                    "format_note": "storyboard",
+                    "width": 320,
+                    "height": 180,
+                    "vcodec": "none",
+                    "acodec": "none",
+                }
+            ],
+        }
+
+        summarized = host.summarize_formats(info)
+
+        self.assertEqual(summarized["title"], "Storyboard Only")
+        self.assertEqual(summarized["formats"], [])
+
     @patch("host.shutil.which", return_value=None)
     @patch("host.importlib.util.find_spec")
     def test_resolve_yt_dlp_command_falls_back_to_python_module(self, find_spec, _which):
@@ -377,6 +418,35 @@ class HostHelperTests(unittest.TestCase):
 
         self.assertEqual(length, len(encoded[4:]))
         self.assertEqual(host.read_native_message(io.BytesIO(encoded)), payload)
+
+    def test_handle_choose_folder_sends_selected_path(self):
+        sent = []
+
+        with patch.object(host, "choose_download_folder", return_value=Path(r"C:\Users\Viewer\Videos")), patch.object(
+            host, "send_native_message", side_effect=sent.append
+        ):
+            host.handle_message({"type": "chooseFolder", "id": "folder_1", "initialFolder": r"C:\Users\Viewer\Downloads"})
+
+        self.assertEqual(
+            sent,
+            [
+                {
+                    "type": "folder",
+                    "id": "folder_1",
+                    "path": r"C:\Users\Viewer\Videos",
+                }
+            ],
+        )
+
+    def test_handle_choose_folder_reports_cancel(self):
+        sent = []
+
+        with patch.object(host, "choose_download_folder", return_value=None), patch.object(
+            host, "send_native_message", side_effect=sent.append
+        ):
+            host.handle_message({"type": "chooseFolder", "id": "folder_1"})
+
+        self.assertEqual(sent, [{"type": "folder", "id": "folder_1", "canceled": True}])
 
     def test_parse_progress_line_extracts_percent(self):
         parsed = host.parse_yt_dlp_line("[download]  57.3% of 10.00MiB at 1.2MiB/s ETA 00:03")
