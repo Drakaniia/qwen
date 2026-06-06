@@ -40,6 +40,8 @@ const NATIVE_HEADER_NAMES = new Set([
 ]);
 const HARD_ACCESS_ERROR_RE =
   /\bHTTP Error\s+(?:401|403|404|410|451)\b|\b(?:Unauthorized|Forbidden|Gone|Not Found|Unavailable For Legal Reasons)\b|Invalid data found when processing input/i;
+const RETRYABLE_SOURCE_ERROR_RE =
+  /Unsupported URL|did not find any downloadable video formats|No video formats|Requested format is not available|Invalid data found when processing input/i;
 const BLOCKING_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
 
 let videosByTab = {};
@@ -615,6 +617,9 @@ function handleBeforeRequest(details) {
   if (!isLikelyVideoRequest(details.url, details.type)) {
     return;
   }
+  if (!VIDEO_EXTENSION_RE.test(details.url)) {
+    return;
+  }
 
   addDetectedVideo(details.tabId, {
     url: details.url,
@@ -694,6 +699,17 @@ function progressDetailPatchFromMessage(message) {
 
 function isHardAccessError(error) {
   return HARD_ACCESS_ERROR_RE.test(String(error || ""));
+}
+
+function isRetryableSourceError(error) {
+  const text = String(error || "");
+  return isHardAccessError(text) || RETRYABLE_SOURCE_ERROR_RE.test(text);
+}
+
+function exhaustedSourcesError(error, attemptedUrls) {
+  const count = attemptedUrls && attemptedUrls.size ? attemptedUrls.size : 1;
+  const details = String(error || "The helper could not download this source.").trim();
+  return count > 1 ? `${details}\nTried ${count} sources.` : details;
 }
 
 async function markVideoUrlUnavailable(tabId, url, error) {
@@ -846,15 +862,124 @@ function isExtractorPageVideo(video) {
   return video?.source === "manual-url" || video?.source === "youtube-page" || format === "PAGE" || format === "YOUTUBE";
 }
 
-function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls) {
+function pageFallbackVideoForSource(video, attemptedUrls = new Set()) {
+  const pageUrl = normalizeUrl(video?.pageUrl || video?.frameUrl || "");
+  const sourceUrl = normalizeUrl(video?.url || "");
+  if (!pageUrl || pageUrl === sourceUrl || attemptedUrls.has(pageUrl) || !isDownloadableUrl(pageUrl, "")) {
+    return null;
+  }
+
+  return {
+    ...video,
+    id: hashId(pageUrl),
+    url: pageUrl,
+    format: "PAGE",
+    source: "page-fallback",
+    contentType: "",
+    pageUrl,
+    requestHeaders: [],
+    downloadable: true,
+    sizeBytes: null,
+  };
+}
+
+async function resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls = new Set()) {
+  const url = sourceVideo?.url || sourceVideo?.pageUrl || sourceVideo?.frameUrl || "";
+  if (!url || !isDownloadableUrl(url, "")) {
+    return [];
+  }
+
+  let response = null;
+  try {
+    const requestId = `resolve_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    response = await nativeRequest(
+      {
+        type: "resolveMediaCandidates",
+        id: requestId,
+        url,
+        pageUrl: sourceVideo.pageUrl || sourceVideo.frameUrl || "",
+        userAgent: navigator.userAgent || "",
+        requestHeaders: await nativeRequestHeadersForVideo(url, sourceVideo.pageUrl || sourceVideo.frameUrl || ""),
+      },
+      20000
+    );
+  } catch (_error) {
+    return [];
+  }
+
+  const rawCandidates = Array.isArray(response?.candidates) ? response.candidates : [];
+  const candidates = [];
+  for (const candidate of rawCandidates) {
+    const candidateUrl = normalizeUrl(candidate?.url || "");
+    if (!candidateUrl || attemptedUrls.has(candidateUrl) || !isDownloadableUrl(candidateUrl, candidate?.contentType || "")) {
+      continue;
+    }
+    const detected = await addDetectedVideo(tabId, {
+      url: candidate.url,
+      format: candidate.format || detectFormat(candidate.url, candidate.contentType || ""),
+      source: candidate.source || "resolved-page",
+      contentType: candidate.contentType || "",
+      title: candidate.title || response.title || sourceVideo.title || titleFromUrl(candidate.url),
+      pageUrl: sourceVideo.pageUrl || sourceVideo.url || "",
+      frameUrl: sourceVideo.frameUrl || sourceVideo.pageUrl || "",
+      downloadable: true,
+      duration: sourceVideo.duration || null,
+      width: sourceVideo.width || null,
+      height: sourceVideo.height || null,
+      bitrate: candidate.bitrate || null,
+      thumbnailUrl: sourceVideo.thumbnailUrl || "",
+    });
+    candidates.push({
+      ...(detected || candidate),
+      url: candidate.url,
+      id: detected?.id || candidate.id || hashId(candidate.url),
+      format: candidate.format || detected?.format || detectFormat(candidate.url, candidate.contentType || ""),
+      source: candidate.source || detected?.source || "resolved-page",
+      title: detected?.title || candidate.title || response.title || sourceVideo.title || titleFromUrl(candidate.url),
+      pageUrl: sourceVideo.pageUrl || sourceVideo.url || "",
+      frameUrl: sourceVideo.frameUrl || sourceVideo.pageUrl || "",
+      contentType: candidate.contentType || detected?.contentType || "",
+      downloadable: true,
+      sizeBytes: detected?.sizeBytes || null,
+      backend: "auto",
+      fallbackReason: "resolved-media-candidate",
+      confidence: Number(candidate.confidence || 0),
+    });
+  }
+
+  return candidates.sort((left, right) => Number(right.confidence || 0) - Number(left.confidence || 0));
+}
+
+async function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls) {
   const groupedVideo = findGroupedVideoForAnyVariant(tabId, failedVideo) || failedVideo;
   const variants = downloadableVariants(groupedVideo, attemptedUrls);
   const fallback = variants[0];
-  if (!fallback) {
+  if (fallback) {
+    return {
+      ...fallback,
+      groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
+      groupVariants: variantsForVideo(groupedVideo),
+    };
+  }
+
+  if (isExtractorPageVideo(failedVideo) || failedVideo.source === "iframe-page") {
+    const resolvedCandidates = await resolveMediaCandidatesForSource(tabId, failedVideo, attemptedUrls);
+    if (resolvedCandidates.length) {
+      return {
+        ...resolvedCandidates[0],
+        groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
+        groupVariants: variantsForVideo(groupedVideo),
+      };
+    }
+  }
+
+  const pageFallback = pageFallbackVideoForSource(failedVideo, attemptedUrls);
+  if (!pageFallback) {
     return null;
   }
+
   return {
-    ...fallback,
+    ...pageFallback,
     groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
     groupVariants: variantsForVideo(groupedVideo),
   };
@@ -884,7 +1009,7 @@ function findBlockingDownloadJobForVideo(video, selectedVideo) {
   });
 }
 
-async function startNativeDownload(tabId, videoId, formatId = "best", variantId = "") {
+async function startNativeDownload(tabId, videoId, formatId = "best", variantId = "", backend = "auto") {
   await ensureStateLoaded();
   const videos = await getTabVideos(tabId);
   const video = videos.find(
@@ -911,8 +1036,9 @@ async function startNativeDownload(tabId, videoId, formatId = "best", variantId 
 
   return startNativeDownloadFromVideo(
     tabId,
-    { ...selectedVideo, groupId: video.id, groupVariants: variantsForVideo(video) },
-    formatId
+    { ...selectedVideo, groupId: video.id, groupVariants: variantsForVideo(video), backend: backend || "auto" },
+    formatId,
+    { backend: backend || "auto" }
   );
 }
 
@@ -928,6 +1054,7 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
     (await nativeRequestHeadersForVideo(video.url, pageUrl));
   const attemptedUrls = new Set((options.attemptedUrls || []).map((url) => normalizeUrl(url)));
   attemptedUrls.add(normalizeUrl(video.url || ""));
+  const backend = options.backend || video.backend || "auto";
   let port;
   let finished = false;
 
@@ -943,6 +1070,7 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
     downloadFolder: settings.downloadFolder || "",
     requestHeaders: requestHeaders,
     pageUrl,
+    backend,
     filepath: existingJob.filepath || "",
     artifactRoot: existingJob.artifactRoot || "",
     status: "connecting",
@@ -1058,14 +1186,16 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
       try {
         port.disconnect();
       } catch (_error) {}
-      if (isHardAccessError(errorText)) {
+      if (isRetryableSourceError(errorText)) {
         void (async () => {
-          await markVideoUrlUnavailable(tabId, video.url, errorText);
-          const fallbackVideo = fallbackVideoForDownload(tabId, video, attemptedUrls);
+          if (isHardAccessError(errorText)) {
+            await markVideoUrlUnavailable(tabId, video.url, errorText);
+          }
+          const fallbackVideo = await fallbackVideoForDownload(tabId, video, attemptedUrls);
           if (!fallbackVideo) {
             updateDownload(jobId, {
               status: "error",
-              error: errorText,
+              error: exhaustedSourcesError(errorText, attemptedUrls),
               ...artifactPatch,
             });
             return;
@@ -1080,6 +1210,7 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
           await startNativeDownloadFromVideo(tabId, fallbackVideo, "best", {
             jobId,
             attemptedUrls: Array.from(attemptedUrls),
+            backend: fallbackVideo.backend || backend,
           });
         })();
         return;
@@ -1116,6 +1247,7 @@ async function startNativeDownloadFromVideo(tabId, video, formatId = "best", opt
     requestHeaders,
     downloadFolder: settings.downloadFolder || "",
     formatId: formatId || "best",
+    backend,
   });
 
   updateDownload(jobId, {
@@ -1136,7 +1268,7 @@ async function startNativeDownloadForUrl(tabId, input) {
     throw new Error("That media was filtered as an ad, GIF-style clip, or unsupported URL.");
   }
 
-  return startNativeDownload(tabId, video.id, input.formatId || "best", input.variantId || "");
+  return startNativeDownload(tabId, video.id, input.formatId || "best", input.variantId || "", input.backend || "auto");
 }
 
 async function getBestDownloadableVideo(tabId) {
@@ -1162,7 +1294,7 @@ function getDownloadJob(jobId) {
 }
 
 function videoFromDownloadJob(job) {
-  return {
+  const video = {
     id: job.videoId || hashId(job.url),
     url: job.url,
     format: job.format || detectFormat(job.url),
@@ -1171,6 +1303,10 @@ function videoFromDownloadJob(job) {
     requestHeaders: job.requestHeaders || [],
     downloadable: true,
   };
+  if (videoFilters.isBlockedVideoUrl(video.url, job.contentType || "")) {
+    return pageFallbackVideoForSource(video, new Set([normalizeUrl(video.url || "")])) || video;
+  }
+  return video;
 }
 
 function controlActiveDownload(jobId, nativeType) {
@@ -1428,6 +1564,8 @@ function detectedVariantOption(variant) {
     id: `variant:${variant.id}`,
     formatId: "best",
     variantId: variant.id,
+    backend: variant.backend || "auto",
+    fallbackReason: variant.fallbackReason || "",
     optionType: "detected-source",
     label: `${quality} ${ext}`.trim(),
     ext,
@@ -1449,7 +1587,9 @@ function normalizeNativeFormatOption(format, video) {
     ...format,
     id: format.id || "best",
     formatId: format.id || "best",
-    variantId: "",
+    variantId: video.source === "page-fallback" ? video.id || "" : "",
+    backend: format.backend || video.backend || "auto",
+    fallbackReason: format.fallbackReason || "",
     optionType: "native-format",
     ext,
     source: format.source || `yt-dlp / ${sourceHost(video.url) || "detected source"}`,
@@ -1508,25 +1648,71 @@ async function ensureComparisonSizes(tabId, video) {
   return video;
 }
 
+async function requestNativeFormats(video) {
+  const requestId = `formats_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  return nativeRequest({
+    type: "formats",
+    id: requestId,
+    url: video.url,
+    pageUrl: video.pageUrl || "",
+    userAgent: navigator.userAgent || "",
+    requestHeaders: await nativeRequestHeadersForVideo(video.url, video.pageUrl || ""),
+  });
+}
+
 async function getNativeFormatsForVideo(tabId, video) {
   await ensureStateLoaded();
   const sizedVideo = await ensureComparisonSizes(tabId, video);
   const lookupVideo = preferredNativeVideo(sizedVideo);
-  const requestId = `formats_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  let formatLookupVideo = lookupVideo;
   let response = null;
   let nativeError = "";
+  let firstNativeError = "";
 
   try {
-    response = await nativeRequest({
-      type: "formats",
-      id: requestId,
-      url: lookupVideo.url,
-      pageUrl: lookupVideo.pageUrl || "",
-      userAgent: navigator.userAgent || "",
-      requestHeaders: await nativeRequestHeadersForVideo(lookupVideo.url, lookupVideo.pageUrl || ""),
-    });
+    response = await requestNativeFormats(formatLookupVideo);
   } catch (error) {
     nativeError = error.message || String(error);
+    firstNativeError = nativeError;
+    const pageFallback = isHardAccessError(nativeError)
+      ? pageFallbackVideoForSource(lookupVideo, new Set([normalizeUrl(lookupVideo.url || "")]))
+      : null;
+    if (pageFallback) {
+      try {
+        response = await requestNativeFormats(pageFallback);
+        formatLookupVideo =
+          (await addDetectedVideo(tabId, {
+            ...pageFallback,
+            title: pageFallback.title || lookupVideo.title || sizedVideo.title,
+            duration: pageFallback.duration || lookupVideo.duration || sizedVideo.duration,
+            width: pageFallback.width || lookupVideo.width || sizedVideo.width,
+            height: pageFallback.height || lookupVideo.height || sizedVideo.height,
+            bitrate: pageFallback.bitrate || lookupVideo.bitrate || sizedVideo.bitrate,
+            thumbnailUrl: pageFallback.thumbnailUrl || lookupVideo.thumbnailUrl || sizedVideo.thumbnailUrl,
+            downloadable: true,
+          })) || pageFallback;
+        nativeError = "";
+      } catch (pageError) {
+        nativeError = pageError.message || String(pageError);
+      }
+    }
+    if (!response && isRetryableSourceError(nativeError)) {
+      const resolvedCandidates = await resolveMediaCandidatesForSource(
+        tabId,
+        pageFallback || lookupVideo,
+        new Set([normalizeUrl(lookupVideo.url || "")])
+      );
+      for (const candidate of resolvedCandidates) {
+        try {
+          response = await requestNativeFormats(candidate);
+          formatLookupVideo = candidate;
+          nativeError = "";
+          break;
+        } catch (candidateError) {
+          nativeError = candidateError.message || String(candidateError);
+        }
+      }
+    }
   }
 
   if (response && response.title) {
@@ -1535,15 +1721,28 @@ async function getNativeFormatsForVideo(tabId, video) {
 
   const nativeFormats =
     response && response.formats && response.formats.length
-      ? response.formats.map((format) => normalizeNativeFormatOption(format, lookupVideo))
+      ? response.formats.map((format) => normalizeNativeFormatOption(format, formatLookupVideo))
       : [];
+  const firstHardNativeError = firstNativeError && isHardAccessError(firstNativeError);
   const hardNativeError = nativeError && !nativeFormats.length && isHardAccessError(nativeError);
-  if (hardNativeError) {
-    await markVideoUrlUnavailable(tabId, lookupVideo.url, nativeError);
+  if (firstHardNativeError) {
+    await markVideoUrlUnavailable(tabId, lookupVideo.url, firstNativeError);
+  } else if (hardNativeError) {
+    await markVideoUrlUnavailable(tabId, formatLookupVideo.url, nativeError);
   }
 
-  const refreshedVideo = findGroupedVideoForAnyVariant(tabId, sizedVideo) || sizedVideo;
-  const excludedUrls = hardNativeError ? new Set([normalizeUrl(lookupVideo.url || "")]) : new Set();
+  const refreshedVideo =
+    findGroupedVideoForAnyVariant(tabId, formatLookupVideo) ||
+    findGroupedVideoForAnyVariant(tabId, sizedVideo) ||
+    formatLookupVideo ||
+    sizedVideo;
+  const excludedUrls = new Set();
+  if (firstHardNativeError) {
+    excludedUrls.add(normalizeUrl(lookupVideo.url || ""));
+  }
+  if (hardNativeError) {
+    excludedUrls.add(normalizeUrl(formatLookupVideo.url || ""));
+  }
 
   const sourceFormats = nativeFormats.length
     ? []
@@ -1562,6 +1761,7 @@ async function getNativeFormatsForVideo(tabId, video) {
   const formats = nativeFormats.length ? nativeFormats : sourceFormats;
 
   return {
+    videoId: refreshedVideo.id || formatLookupVideo.id || lookupVideo.id,
     title: (response && response.title) || refreshedVideo.title || lookupVideo.title || "Video",
     formats: formats.length
       ? formats
@@ -1682,7 +1882,8 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
           tabId,
           message.videoId,
           message.formatId || "best",
-          message.variantId || ""
+          message.variantId || "",
+          message.backend || "auto"
         )),
       };
     }
