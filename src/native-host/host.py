@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 import importlib.util
-import json
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from urllib.request import urlopen
 
+import download_manager as _download_manager
+import format_list as _format_list
+import media_resolver as _media_resolver
+import stream_backends as _stream_backends
 import yt_dlp_adapter as _yt_dlp_adapter
 from artifacts import (
     build_open_path_command,
@@ -30,6 +34,12 @@ from browser_context import (
     write_cookie_file_from_headers,
 )
 from download_task import DownloadTask
+from folder_picker import (
+    choose_download_folder,
+    choose_download_folder_with_powershell,
+    choose_download_folder_with_tk,
+    initial_folder_for_picker,
+)
 from native_paths import default_download_dir, resolve_download_dir, sanitize_filename, validate_download_url
 from native_protocol import (
     HostError,
@@ -38,6 +48,14 @@ from native_protocol import (
     read_native_message,
     send_native_message,
 )
+from media_resolver import extract_media_candidates_from_text, resolve_media_candidates
+from stream_backends import (
+    build_n_m3u8dl_re_command,
+    build_streamlink_command,
+    is_retryable_backend_error,
+    is_stream_manifest_url,
+    stream_output_path,
+)
 from yt_dlp_adapter import (
     DEFAULT_ARIA2_CONNECTIONS,
     DEFAULT_CONCURRENT_FRAGMENTS,
@@ -45,6 +63,7 @@ from yt_dlp_adapter import (
     FILEPATH_MARKER,
     MAX_ARIA2_CONNECTIONS,
     MAX_FAST_CONNECTIONS,
+    append_youtube_ejs_options,
     bounded_int,
     build_formats_command,
     build_yt_dlp_command,
@@ -53,25 +72,31 @@ from yt_dlp_adapter import (
     format_label,
     format_selector_for_choice,
     format_sort_key,
+    has_n_m3u8dl_re,
+    has_streamlink,
     has_yt_dlp,
     human_size,
     is_aria2_access_refusal,
     is_segmented_stream_format,
+    is_youtube_url,
     iter_process_output_lines,
     latest_output_line,
     parse_aria2_progress_details,
     parse_yt_dlp_line,
     parse_yt_dlp_progress_details,
     require_executable,
+    resolve_n_m3u8dl_re_location,
+    resolve_streamlink_command,
     summarize_formats,
     terminate_process_tree,
 )
 
 
 HOST_VERSION = "1.0.0"
-ACTIVE_DOWNLOADS = {}
-ACTIVE_DOWNLOADS_LOCK = None
+ACTIVE_DOWNLOADS = _download_manager.ACTIVE_DOWNLOADS
+ACTIVE_DOWNLOADS_LOCK = _download_manager.ACTIVE_DOWNLOADS_LOCK
 LOCAL_ARIA2C = _yt_dlp_adapter.LOCAL_ARIA2C
+LOCAL_N_M3U8DL_RE = _yt_dlp_adapter.LOCAL_N_M3U8DL_RE
 
 
 def get_imageio_ffmpeg_exe():
@@ -83,270 +108,67 @@ def resolve_yt_dlp_command():
 
 
 def resolve_ffmpeg_location():
-    executable = shutil.which("ffmpeg")
-    if executable:
-        return executable
-
-    imageio_ffmpeg = get_imageio_ffmpeg_exe()
-    if imageio_ffmpeg and Path(imageio_ffmpeg).exists():
-        return imageio_ffmpeg
-
-    raise HostError("ffmpeg is not installed. Run scripts\\install.bat, then restart your browser.")
+    return _yt_dlp_adapter.resolve_ffmpeg_location(imageio_resolver=get_imageio_ffmpeg_exe)
 
 
 def resolve_aria2c_location():
-    original = _yt_dlp_adapter.LOCAL_ARIA2C
-    _yt_dlp_adapter.LOCAL_ARIA2C = LOCAL_ARIA2C
-    try:
-        return _yt_dlp_adapter.resolve_aria2c_location()
-    finally:
-        _yt_dlp_adapter.LOCAL_ARIA2C = original
+    return _yt_dlp_adapter.resolve_aria2c_location(local_aria2c=LOCAL_ARIA2C)
+
+
+def resolve_n_m3u8dl_re_location():
+    return _yt_dlp_adapter.resolve_n_m3u8dl_re_location(local_n_m3u8dl_re=LOCAL_N_M3U8DL_RE)
+
+
+def resolve_streamlink_command():
+    return _yt_dlp_adapter.resolve_streamlink_command()
 
 
 def has_ffmpeg():
-    imageio_ffmpeg = get_imageio_ffmpeg_exe()
-    return bool(shutil.which("ffmpeg") or (imageio_ffmpeg and Path(imageio_ffmpeg).exists()))
+    return _yt_dlp_adapter.has_ffmpeg(imageio_resolver=get_imageio_ffmpeg_exe)
 
 
 def has_aria2c():
     return bool(resolve_aria2c_location())
 
 
-def _active_downloads_lock():
-    global ACTIVE_DOWNLOADS_LOCK
-    if ACTIVE_DOWNLOADS_LOCK is None:
-        import threading
+def has_n_m3u8dl_re():
+    return bool(resolve_n_m3u8dl_re_location())
 
-        ACTIVE_DOWNLOADS_LOCK = threading.Lock()
-    return ACTIVE_DOWNLOADS_LOCK
+
+def has_streamlink():
+    return bool(resolve_streamlink_command())
+
+
+def _active_downloads_lock():
+    return _download_manager._active_downloads_lock()
 
 
 def control_download(message, action):
-    request_id = str(message.get("id") or message.get("requestId") or "")
-    with _active_downloads_lock():
-        task = ACTIVE_DOWNLOADS.get(request_id)
-
-    if not task:
-        raise HostError("That download is no longer active. Use Retry to start it again.")
-
-    response = getattr(task, action)()
-    send_native_message(response)
+    return _download_manager.control_download(message, action, send=send_native_message)
 
 
 def cancel_active_downloads():
-    with _active_downloads_lock():
-        tasks = list(ACTIVE_DOWNLOADS.values())
-    for task in tasks:
-        task.cancel()
+    return _download_manager.cancel_active_downloads()
 
 
 def run_download(message):
-    request_id = str(message.get("id") or message.get("requestId") or "")
-    url = str(message.get("url") or "").strip()
-    validate_download_url(url)
-
-    yt_dlp_command = resolve_yt_dlp_command()
-    ffmpeg_location = resolve_ffmpeg_location()
-    aria2c_location = resolve_aria2c_location()
-
-    download_dir = resolve_download_dir(message.get("downloadFolder"))
-    request_headers = message.get("requestHeaders")
-    cookies_file = write_cookie_file_from_headers(url, request_headers)
-    temp_files = [cookies_file] if cookies_file else []
-    command = build_yt_dlp_command(
-        url=url,
-        download_dir=download_dir,
-        referer=message.get("pageUrl"),
-        user_agent=message.get("userAgent"),
-        request_headers=request_headers,
-        cookies_file=cookies_file,
-        yt_dlp_command=yt_dlp_command,
-        ffmpeg_location=ffmpeg_location,
-        aria2c_location=aria2c_location,
-        selected_format=message.get("formatId"),
+    return _download_manager.run_download(
+        message,
+        yt_dlp_command_resolver=resolve_yt_dlp_command,
+        ffmpeg_location_resolver=resolve_ffmpeg_location,
+        aria2c_location_resolver=resolve_aria2c_location,
+        n_m3u8dl_re_location_resolver=resolve_n_m3u8dl_re_location,
+        streamlink_command_resolver=resolve_streamlink_command,
     )
-    fallback_command = None
-    if aria2c_location:
-        fallback_command = build_yt_dlp_command(
-            url=url,
-            download_dir=download_dir,
-            referer=message.get("pageUrl"),
-            user_agent=message.get("userAgent"),
-            request_headers=request_headers,
-            cookies_file=cookies_file,
-            yt_dlp_command=yt_dlp_command,
-            ffmpeg_location=ffmpeg_location,
-            aria2c_location=None,
-            selected_format=message.get("formatId"),
-        )
-
-    task = DownloadTask(
-        message=message,
-        command=command,
-        fallback_command=fallback_command,
-        download_dir=download_dir,
-        temp_files=temp_files,
-    )
-    with _active_downloads_lock():
-        ACTIVE_DOWNLOADS[request_id] = task
-    task.start()
 
 
 def run_format_list(message):
-    request_id = str(message.get("id") or message.get("requestId") or "")
-    url = str(message.get("url") or "").strip()
-    validate_download_url(url)
-
-    request_headers = message.get("requestHeaders")
-    cookies_file = write_cookie_file_from_headers(url, request_headers)
-    temp_files = [cookies_file] if cookies_file else []
-    creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-    try:
-        command = build_formats_command(
-            url=url,
-            referer=message.get("pageUrl"),
-            user_agent=message.get("userAgent"),
-            request_headers=request_headers,
-            cookies_file=cookies_file,
-            yt_dlp_command=resolve_yt_dlp_command(),
-            ffmpeg_location=resolve_ffmpeg_location(),
-        )
-        completed = subprocess.run(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=45,
-            creationflags=creationflags,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise HostError("Timed out while asking yt-dlp for available qualities.") from exc
-    except OSError as exc:
-        raise HostError(f"Could not start yt-dlp: {exc}") from exc
-    finally:
-        remove_temp_files(temp_files)
-
-    if completed.returncode != 0:
-        details = (completed.stderr or completed.stdout or "").strip()
-        raise HostError(details or f"yt-dlp exited with status {completed.returncode}.")
-
-    try:
-        info = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        raise HostError("yt-dlp returned invalid format metadata.") from exc
-
-    send_native_message({"type": "formats", "id": request_id, **summarize_formats(info)})
-
-
-def initial_folder_for_picker(folder):
-    candidates = []
-    if folder:
-        candidates.append(Path(os.path.expandvars(os.path.expanduser(str(folder)))))
-    candidates.append(default_download_dir())
-    candidates.append(Path.home())
-
-    for candidate in candidates:
-        try:
-            resolved = candidate.resolve()
-        except OSError:
-            continue
-        if resolved.exists() and resolved.is_dir():
-            return str(resolved)
-    return ""
-
-
-def choose_download_folder_with_powershell(initial_folder):
-    powershell = shutil.which("powershell.exe") or shutil.which("powershell")
-    if not powershell:
-        raise HostError("PowerShell is not available.")
-
-    script = """
-$ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Windows.Forms
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = 'Choose Qwin download folder'
-$dialog.ShowNewFolderButton = $true
-$initial = [Environment]::GetEnvironmentVariable('QWIN_INITIAL_FOLDER')
-if ($initial -and [System.IO.Directory]::Exists($initial)) {
-  $dialog.SelectedPath = $initial
-}
-$result = $dialog.ShowDialog()
-if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-  $utf8 = New-Object System.Text.UTF8Encoding $false
-  [Console]::OutputEncoding = $utf8
-  [Console]::WriteLine($dialog.SelectedPath)
-}
-""".strip()
-    env = {**os.environ, "QWIN_INITIAL_FOLDER": initial_folder or ""}
-    try:
-        completed = subprocess.run(
-            [powershell, "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=env,
-            creationflags=creation_flags(),
-        )
-    except OSError as exc:
-        raise HostError(f"Could not start the Windows folder picker: {exc}") from exc
-
-    if completed.returncode != 0:
-        details = (completed.stderr or completed.stdout or "").strip()
-        raise HostError(details or f"Windows folder picker exited with status {completed.returncode}.")
-
-    selected = (completed.stdout or "").strip()
-    return Path(selected).resolve() if selected else None
-
-
-def choose_download_folder_with_tk(initial_folder):
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-    except Exception as exc:
-        raise HostError(f"Tk folder picker is not available: {exc}") from exc
-
-    root = None
-    try:
-        root = tk.Tk()
-        root.withdraw()
-        try:
-            root.attributes("-topmost", True)
-        except Exception:
-            pass
-        selected = filedialog.askdirectory(
-            parent=root,
-            title="Choose Qwin download folder",
-            initialdir=initial_folder or None,
-            mustexist=False,
-        )
-        return Path(selected).resolve() if selected else None
-    except Exception as exc:
-        raise HostError(f"Could not open the folder picker: {exc}") from exc
-    finally:
-        if root is not None:
-            try:
-                root.destroy()
-            except Exception:
-                pass
-
-
-def choose_download_folder(initial_folder=None):
-    initial = initial_folder_for_picker(initial_folder)
-    if os.name == "nt":
-        try:
-            return choose_download_folder_with_powershell(initial)
-        except HostError as powershell_error:
-            try:
-                return choose_download_folder_with_tk(initial)
-            except HostError as tk_error:
-                raise HostError(f"Could not open the folder picker: {powershell_error}; {tk_error}") from tk_error
-    return choose_download_folder_with_tk(initial)
+    return _format_list.run_format_list(
+        message,
+        send=send_native_message,
+        yt_dlp_command_resolver=resolve_yt_dlp_command,
+        ffmpeg_location_resolver=resolve_ffmpeg_location,
+    )
 
 
 def run_choose_folder(message):
@@ -358,11 +180,17 @@ def run_choose_folder(message):
         send_native_message({"type": "folder", "id": request_id, "canceled": True})
 
 
+def run_resolve_media_candidates(message):
+    return _media_resolver.resolve_media_candidates(message, send=send_native_message, urlopen_fn=urlopen)
+
+
 def dependency_status():
     return {
         "ytDlp": has_yt_dlp(),
         "ffmpeg": has_ffmpeg(),
         "aria2c": has_aria2c(),
+        "nM3u8DlRe": has_n_m3u8dl_re(),
+        "streamlink": has_streamlink(),
     }
 
 
@@ -405,6 +233,10 @@ def handle_message(message):
         run_format_list(message)
         return
 
+    if message_type == "resolveMediaCandidates":
+        run_resolve_media_candidates(message)
+        return
+
     if message_type == "chooseFolder":
         run_choose_folder(message)
         return
@@ -418,7 +250,6 @@ def main():
         try:
             message = read_native_message()
         except EOFError:
-            cancel_active_downloads()
             return 0
         except Exception as exc:
             print(f"Native messaging protocol error: {exc}", file=sys.stderr)

@@ -8,10 +8,11 @@ Qwin can detect:
 - HLS M3U8 playlists and DASH MPD manifests seen in network requests.
 - HTML5 `<video>` and `<source>` elements in the page DOM.
 - Video URLs loaded in iframes where the extension is allowed to inject content scripts.
+- Reusable MP4/WebM/M3U8/MPD/ISM URLs embedded in visible player pages or inline player configuration scripts.
 - Video-like media requests based on response `Content-Type` and common video CDN URL patterns.
 - Real HTML5 video players on the page. A small in-player Download overlay appears when the video area looks like a real player instead of a tiny clip or GIF-style animation.
 - Real YouTube video pages from the visible YouTube player. Qwin sends the YouTube watch/embed/shorts page URL to `yt-dlp`, then the helper saves the selected version as MP4.
-- Manual video page links pasted in settings. This is a fallback for extractor-supported sites such as YouTube, Instagram, TikTok, X, Threads, and other URLs that `yt-dlp` can access.
+- Manual video page links pasted in settings. This is a fallback for extractor-supported sites such as YouTube, Instagram, TikTok, X, Threads, and other URLs the helper tools can access.
 - Video titles from page metadata, video element labels, `yt-dlp` metadata, or filename fallback.
 
 The extension filters obvious ad/tracker media URLs, GIF/GIFV previews, common GIF-preview hosts such as Giphy and Tenor, tiny hidden media, short muted looping autoplay clips, and HLS/DASH fragment URLs such as `.ts`, `.m4s`, `segment-*`, `chunk-*`, and `frag-*`. Download the M3U8/MPD playlist or master URL, not individual segment URLs.
@@ -33,7 +34,7 @@ The extension filters obvious ad/tracker media URLs, GIF/GIFV previews, common G
 3. Click `Download link`.
 4. Choose a quality when `yt-dlp` returns available versions.
 
-This fallback sends the pasted URL directly to `yt-dlp`. It supports any site that the installed `yt-dlp` version supports and can access from your machine. It does not make unsupported, private, DRM-protected, or blocked videos downloadable.
+This fallback sends the pasted URL to `yt-dlp` first. For stream manifest URLs, the helper can also try N_m3u8DL-RE or Streamlink when those tools are installed. It does not make unsupported, private, DRM-protected, or blocked videos downloadable.
 
 ## Download Management
 
@@ -67,12 +68,13 @@ The native helper uses:
 
 - Concurrent HLS/DASH fragments through `yt-dlp --concurrent-fragments`.
 - Optional `aria2c` segmented external downloads when `aria2c` is available.
+- Optional N_m3u8DL-RE or Streamlink fallback downloads for accessible HLS, DASH, or Smooth Streaming manifests when `yt-dlp` cannot use a stream source.
 
 Fast mode uses up to 32 yt-dlp fragments and up to 16 `aria2c` byte-range connections by default. For direct MP4/WebM downloads, `aria2c` splits the file into byte ranges and downloads those ranges in parallel before assembling the final file.
 
 This can improve speed on direct MP4/WebM, HLS, and DASH sources that allow multiple connections. It cannot force a slow server, overloaded CDN, DRM-protected stream, or rate-limited site to send data faster.
 
-If the popup shows `fast mode`, `aria2c` is available. If it shows `standard mode`, downloads still work but segmented `aria2c` acceleration is unavailable.
+If the popup shows `fast mode`, `aria2c` is available. If it shows `stream fallbacks`, N_m3u8DL-RE or Streamlink is available. If it shows `yt-dlp only`, downloads still work but stream-tool fallbacks are unavailable.
 
 ## Honest Limits
 
@@ -80,8 +82,8 @@ No browser extension can guarantee downloading any video on any website. This im
 
 - DRM or encrypted media extensions.
 - Paid-access controls.
-- Private authorization that `yt-dlp` cannot reproduce.
+- Private authorization that the helper cannot reproduce.
 - Site-specific anti-download systems.
 - Browser-only `blob:`, `data:`, or local URLs unless the extension also detects the underlying MP4, WebM, M3U8, MPD, supported extractor page URL, or you paste a supported page URL manually.
 
-Some sites require account cookies, headers, or tokens that are not available to this helper. In those cases `yt-dlp` may return an error even though the video plays in the browser.
+Some sites require account cookies, headers, or tokens that are not available to this helper. In those cases the helper may return an error even though the video plays in the browser.

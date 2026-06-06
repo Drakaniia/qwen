@@ -11,7 +11,12 @@ const TAB_ID = 42;
 const PAGE_URL = "https://example.com/watch/movie";
 const STALE_URL = "https://cdn.example.com/media/movie.mp4?token=gone";
 const FRESH_URL = "https://cdn.example.com/media/movie.mp4?token=fresh";
+const HINT_ONLY_URL = "https://cdn.example.com/player/hls/provider?id=123";
+const PROVIDER_ASSET_URL = "https://george.xtremestream.xyz/player/assets/jwplayer-8.34.0/provider.hlsjs";
+const PLAYER_URL = "https://george.xtremestream.xyz/player/index.php?data=40542c0b28735b6a870c5cf8bc13269d";
+const PLAYER_MANIFEST_URL = "https://george.xtremestream.xyz/hls/40542c0b28735b6a870c5cf8bc13269d/master.m3u8";
 const ACCESS_ERROR = "ERROR: [generic] Unable to download webpage: HTTP Error 410: Gone";
+const UNSUPPORTED_URL_ERROR = `ERROR: Unsupported URL: ${PLAYER_URL}`;
 const INVALID_MEDIA_ERROR = [
   "WARNING: [generic] Falling back on generic information extractor",
   "WARNING: [generic] URL could be a direct video link, returning it as such.",
@@ -28,9 +33,9 @@ function createEvent() {
   };
 }
 
-function createBackgroundHarness(nativeHandler) {
+function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
   let runtimeListener = null;
-  const storageState = {};
+  const storageState = { ...initialStorageState };
   const nativePorts = [];
   const runtimeMessages = [];
 
@@ -166,7 +171,7 @@ function createBackgroundHarness(nativeHandler) {
     });
   }
 
-  return { nativePorts, runtimeMessages, sendRuntimeMessage };
+  return { chrome, nativePorts, runtimeMessages, sendRuntimeMessage };
 }
 
 async function addGroupedVideos(harness) {
@@ -204,6 +209,65 @@ async function addGroupedVideos(harness) {
   return listResponse.videos[0];
 }
 
+async function addSingleDetectedVideo(harness, overrides = {}) {
+  await harness.sendRuntimeMessage({
+    type: "contentDetectedVideos",
+    videos: [
+      {
+        url: STALE_URL,
+        title: "Movie",
+        pageUrl: PAGE_URL,
+        format: "MP4",
+        duration: 420,
+        height: 720,
+        sizeBytes: 100_000_000,
+        downloadable: true,
+        ...overrides,
+      },
+    ],
+  });
+
+  const listResponse = await harness.sendRuntimeMessage({ type: "getVideos", tabId: TAB_ID });
+  assert.equal(listResponse.ok, true);
+  assert.equal(listResponse.videos.length, 1);
+  return listResponse.videos[0];
+}
+
+async function testBeforeRequestDoesNotListHintOnlyUrlBeforeHeadersConfirmMedia() {
+  const harness = createBackgroundHarness();
+  const beforeRequest = harness.chrome.webRequest.onBeforeRequest.listeners[0];
+  const headersReceived = harness.chrome.webRequest.onHeadersReceived.listeners[0];
+
+  beforeRequest({
+    tabId: TAB_ID,
+    type: "media",
+    url: HINT_ONLY_URL,
+    documentUrl: PAGE_URL,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  let response = await harness.sendRuntimeMessage({ type: "getVideos", tabId: TAB_ID });
+  assert.equal(response.ok, true);
+  assert.equal(response.videos.length, 0);
+
+  headersReceived({
+    tabId: TAB_ID,
+    type: "media",
+    url: HINT_ONLY_URL,
+    documentUrl: PAGE_URL,
+    responseHeaders: [
+      { name: "Content-Type", value: "video/mp4" },
+      { name: "Content-Length", value: "100000000" },
+    ],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  response = await harness.sendRuntimeMessage({ type: "getVideos", tabId: TAB_ID });
+  assert.equal(response.ok, true);
+  assert.equal(response.videos.length, 1);
+  assert.equal(response.videos[0].url, HINT_ONLY_URL);
+}
+
 async function testFormatLookupFallsBackToFreshDetectedVariant() {
   const harness = createBackgroundHarness((message, native) => {
     if (message.type === "formats") {
@@ -223,6 +287,69 @@ async function testFormatLookupFallsBackToFreshDetectedVariant() {
   assert.equal(response.formats.length, 1);
   assert.equal(response.formats[0].variantId, groupedVideo.variants[1].id);
   assert.equal(response.formats[0].sourceUrl, FRESH_URL);
+}
+
+async function testFormatLookupRetriesPlayerPageAfterInvalidDetectedSource() {
+  const formatMessages = [];
+  const downloadMessages = [];
+  const harness = createBackgroundHarness((message, native) => {
+    if (message.type === "download") {
+      downloadMessages.push(message);
+      return;
+    }
+    if (message.type !== "formats") {
+      return;
+    }
+    formatMessages.push(message);
+    if (message.url === STALE_URL) {
+      native.emit({ type: "error", id: message.id, error: INVALID_MEDIA_ERROR });
+      return;
+    }
+    if (message.url === PAGE_URL) {
+      native.emit({
+        type: "formats",
+        id: message.id,
+        title: "Movie From Player Page",
+        formats: [
+          {
+            id: "best",
+            label: "Best available MP4",
+            ext: "mp4",
+            note: "Recommended",
+          },
+        ],
+      });
+    }
+  });
+  const video = await addSingleDetectedVideo(harness);
+
+  const response = await harness.sendRuntimeMessage({
+    type: "getVideoFormats",
+    tabId: TAB_ID,
+    videoId: video.id,
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(formatMessages.length, 2);
+  assert.equal(formatMessages[0].url, STALE_URL);
+  assert.equal(formatMessages[1].url, PAGE_URL);
+  assert.equal(response.title, "Movie From Player Page");
+  assert.equal(response.formats[0].source, "yt-dlp / example.com");
+  assert.ok(response.videoId);
+  assert.notEqual(response.formats[0].variantId, "");
+
+  const downloadResponse = await harness.sendRuntimeMessage({
+    type: "downloadVideo",
+    tabId: TAB_ID,
+    videoId: response.videoId,
+    formatId: response.formats[0].formatId,
+    variantId: response.formats[0].variantId,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(downloadResponse.ok, true);
+  assert.equal(downloadMessages.length, 1);
+  assert.equal(downloadMessages[0].url, PAGE_URL);
 }
 
 async function testDownloadRetriesFreshVariantAfterHardAccessError() {
@@ -281,6 +408,242 @@ async function testDownloadRetriesFreshVariantAfterInvalidMediaSourceError() {
   assert.equal(downloadMessages[1].url, FRESH_URL);
   assert.equal(downloadMessages[1].id, downloadMessages[0].id);
   assert.equal(downloadMessages[1].formatId, "best");
+}
+
+async function testDownloadRetriesPlayerPageAfterInvalidDetectedSource() {
+  const downloadMessages = [];
+  const harness = createBackgroundHarness((message, native) => {
+    if (message.type !== "download") {
+      return;
+    }
+    downloadMessages.push(message);
+    if (message.url === STALE_URL) {
+      native.emit({ type: "error", id: message.id, error: INVALID_MEDIA_ERROR });
+    }
+  });
+  const video = await addSingleDetectedVideo(harness);
+
+  const response = await harness.sendRuntimeMessage({
+    type: "downloadVideo",
+    tabId: TAB_ID,
+    videoId: video.id,
+    formatId: "best",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(response.ok, true);
+  assert.equal(downloadMessages.length, 2);
+  assert.equal(downloadMessages[0].url, STALE_URL);
+  assert.equal(downloadMessages[1].url, PAGE_URL);
+  assert.equal(downloadMessages[1].format, "PAGE");
+  assert.equal(downloadMessages[1].id, downloadMessages[0].id);
+}
+
+async function testDownloadResolvesMediaCandidatesAfterUnsupportedPlayerPage() {
+  const nativeMessages = [];
+  const downloadMessages = [];
+  const harness = createBackgroundHarness((message, native) => {
+    nativeMessages.push(message);
+    if (message.type === "resolveMediaCandidates") {
+      native.emit({
+        type: "mediaCandidates",
+        id: message.id,
+        title: "Movie From Player Config",
+        candidates: [
+          {
+            url: PLAYER_MANIFEST_URL,
+            format: "M3U8",
+            source: "player-config",
+            confidence: 95,
+          },
+        ],
+      });
+      return;
+    }
+    if (message.type !== "download") {
+      return;
+    }
+    downloadMessages.push(message);
+    if (message.url === PLAYER_URL) {
+      native.emit({ type: "error", id: message.id, error: UNSUPPORTED_URL_ERROR });
+    }
+  });
+  const video = await addSingleDetectedVideo(harness, {
+    url: PLAYER_URL,
+    pageUrl: PLAYER_URL,
+    frameUrl: PLAYER_URL,
+    format: "PAGE",
+    source: "page-fallback",
+    sizeBytes: 0,
+  });
+
+  const response = await harness.sendRuntimeMessage({
+    type: "downloadVideo",
+    tabId: TAB_ID,
+    videoId: video.id,
+    formatId: "best",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(response.ok, true);
+  assert.equal(downloadMessages.length, 2);
+  assert.equal(downloadMessages[0].url, PLAYER_URL);
+  assert.equal(downloadMessages[1].url, PLAYER_MANIFEST_URL);
+  assert.equal(downloadMessages[1].format, "M3U8");
+  assert.equal(downloadMessages[1].backend, "auto");
+  assert.equal(nativeMessages.some((message) => message.type === "resolveMediaCandidates" && message.url === PLAYER_URL), true);
+}
+
+async function testFormatLookupResolvesMediaCandidatesAfterUnsupportedPlayerPage() {
+  const nativeMessages = [];
+  const harness = createBackgroundHarness((message, native) => {
+    nativeMessages.push(message);
+    if (message.type === "resolveMediaCandidates") {
+      native.emit({
+        type: "mediaCandidates",
+        id: message.id,
+        title: "Movie From Player Config",
+        candidates: [
+          {
+            url: PLAYER_MANIFEST_URL,
+            format: "M3U8",
+            source: "player-config",
+            confidence: 95,
+          },
+        ],
+      });
+      return;
+    }
+    if (message.type !== "formats") {
+      return;
+    }
+    if (message.url === PLAYER_URL) {
+      native.emit({ type: "error", id: message.id, error: UNSUPPORTED_URL_ERROR });
+      return;
+    }
+    if (message.url === PLAYER_MANIFEST_URL) {
+      native.emit({
+        type: "formats",
+        id: message.id,
+        title: "Movie From Resolved HLS",
+        formats: [
+          {
+            id: "best",
+            label: "Best available MP4",
+            ext: "mp4",
+            note: "Recommended",
+          },
+        ],
+      });
+    }
+  });
+  const video = await addSingleDetectedVideo(harness, {
+    url: PLAYER_URL,
+    pageUrl: PLAYER_URL,
+    frameUrl: PLAYER_URL,
+    format: "PAGE",
+    source: "page-fallback",
+    sizeBytes: 0,
+  });
+
+  const response = await harness.sendRuntimeMessage({
+    type: "getVideoFormats",
+    tabId: TAB_ID,
+    videoId: video.id,
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.title, "Movie From Resolved HLS");
+  assert.equal(response.formats[0].backend, "auto");
+  assert.equal(nativeMessages.some((message) => message.type === "resolveMediaCandidates" && message.url === PLAYER_URL), true);
+  assert.equal(nativeMessages.some((message) => message.type === "formats" && message.url === PLAYER_MANIFEST_URL), true);
+}
+
+async function testDownloadReportsExhaustedSourcesAfterAllFallbacksFail() {
+  const harness = createBackgroundHarness((message, native) => {
+    if (message.type === "resolveMediaCandidates") {
+      native.emit({
+        type: "mediaCandidates",
+        id: message.id,
+        candidates: [
+          {
+            url: PLAYER_MANIFEST_URL,
+            format: "M3U8",
+            source: "player-config",
+            confidence: 95,
+          },
+        ],
+      });
+      return;
+    }
+    if (message.type === "download") {
+      native.emit({ type: "error", id: message.id, error: `ERROR: Unsupported URL: ${message.url}` });
+    }
+  });
+  const video = await addSingleDetectedVideo(harness, {
+    url: PLAYER_URL,
+    pageUrl: PLAYER_URL,
+    frameUrl: PLAYER_URL,
+    format: "PAGE",
+    source: "page-fallback",
+    sizeBytes: 0,
+  });
+
+  const response = await harness.sendRuntimeMessage({
+    type: "downloadVideo",
+    tabId: TAB_ID,
+    videoId: video.id,
+    formatId: "best",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const historyResponse = await harness.sendRuntimeMessage({ type: "getVideos", tabId: TAB_ID });
+  const failedJob = historyResponse.downloads.find((job) => job.id === response.jobId);
+
+  assert.equal(response.ok, true);
+  assert.equal(failedJob.status, "error");
+  assert.match(failedJob.error, /Tried 2 sources/i);
+  assert.match(failedJob.error, /Unsupported URL/);
+}
+
+async function testRetryBlockedHistorySourceUsesStoredPlayerPage() {
+  const downloadMessages = [];
+  const harness = createBackgroundHarness(
+    (message) => {
+      if (message.type === "download") {
+        downloadMessages.push(message);
+      }
+    },
+    {
+      qwinDownloadsById: {
+        job_provider: {
+          id: "job_provider",
+          status: "error",
+          url: PROVIDER_ASSET_URL,
+          format: "VIDEO",
+          title: "Movie",
+          pageUrl: PAGE_URL,
+          requestHeaders: [],
+        },
+      },
+    }
+  );
+
+  const historyResponse = await harness.sendRuntimeMessage({ type: "getVideos", tabId: TAB_ID });
+  assert.equal(historyResponse.downloads.length, 1);
+
+  const response = await harness.sendRuntimeMessage({
+    type: "retryDownload",
+    tabId: TAB_ID,
+    jobId: "job_provider",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(response.ok, true);
+  assert.equal(downloadMessages.length, 1);
+  assert.equal(downloadMessages[0].url, PAGE_URL);
+  assert.equal(downloadMessages[0].format, "PAGE");
 }
 
 async function testPausedDownloadDoesNotStartDuplicateNativeDownload() {
@@ -451,9 +814,16 @@ async function testChooseFolderAliasPersistsNativeSelectedPath() {
 }
 
 (async () => {
+  await testBeforeRequestDoesNotListHintOnlyUrlBeforeHeadersConfirmMedia();
   await testFormatLookupFallsBackToFreshDetectedVariant();
+  await testFormatLookupRetriesPlayerPageAfterInvalidDetectedSource();
   await testDownloadRetriesFreshVariantAfterHardAccessError();
   await testDownloadRetriesFreshVariantAfterInvalidMediaSourceError();
+  await testDownloadRetriesPlayerPageAfterInvalidDetectedSource();
+  await testDownloadResolvesMediaCandidatesAfterUnsupportedPlayerPage();
+  await testFormatLookupResolvesMediaCandidatesAfterUnsupportedPlayerPage();
+  await testDownloadReportsExhaustedSourcesAfterAllFallbacksFail();
+  await testRetryBlockedHistorySourceUsesStoredPlayerPage();
   await testPausedDownloadDoesNotStartDuplicateNativeDownload();
   await testManualUrlFormatLookupUsesYtDlpExtractorPage();
   await testManualUrlFormatLookupRejectsStoryboardOnlyExtractorResult();
