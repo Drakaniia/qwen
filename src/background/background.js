@@ -1467,6 +1467,25 @@ async function removeDownload(jobId) {
   return { jobId };
 }
 
+async function clearDownloads() {
+  await ensureStateLoaded();
+  const removedJobIds = [];
+  const activeDownloads = {};
+
+  for (const [jobId, job] of Object.entries(downloadsById)) {
+    if (downloadPortsById[jobId] || BLOCKING_DOWNLOAD_STATUSES.has(job?.status || "queued")) {
+      activeDownloads[jobId] = job;
+    } else {
+      removedJobIds.push(jobId);
+    }
+  }
+
+  downloadsById = activeDownloads;
+  await persistDownloads();
+  notifyPopup({ type: "downloadsCleared", jobIds: removedJobIds, downloads: Object.values(downloadsById) });
+  return { jobIds: removedJobIds, downloads: Object.values(downloadsById) };
+}
+
 function nativeRequest(payload, timeoutMs = 60000) {
   return new Promise((resolve, reject) => {
     let port;
@@ -1660,15 +1679,25 @@ async function requestNativeFormats(video) {
   });
 }
 
+async function notifyContentStatus(tabId, text) {
+  if (!tabId) return;
+  await callTabsSendMessage(tabId, { type: "updateLoadingStatus", text });
+}
+
 async function getNativeFormatsForVideo(tabId, video) {
   await ensureStateLoaded();
-  const sizedVideo = await ensureComparisonSizes(tabId, video);
-  const lookupVideo = preferredNativeVideo(sizedVideo);
+
+  // Start size probing in background but don't block the main yt-dlp call immediately.
+  // We only wait for it if we truly have nothing else to show.
+  const sizeProbePromise = ensureComparisonSizes(tabId, video);
+
+  const lookupVideo = preferredNativeVideo(video);
   let formatLookupVideo = lookupVideo;
   let response = null;
   let nativeError = "";
   let firstNativeError = "";
 
+  await notifyContentStatus(tabId, "Checking link with yt-dlp...");
   try {
     response = await requestNativeFormats(formatLookupVideo);
   } catch (error) {
@@ -1678,17 +1707,18 @@ async function getNativeFormatsForVideo(tabId, video) {
       ? pageFallbackVideoForSource(lookupVideo, new Set([normalizeUrl(lookupVideo.url || "")]))
       : null;
     if (pageFallback) {
+      await notifyContentStatus(tabId, "Checking page fallback...");
       try {
         response = await requestNativeFormats(pageFallback);
         formatLookupVideo =
           (await addDetectedVideo(tabId, {
             ...pageFallback,
-            title: pageFallback.title || lookupVideo.title || sizedVideo.title,
-            duration: pageFallback.duration || lookupVideo.duration || sizedVideo.duration,
-            width: pageFallback.width || lookupVideo.width || sizedVideo.width,
-            height: pageFallback.height || lookupVideo.height || sizedVideo.height,
-            bitrate: pageFallback.bitrate || lookupVideo.bitrate || sizedVideo.bitrate,
-            thumbnailUrl: pageFallback.thumbnailUrl || lookupVideo.thumbnailUrl || sizedVideo.thumbnailUrl,
+            title: pageFallback.title || lookupVideo.title || video.title,
+            duration: pageFallback.duration || lookupVideo.duration || video.duration,
+            width: pageFallback.width || lookupVideo.width || video.width,
+            height: pageFallback.height || lookupVideo.height || video.height,
+            bitrate: pageFallback.bitrate || lookupVideo.bitrate || video.bitrate,
+            thumbnailUrl: pageFallback.thumbnailUrl || lookupVideo.thumbnailUrl || video.thumbnailUrl,
             downloadable: true,
           })) || pageFallback;
         nativeError = "";
@@ -1702,6 +1732,9 @@ async function getNativeFormatsForVideo(tabId, video) {
         pageFallback || lookupVideo,
         new Set([normalizeUrl(lookupVideo.url || "")])
       );
+      if (resolvedCandidates.length > 0) {
+        await notifyContentStatus(tabId, `Checking ${resolvedCandidates.length} resolved source(s)...`);
+      }
       for (const candidate of resolvedCandidates) {
         try {
           response = await requestNativeFormats(candidate);
@@ -1714,6 +1747,9 @@ async function getNativeFormatsForVideo(tabId, video) {
       }
     }
   }
+
+  // Ensure size probes are completed before returning so format sizes are populated.
+  const sizedVideo = await sizeProbePromise;
 
   if (response && response.title) {
     await updateGroupedTitle(tabId, sizedVideo, response.title);
@@ -1916,6 +1952,10 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return { ok: true, ...(await removeDownload(message.jobId)) };
     }
 
+    if (message.type === "clearDownloads") {
+      return { ok: true, ...(await clearDownloads()) };
+    }
+
     if (message.type === "getVideoFormats") {
       const videos = await getTabVideos(tabId);
       const video = videos.find(
@@ -1978,6 +2018,15 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "getSettings") {
       return { ok: true, settings };
+    }
+
+    if (message.type === "openPopup") {
+      if (api.action && typeof api.action.openPopup === "function") {
+        await api.action.openPopup();
+      } else if (api.browserAction && typeof api.browserAction.openPopup === "function") {
+        await api.browserAction.openPopup();
+      }
+      return { ok: true };
     }
 
     if (message.type === "pingNativeHost") {

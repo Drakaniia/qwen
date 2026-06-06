@@ -12,6 +12,8 @@ let viewMode = "videos";
 let videoLayoutMode = "list";
 let qualityRequestSerial = 0;
 const ACTIVE_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
+const RESCAN_IDLE_LABEL = "Rescan";
+const RESCAN_BUSY_LABEL = "Refreshing";
 
 const elements = {
   helperStatus: document.getElementById("helperStatus"),
@@ -41,6 +43,23 @@ const elements = {
   rescan: document.getElementById("rescan"),
   clear: document.getElementById("clear"),
 };
+
+function hasActiveTab() {
+  return activeTabId !== null && activeTabId !== undefined;
+}
+
+function setRescanRefreshing(refreshing) {
+  const label = refreshing ? RESCAN_BUSY_LABEL : RESCAN_IDLE_LABEL;
+  elements.rescan.disabled = refreshing;
+  elements.rescan.classList.toggle("is-refreshing", refreshing);
+  elements.rescan.setAttribute("aria-busy", String(refreshing));
+  elements.rescan.setAttribute("aria-label", label);
+  elements.rescan.title = label;
+}
+
+function activeDownloadJobs(downloads) {
+  return downloads.filter((job) => ACTIVE_DOWNLOAD_STATUSES.has(job.status || "queued"));
+}
 
 function runtimeMessage(message) {
   if (isPromiseApi) {
@@ -763,20 +782,22 @@ function chooseQuality({ title, formats, nativeError }) {
 }
 
 async function refresh() {
-  if (!activeTabId) {
-    return;
+  if (!hasActiveTab()) {
+    return false;
   }
 
   const response = await runtimeMessage({ type: "getVideos", tabId: activeTabId });
   if (!response || !response.ok) {
     setMessage(response && response.error ? response.error : "Could not read extension state.", true);
-    return;
+    elements.message.hidden = false;
+    return false;
   }
 
   currentVideos = response.videos || [];
   currentDownloads = response.downloads || [];
   elements.downloadFolder.value = (response.settings && response.settings.downloadFolder) || "";
   render();
+  return true;
 }
 
 async function checkNativeHost() {
@@ -802,7 +823,7 @@ async function init() {
   const tabs = await tabsQuery({ active: true, currentWindow: true });
   activeTabId = tabs && tabs[0] ? tabs[0].id : null;
 
-  if (!activeTabId) {
+  if (!hasActiveTab()) {
     setMessage("No active tab found.", true);
     return;
   }
@@ -810,6 +831,61 @@ async function init() {
   await refresh();
   await runtimeMessage({ type: "rescanTab", tabId: activeTabId });
   await checkNativeHost();
+}
+
+async function rescanActiveTab() {
+  if (!hasActiveTab()) {
+    setMessage("No active tab found.", true);
+    elements.message.hidden = false;
+    return;
+  }
+
+  setRescanRefreshing(true);
+  try {
+    const response = await runtimeMessage({ type: "rescanTab", tabId: activeTabId });
+    if (!response || !response.ok) {
+      setMessage(response && response.error ? response.error : "Could not refresh this tab.", true);
+      elements.message.hidden = false;
+      return;
+    }
+
+    await refresh();
+    window.setTimeout(refresh, 350);
+  } finally {
+    setRescanRefreshing(false);
+  }
+}
+
+async function clearActiveTabVideos() {
+  if (!hasActiveTab()) {
+    setMessage("No active tab found.", true);
+    elements.message.hidden = false;
+    return;
+  }
+
+  elements.clear.disabled = true;
+  try {
+    const response = await runtimeMessage({ type: "clearVideos", tabId: activeTabId });
+    if (!response || !response.ok) {
+      setMessage(response && response.error ? response.error : "Could not clear detected videos.", true);
+      elements.message.hidden = false;
+      return;
+    }
+
+    const downloadsResponse = await runtimeMessage({ type: "clearDownloads", tabId: activeTabId });
+    if (!downloadsResponse || !downloadsResponse.ok) {
+      setMessage(downloadsResponse && downloadsResponse.error ? downloadsResponse.error : "Could not clear downloaded list.", true);
+      elements.message.hidden = false;
+      return;
+    }
+
+    currentVideos = [];
+    currentDownloads = activeDownloadJobs(currentDownloads);
+    render();
+    await refresh();
+  } finally {
+    elements.clear.disabled = false;
+  }
 }
 
 elements.videoList.addEventListener("click", async (event) => {
@@ -1043,13 +1119,11 @@ elements.downloadManualUrl.addEventListener("click", async () => {
 });
 
 elements.rescan.addEventListener("click", async () => {
-  await runtimeMessage({ type: "rescanTab", tabId: activeTabId });
-  window.setTimeout(refresh, 350);
+  await rescanActiveTab();
 });
 
 elements.clear.addEventListener("click", async () => {
-  await runtimeMessage({ type: "clearVideos", tabId: activeTabId });
-  await refresh();
+  await clearActiveTabVideos();
 });
 
 api.runtime.onMessage.addListener((message) => {

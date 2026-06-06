@@ -81,6 +81,23 @@ h1 {
   fill: currentColor;
 }
 
+.icon-button.is-refreshing svg {
+  animation: qwin-refresh-spin 720ms linear infinite;
+  transform-origin: 50% 50%;
+}
+
+@keyframes qwin-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-button.is-refreshing svg {
+    animation: none;
+  }
+}
+
 .settings-panel {
   display: grid;
   gap: 7px;

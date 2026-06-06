@@ -40,9 +40,17 @@ for (const runtimeType of [
   "openDownloadedFile",
   "showDownloadedFile",
   "removeDownload",
+  "clearDownloads",
+  "openPopup",
 ]) {
   assert.match(source, new RegExp(`message\\.type === "${runtimeType}"`), `background must handle ${runtimeType}`);
 }
+
+assert.match(
+  source,
+  /async function clearDownloads/,
+  "background must be able to clear completed download history from the popup"
+);
 
 assert.match(
   source,

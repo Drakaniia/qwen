@@ -313,8 +313,8 @@ function createOverlayButton(video) {
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = "Download";
-  button.title = "Download this video";
-  button.setAttribute("aria-label", "Download this video");
+  button.title = "Open available video";
+  button.setAttribute("aria-label", "Open available video");
   button.style.position = "fixed";
   button.style.zIndex = "2147483647";
   button.style.minWidth = "96px";
@@ -332,74 +332,7 @@ function createOverlayButton(video) {
   button.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
-
-    const record = overlayByVideo.get(video);
-    if (!record) {
-      return;
-    }
-
-    button.disabled = true;
-    button.textContent = "Loading...";
-    const requestToken = showQualityLoadingDialog();
-    const formatsResponse = await sendMessageWithResponse(
-      record.candidate
-        ? {
-            type: "getFormatsForUrl",
-            video: record.candidate,
-          }
-        : {
-            type: "getBestVideoFormats",
-          }
-    );
-
-    if (!isCurrentQualityRequest(requestToken)) {
-      button.disabled = false;
-      button.textContent = "Download";
-      return;
-    }
-
-    if (!formatsResponse || !formatsResponse.ok) {
-      hideQualityDialog();
-      button.textContent = "Error";
-      button.title = formatsResponse && formatsResponse.error ? formatsResponse.error : "Could not load qualities.";
-      window.setTimeout(() => {
-        button.disabled = false;
-        button.textContent = "Download";
-      }, 2500);
-      return;
-    }
-
-    const selectedFormat = await showQualityDialog(formatsResponse);
-    if (!selectedFormat) {
-      button.disabled = false;
-      button.textContent = "Download";
-      return;
-    }
-
-    button.textContent = "Sending...";
-    const response = await sendMessageWithResponse({
-          type: "downloadVideo",
-          videoId: formatsResponse.videoId,
-          formatId: selectedFormat.formatId,
-          variantId: selectedFormat.variantId,
-          backend: selectedFormat.backend,
-        });
-
-    if (!response || !response.ok) {
-      button.textContent = "Error";
-      button.title = response && response.error ? response.error : "Could not start download.";
-      window.setTimeout(() => {
-        button.disabled = false;
-        button.textContent = "Download";
-      }, 2500);
-      return;
-    }
-
-    button.textContent = "Queued";
-    window.setTimeout(() => {
-      button.disabled = false;
-      button.textContent = "Download";
-    }, 2500);
+    sendMessage({ type: "openPopup" });
   });
   return button;
 }
@@ -529,6 +462,7 @@ function showQualityLoadingDialog(title = "Loading versions...") {
   dialog.list.textContent = "";
 
   const loading = document.createElement("div");
+  loading.id = "qwin-quality-loading-status";
   loading.textContent = "Checking available video versions...";
   loading.style.minHeight = "48px";
   loading.style.display = "grid";
@@ -549,6 +483,13 @@ function showQualityLoadingDialog(title = "Loading versions...") {
   };
   dialog.root.style.display = "grid";
   return requestToken;
+}
+
+function updateQualityLoadingStatus(text) {
+  const loading = document.getElementById("qwin-quality-loading-status");
+  if (loading) {
+    loading.textContent = text;
+  }
 }
 
 function isCurrentQualityRequest(requestToken) {
@@ -669,9 +610,7 @@ function updateOverlay(video, candidate, allowBestDetectedFallback = false) {
   }
 
   record.candidate = candidate || null;
-  record.button.title = candidate
-    ? "Download this video"
-    : "Download the best detected video URL for this player";
+  record.button.title = "Open available video";
   positionOverlay(record);
 }
 
@@ -859,6 +798,8 @@ extensionApi.runtime.onMessage.addListener((message) => {
   if (message && message.type === "scanNow") {
     seenUrls.clear();
     publishScan();
+  } else if (message && message.type === "updateLoadingStatus") {
+    updateQualityLoadingStatus(message.text);
   }
 });
 

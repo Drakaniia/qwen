@@ -13,49 +13,25 @@ assert.match(
 assert.match(
   source,
   /function\s+showQualityLoadingDialog\s*\(/,
-  "content overlay must show a quality dialog immediately while versions load"
+  "content overlay must still include quality dialog helpers for future extension use"
 );
 
 assert.match(
   source,
-  /const\s+requestToken\s*=\s*showQualityLoadingDialog\(\)/,
-  "content overlay clicks must open a loading dialog before asking the helper for formats"
-);
-
-assert.ok(
-  source.indexOf("const requestToken = showQualityLoadingDialog()") <
-    source.indexOf("const formatsResponse = await sendMessageWithResponse("),
-  "content overlay must show loading feedback before awaiting format lookup"
+  /sendMessage\(\{\s*type:\s*"openPopup"\s*\}\)/,
+  "content overlay clicks must send a message to open the extension popup instead of showing a local quality dialog"
 );
 
 assert.match(
   source,
-  /button\.dataset\.variantId\s*=/,
-  "content overlay choices must preserve the selected source variant id"
+  /button\.textContent\s*=\s*"Download"/,
+  "content overlay button must be labeled as Download for clear intent"
 );
 
 assert.match(
   source,
-  /button\.dataset\.backend\s*=/,
-  "content overlay choices must preserve the selected downloader backend"
-);
-
-assert.match(
-  source,
-  /type:\s*"downloadVideo"/,
-  "content overlay should download by grouped video id after choosing a version"
-);
-
-assert.match(
-  source,
-  /variantId:\s*selectedFormat\.variantId/,
-  "content overlay download requests must send the selected source variant id"
-);
-
-assert.match(
-  source,
-  /backend:\s*selectedFormat\.backend/,
-  "content overlay download requests must send the selected downloader backend"
+  /button\.title\s*=\s*"Open available video"/,
+  "content overlay button must have a title explaining its navigation behavior"
 );
 
 assert.match(
