@@ -130,18 +130,25 @@ def unique_delete_targets(message, allowed_root=None):
         if value:
             raw_paths.append(resolve_artifact_path(value))
 
-    if not roots:
-        for path in raw_paths:
-            roots.append(path.parent if should_delete_parent_folder_for_file(path) else path)
-
     candidates = []
     for target in roots:
         if allowed_root:
-            validate_delete_target(target, allowed_root)
+            if not path_is_relative_to(target, allowed_root):
+                raise HostError(f"Refusing to delete outside the configured download folder: {target}")
         if is_dangerous_delete_target(target, allowed_root):
             continue
         if target not in candidates:
             candidates.append(target)
+
+    if not candidates:
+        for path in raw_paths:
+            target = path.parent if should_delete_parent_folder_for_file(path) else path
+            if allowed_root:
+                validate_delete_target(target, allowed_root)
+            elif is_dangerous_delete_target(target, allowed_root):
+                continue
+            if target not in candidates:
+                candidates.append(target)
 
     candidates.sort(key=lambda item: len(item.parts))
     collapsed = []

@@ -733,6 +733,27 @@ class HostHelperTests(unittest.TestCase):
             self.assertEqual(sent[0]["type"], "deletedArtifacts")
             self.assertEqual(sent[0]["deleted"], [str(title_dir)])
 
+    def test_delete_download_artifacts_uses_specific_file_when_artifact_root_is_download_folder(self):
+        with tempfile.TemporaryDirectory() as temp:
+            download_dir = Path(temp) / "Downloads"
+            download_dir.mkdir()
+            missing_file = download_dir / "missing-video.mp4"
+
+            sent = []
+            host.delete_download_artifacts(
+                {
+                    "id": "delete_1",
+                    "path": str(missing_file),
+                    "artifactRoot": str(download_dir),
+                    "downloadFolder": str(download_dir),
+                },
+                send=sent.append,
+            )
+
+            self.assertEqual(sent[0]["type"], "deletedArtifacts")
+            self.assertEqual(sent[0]["deleted"], [])
+            self.assertEqual(sent[0]["missing"], [str(missing_file)])
+
     def test_delete_download_artifacts_rejects_targets_outside_download_folder(self):
         with tempfile.TemporaryDirectory() as temp:
             download_dir = Path(temp) / "Downloads"
