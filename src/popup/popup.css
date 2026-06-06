@@ -69,6 +69,12 @@ h1 {
   cursor: pointer;
 }
 
+.topbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
 .icon-button svg {
   width: 17px;
   height: 17px;

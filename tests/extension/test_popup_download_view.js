@@ -43,6 +43,20 @@ assert.match(
   "popup must include a video-only toolbar for list and box controls"
 );
 
+assert.match(
+  html,
+  /<div class="topbar-actions">[\s\S]*<button[^>]+id="rescan"[^>]+class="icon-button"[^>]+aria-label="Rescan"[^>]+title="Rescan"[\s\S]*<svg[\s\S]*<\/button>\s*<button[^>]+id="settingsToggle"/,
+  "popup topbar must show an icon-only Rescan button immediately to the left of Settings"
+);
+
+{
+  const footerMatch = html.match(/<footer id="footerActions">([\s\S]*?)<\/footer>/);
+  assert.ok(footerMatch, "popup must keep footer actions for non-header controls");
+  assert.doesNotMatch(footerMatch[1], /id="rescan"|>Rescan</, "footer must not keep the old text Rescan button");
+}
+
+assert.match(css, /\.topbar-actions/, "popup must align header action icons as a group");
+
 for (const containerId of ["viewToggle", "contentView", "footerActions"]) {
   assert.match(
     html,
