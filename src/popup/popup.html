@@ -12,7 +12,7 @@
         <h1>Qwin Video Downloader</h1>
         <p id="helperStatus" class="helper-status">Checking helper...</p>
       </div>
-      <button id="settingsToggle" class="icon-button" type="button" aria-label="Settings" title="Settings">
+      <button id="settingsToggle" class="icon-button" type="button" aria-label="Settings" title="Settings" aria-controls="settingsPanel" aria-expanded="false">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.5-2.4 1a8 8 0 0 0-2.6-1.5L14 2h-4l-.4 2.5A8 8 0 0 0 7 6L4.6 5 2.6 8.5l2 1.5a9.8 9.8 0 0 0 0 3l-2 1.5 2 3.5L7 18a8 8 0 0 0 2.6 1.5L10 22h4l.4-2.5A8 8 0 0 0 17 18l2.4 1 2-3.5-2-1.5ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"></path>
         </svg>
@@ -20,18 +20,27 @@
     </header>
 
     <section id="settingsPanel" class="settings-panel" hidden>
+      <label for="manualUrl">Download from link</label>
+      <input id="manualUrl" type="url" spellcheck="false" placeholder="Paste YouTube, Instagram, TikTok, X, Threads, or other video URL">
+      <button id="downloadManualUrl" class="primary settings-button" type="button">Download link</button>
+      <p class="hint">Uses yt-dlp. Works only when the site is supported and the video is accessible.</p>
+
       <label for="downloadFolder">Download folder</label>
-      <input id="downloadFolder" type="text" spellcheck="false" placeholder="Default: Windows Downloads">
-      <button id="saveSettings" type="button">Save</button>
+      <div class="folder-picker">
+        <input id="downloadFolder" type="text" spellcheck="false" placeholder="Default: Windows Downloads">
+        <button id="chooseDownloadFolder" type="button">Browse</button>
+      </div>
+      <button id="saveSettings" class="settings-button" type="button">Save</button>
       <p class="hint">Use a Windows path such as C:\Users\You\Downloads\Videos.</p>
+      <p id="settingsStatus" class="settings-status" role="status" aria-live="polite" hidden></p>
     </section>
 
-    <nav class="view-toggle" aria-label="Popup view">
+    <nav id="viewToggle" class="view-toggle" aria-label="Popup view">
       <button id="showVideos" class="active" type="button" aria-pressed="true">Videos</button>
       <button id="showDownloads" type="button" aria-pressed="false">Downloads</button>
     </nav>
 
-    <main>
+    <main id="contentView">
       <div id="message" class="message">Scanning for videos...</div>
       <div id="videoToolbar" class="video-toolbar" hidden>
         <div class="layout-toggle" role="group" aria-label="Video list layout">
@@ -61,7 +70,7 @@
       </div>
     </section>
 
-    <footer>
+    <footer id="footerActions">
       <button id="rescan" type="button">Rescan</button>
       <button id="clear" type="button">Clear</button>
     </footer>

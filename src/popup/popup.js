@@ -17,9 +17,16 @@ const elements = {
   helperStatus: document.getElementById("helperStatus"),
   settingsToggle: document.getElementById("settingsToggle"),
   settingsPanel: document.getElementById("settingsPanel"),
+  settingsStatus: document.getElementById("settingsStatus"),
+  viewToggle: document.getElementById("viewToggle"),
+  contentView: document.getElementById("contentView"),
+  footerActions: document.getElementById("footerActions"),
   showVideos: document.getElementById("showVideos"),
   showDownloads: document.getElementById("showDownloads"),
+  manualUrl: document.getElementById("manualUrl"),
+  downloadManualUrl: document.getElementById("downloadManualUrl"),
   downloadFolder: document.getElementById("downloadFolder"),
+  chooseDownloadFolder: document.getElementById("chooseDownloadFolder"),
   saveSettings: document.getElementById("saveSettings"),
   message: document.getElementById("message"),
   videoToolbar: document.getElementById("videoToolbar"),
@@ -81,8 +88,11 @@ function displayFormat(video) {
 }
 
 function sourceLabel(video) {
-  if (["M3U8", "MPD"].includes(String(video.format || "").toUpperCase())) {
+  if (["M3U8", "MPD", "YOUTUBE"].includes(String(video.format || "").toUpperCase())) {
     return "full video";
+  }
+  if (video.source === "manual-url" || String(video.format || "").toUpperCase() === "PAGE") {
+    return "manual link";
   }
   return video.source || "detected";
 }
@@ -119,6 +129,17 @@ function setMessage(text, isError = false) {
   elements.message.classList.toggle("error", isError);
 }
 
+function setSettingsStatus(text, isError = false) {
+  const value = String(text || "").trim();
+  elements.settingsStatus.textContent = value;
+  elements.settingsStatus.hidden = !value;
+  elements.settingsStatus.classList.toggle("error", isError);
+}
+
+function isUnknownMessageTypeError(response) {
+  return /unknown message type/i.test(String(response?.error || ""));
+}
+
 function setHelperStatus(text, className = "") {
   elements.helperStatus.textContent = text;
   elements.helperStatus.className = `helper-status ${className}`.trim();
@@ -136,6 +157,19 @@ function setViewMode(mode) {
   elements.showDownloads.classList.toggle("active", downloadsOnly);
   elements.showVideos.setAttribute("aria-pressed", String(!downloadsOnly));
   elements.showDownloads.setAttribute("aria-pressed", String(downloadsOnly));
+}
+
+function setSettingsOpen(open) {
+  elements.settingsPanel.hidden = !open;
+  elements.viewToggle.hidden = open;
+  elements.contentView.hidden = open;
+  elements.footerActions.hidden = open;
+  elements.settingsToggle.classList.toggle("active", open);
+  elements.settingsToggle.setAttribute("aria-expanded", String(open));
+
+  if (open) {
+    hideQualityDialog();
+  }
 }
 
 function setVideoLayoutMode(mode) {
@@ -165,6 +199,11 @@ function formatDownloadPercent(percent) {
 }
 
 function downloadProgressButtonText(job) {
+  const stage = String(job?.stage || "").trim();
+  if (stage === "postprocess") {
+    return "Converting";
+  }
+
   if (hasDownloadPercent(job)) {
     return formatDownloadPercent(job.percent);
   }
@@ -191,18 +230,22 @@ function downloadProgressButtonText(job) {
   if (job?.speed) {
     return job.speed;
   }
-  if (String(job?.stage || "").trim() === "download") {
+  if (stage === "download") {
     return "Active";
   }
   return "Starting";
 }
 
 function downloadProgressLabel(job) {
+  const stage = String(job?.stage || "").trim();
+  if (stage === "postprocess") {
+    return "Converting into playable video";
+  }
+
   if (hasDownloadPercent(job)) {
     return `${formatDownloadPercent(job.percent)} downloaded`;
   }
 
-  const stage = String(job?.stage || "").trim();
   if (stage === "download") {
     if (job?.fragment) {
       return `Downloading fragments ${job.fragment}`;
@@ -220,9 +263,6 @@ function downloadProgressLabel(job) {
   }
   if (stage === "destination") {
     return "Preparing file";
-  }
-  if (stage === "postprocess") {
-    return "Processing video";
   }
 
   const status = job?.status || "queued";
@@ -418,7 +458,7 @@ function renderVideos() {
   elements.videoList.textContent = "";
 
   if (!currentVideos.length) {
-    setMessage("Scanning for videos...");
+    setMessage("No downloadable video URL detected yet.");
     return;
   }
 
@@ -615,6 +655,23 @@ function isCurrentQualityRequest(requestToken) {
 
 function formatQualityValue(format) {
   return qualityFormat.formatQualityValue(format);
+}
+
+function normalizeManualUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(text);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return "";
+    }
+    return parsed.href;
+  } catch (_error) {
+    return "";
+  }
 }
 
 function formatSizeValue(format) {
@@ -852,7 +909,7 @@ elements.downloadList.addEventListener("click", async (event) => {
 });
 
 elements.settingsToggle.addEventListener("click", () => {
-  elements.settingsPanel.hidden = !elements.settingsPanel.hidden;
+  setSettingsOpen(elements.settingsPanel.hidden);
 });
 
 elements.showVideos.addEventListener("click", () => {
@@ -877,10 +934,106 @@ elements.saveSettings.addEventListener("click", async () => {
     settings: { downloadFolder: elements.downloadFolder.value.trim() },
   });
   if (!response || !response.ok) {
-    setMessage(response && response.error ? response.error : "Could not save settings.", true);
+    setSettingsStatus(response && response.error ? response.error : "Could not save settings.", true);
     return;
   }
-  setMessage("Settings saved.");
+  setSettingsStatus("Settings saved.");
+});
+
+elements.chooseDownloadFolder.addEventListener("click", async () => {
+  setSettingsStatus("");
+  elements.chooseDownloadFolder.disabled = true;
+  elements.chooseDownloadFolder.textContent = "Opening...";
+
+  const response = await runtimeMessage({ type: "chooseDownloadFolder" });
+
+  elements.chooseDownloadFolder.disabled = false;
+  elements.chooseDownloadFolder.textContent = "Browse";
+
+  if (!response || !response.ok) {
+    if (isUnknownMessageTypeError(response)) {
+      setSettingsStatus("Reload Qwin from the browser extensions page, then open settings and click Browse again.", true);
+      return;
+    }
+    setSettingsStatus(response && response.error ? response.error : "Could not open the folder picker.", true);
+    return;
+  }
+  if (response.canceled) {
+    setSettingsStatus("Folder selection canceled.");
+    return;
+  }
+
+  elements.downloadFolder.value = (response.settings && response.settings.downloadFolder) || response.path || "";
+  setSettingsStatus("Download folder selected.");
+});
+
+elements.downloadManualUrl.addEventListener("click", async () => {
+  const manualUrl = normalizeManualUrl(elements.manualUrl.value);
+  if (!manualUrl) {
+    setSettingsStatus("Enter a valid http:// or https:// video page URL.", true);
+    return;
+  }
+
+  setSettingsStatus("");
+  elements.downloadManualUrl.disabled = true;
+  elements.downloadManualUrl.textContent = "Loading...";
+  const requestToken = showQualityLoading("Loading link...");
+  const formatsResponse = await runtimeMessage({
+    type: "getFormatsForUrl",
+    tabId: activeTabId,
+    video: {
+      url: manualUrl,
+      pageUrl: manualUrl,
+      title: shortenUrl(manualUrl) || "Manual link",
+      format: "PAGE",
+      source: "manual-url",
+      downloadable: true,
+    },
+  });
+
+  if (!isCurrentQualityRequest(requestToken)) {
+    elements.downloadManualUrl.disabled = false;
+    elements.downloadManualUrl.textContent = "Download link";
+    return;
+  }
+
+  if (!formatsResponse || !formatsResponse.ok) {
+    hideQualityDialog();
+    setSettingsStatus(
+      formatsResponse && formatsResponse.error ? formatsResponse.error : "Could not load quality choices for that link.",
+      true
+    );
+    elements.downloadManualUrl.disabled = false;
+    elements.downloadManualUrl.textContent = "Download link";
+    return;
+  }
+
+  const selectedFormat = await chooseQuality(formatsResponse);
+  if (!selectedFormat) {
+    elements.downloadManualUrl.disabled = false;
+    elements.downloadManualUrl.textContent = "Download link";
+    return;
+  }
+
+  elements.downloadManualUrl.textContent = "Queued";
+  const response = await runtimeMessage({
+    type: "downloadVideo",
+    tabId: activeTabId,
+    videoId: formatsResponse.videoId,
+    formatId: selectedFormat.formatId,
+    variantId: selectedFormat.variantId,
+  });
+
+  if (!response || !response.ok) {
+    setSettingsStatus(response && response.error ? response.error : "Download failed to start.", true);
+  } else {
+    setViewMode("downloads");
+    setSettingsOpen(false);
+  }
+
+  elements.downloadManualUrl.disabled = false;
+  elements.downloadManualUrl.textContent = "Download link";
+  await refresh();
 });
 
 elements.rescan.addEventListener("click", async () => {

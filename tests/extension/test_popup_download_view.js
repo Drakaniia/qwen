@@ -1,11 +1,27 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 
 const popupDir = path.join(__dirname, "../../src/popup");
 const html = fs.readFileSync(path.join(popupDir, "popup.html"), "utf8");
 const js = fs.readFileSync(path.join(popupDir, "popup.js"), "utf8");
 const css = fs.readFileSync(path.join(popupDir, "popup.css"), "utf8");
+
+function popupLabelHelpers() {
+  const start = js.indexOf("function hasDownloadPercent");
+  const end = js.indexOf("function isFakeDownloadMessage");
+  assert.notEqual(start, -1, "popup script must define download label helpers");
+  assert.notEqual(end, -1, "popup script must keep download label helpers before message helpers");
+
+  const sandbox = { globalThis: {} };
+  vm.runInNewContext(
+    `${js.slice(start, end)}
+globalThis.__helpers = { downloadProgressButtonText, downloadProgressLabel };`,
+    sandbox
+  );
+  return sandbox.globalThis.__helpers;
+}
 
 assert.match(
   html,
@@ -27,10 +43,128 @@ assert.match(
   "popup must include a video-only toolbar for list and box controls"
 );
 
+for (const containerId of ["viewToggle", "contentView", "footerActions"]) {
+  assert.match(
+    html,
+    new RegExp(`id="${containerId}"`),
+    `popup must expose ${containerId} so settings can hide non-settings UI`
+  );
+}
+
+assert.match(
+  html,
+  /id="settingsStatus"/,
+  "settings panel must include an in-panel status message when the main content is hidden"
+);
+
+assert.match(
+  html,
+  /<input[^>]+id="manualUrl"[^>]+type="url"/,
+  "settings panel must expose a manual URL input for extractor fallback downloads"
+);
+
+assert.match(
+  html,
+  /<button[^>]+id="downloadManualUrl"[^>]*>Download link<\/button>/,
+  "settings panel must expose a manual link download button"
+);
+
+assert.match(
+  html,
+  /<button[^>]+id="chooseDownloadFolder"[^>]*>Browse<\/button>/,
+  "settings panel must expose a Browse button for selecting the download folder"
+);
+
 assert.match(
   js,
   /function\s+setViewMode\s*\(\s*mode\s*\)/,
   "popup script must provide a view-mode toggle"
+);
+
+assert.match(
+  js,
+  /function\s+setSettingsOpen\s*\(\s*open\s*\)/,
+  "popup script must provide a settings-only view toggle"
+);
+
+for (const hiddenTarget of ["viewToggle", "contentView", "footerActions"]) {
+  assert.match(
+    js,
+    new RegExp(`elements\\.${hiddenTarget}\\.hidden\\s*=\\s*open`),
+    `settings-only view must hide ${hiddenTarget}`
+  );
+}
+
+assert.match(
+  js,
+  /elements\.settingsPanel\.hidden\s*=\s*!open/,
+  "settings-only view must show the settings panel"
+);
+
+assert.match(
+  js,
+  /settingsToggle\.setAttribute\("aria-expanded",\s*String\(open\)\)/,
+  "settings button must expose whether the settings-only view is open"
+);
+
+assert.match(
+  js,
+  /setMessage\("No downloadable video URL detected yet\."/,
+  "popup empty state must say no downloadable URL was detected instead of implying scanning is still running"
+);
+
+assert.match(
+  js,
+  /\["M3U8",\s*"MPD",\s*"YOUTUBE"\]\.includes\(String\(video\.format\s*\|\|\s*""\)\.toUpperCase\(\)\)/,
+  "popup must label YouTube extractor entries as full video instead of showing youtube-page"
+);
+
+assert.match(
+  js,
+  /downloadManualUrl:\s*document\.getElementById\("downloadManualUrl"\)/,
+  "popup script must track the manual link button"
+);
+
+assert.match(
+  js,
+  /chooseDownloadFolder:\s*document\.getElementById\("chooseDownloadFolder"\)/,
+  "popup script must track the download-folder Browse button"
+);
+
+assert.match(
+  js,
+  /type:\s*"chooseDownloadFolder"/,
+  "popup Browse button must ask the background page to open the native folder picker"
+);
+
+assert.match(
+  js,
+  /function\s+isUnknownMessageTypeError\s*\(/,
+  "popup must detect the stale-background Unknown message type error"
+);
+
+assert.match(
+  js,
+  /Reload Qwin from the browser extensions page/,
+  "popup must show an actionable reload message when the background worker is stale"
+);
+
+assert.match(
+  js,
+  /elements\.downloadFolder\.value\s*=\s*\(response\.settings\s*&&\s*response\.settings\.downloadFolder\)\s*\|\|\s*response\.path\s*\|\|\s*""/,
+  "popup must display the selected folder returned by the native picker"
+);
+
+assert.match(
+  js,
+  /type:\s*"getFormatsForUrl"[\s\S]*source:\s*"manual-url"/,
+  "manual link flow must ask the helper for formats using an explicit manual-url source"
+);
+
+assert.match(
+  js,
+  /type:\s*"downloadVideo"[\s\S]*videoId:\s*formatsResponse\.videoId/,
+  "manual link flow must download the resolved extractor candidate after quality selection"
 );
 
 assert.match(
@@ -198,6 +332,22 @@ assert.match(
   /Downloading at/,
   "popup progress label must show speed-based activity when segmented downloads lack exact percent"
 );
+
+{
+  const helpers = popupLabelHelpers();
+  const postprocessJob = { status: "running", stage: "postprocess", percent: 100, format: "M3U8" };
+
+  assert.equal(
+    helpers.downloadProgressLabel(postprocessJob),
+    "Converting into playable video",
+    "postprocess stage must show conversion text instead of stale 100% downloaded text"
+  );
+  assert.equal(
+    helpers.downloadProgressButtonText(postprocessJob),
+    "Converting",
+    "compact active download buttons must show conversion after segmented downloads finish"
+  );
+}
 
 assert.match(
   js,

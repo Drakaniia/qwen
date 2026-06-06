@@ -76,9 +76,34 @@ h1 {
 }
 
 .settings-panel {
+  display: grid;
+  gap: 7px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
   background: #eef7f5;
+}
+
+.settings-panel[hidden] {
+  display: none !important;
+}
+
+.settings-status {
+  min-height: 18px;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.settings-status.error {
+  color: var(--danger);
+}
+
+.settings-status[hidden],
+.view-toggle[hidden],
+#contentView[hidden],
+#footerActions[hidden] {
+  display: none !important;
 }
 
 .view-toggle {
@@ -105,7 +130,7 @@ h1 {
 
 label {
   display: block;
-  margin-bottom: 6px;
+  margin: 4px 0 0;
   font-weight: 650;
 }
 
@@ -116,6 +141,17 @@ input {
   border: 1px solid var(--line);
   border-radius: 6px;
   font: inherit;
+}
+
+.folder-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.folder-picker button {
+  min-width: 74px;
 }
 
 button {
@@ -149,9 +185,12 @@ button:disabled {
   opacity: 0.55;
 }
 
-#saveSettings {
+.settings-button {
   width: 100%;
   margin-top: 8px;
+}
+
+#saveSettings {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;

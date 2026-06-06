@@ -24,6 +24,12 @@ assert.match(
 
 assert.match(
   css,
+  /\.view-toggle\[hidden\][\s\S]*#contentView\[hidden\][\s\S]*#footerActions\[hidden\][\s\S]*display:\s*none\s*!important\s*;/,
+  "settings-only mode must hide the non-settings popup UI"
+);
+
+assert.match(
+  css,
   /\.layout-toggle/,
   "popup must style the list and boxes toggle"
 );
