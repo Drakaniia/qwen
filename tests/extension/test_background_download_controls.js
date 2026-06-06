@@ -159,6 +159,11 @@ assert.match(
 );
 assert.match(
   source,
+  /video\.source\s*===\s*"youtube-page"/,
+  "background quality fallback labels must not expose the internal youtube-page source marker"
+);
+assert.match(
+  source,
   /existingJob\.requestHeaders/,
   "background must reuse stored request headers when resuming an existing job"
 );

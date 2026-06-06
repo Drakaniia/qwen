@@ -319,10 +319,145 @@ async function testPausedDownloadDoesNotStartDuplicateNativeDownload() {
   assert.equal(downloadMessages.length, 1);
 }
 
+async function testManualUrlFormatLookupUsesYtDlpExtractorPage() {
+  const manualUrl = "https://www.instagram.com/reels/ABC123/";
+  const formatMessages = [];
+  const harness = createBackgroundHarness((message, native) => {
+    if (message.type !== "formats") {
+      return;
+    }
+    formatMessages.push(message);
+    native.emit({
+      type: "formats",
+      id: message.id,
+      title: "Instagram Reel",
+      formats: [
+        {
+          id: "best",
+          label: "Best available MP4",
+          ext: "mp4",
+          note: "Recommended",
+        },
+      ],
+    });
+  });
+
+  const response = await harness.sendRuntimeMessage({
+    type: "getFormatsForUrl",
+    tabId: TAB_ID,
+    video: {
+      url: manualUrl,
+      pageUrl: manualUrl,
+      title: "Manual social link",
+      format: "PAGE",
+      source: "manual-url",
+      duration: 8,
+      downloadable: true,
+    },
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.title, "Instagram Reel");
+  assert.equal(response.videoId.startsWith("v_"), true);
+  assert.equal(formatMessages.length, 1);
+  assert.equal(formatMessages[0].url, manualUrl);
+  assert.equal(formatMessages[0].pageUrl, manualUrl);
+}
+
+async function testManualUrlFormatLookupRejectsStoryboardOnlyExtractorResult() {
+  const harness = createBackgroundHarness((message, native) => {
+    if (message.type !== "formats") {
+      return;
+    }
+    native.emit({
+      type: "formats",
+      id: message.id,
+      title: "Storyboard Only",
+      formats: [],
+    });
+  });
+
+  const response = await harness.sendRuntimeMessage({
+    type: "getFormatsForUrl",
+    tabId: TAB_ID,
+    video: {
+      url: "https://www.youtube.com/watch?v=Aa89MC8jX2c",
+      pageUrl: "https://www.youtube.com/watch?v=Aa89MC8jX2c",
+      title: "Manual YouTube link",
+      format: "PAGE",
+      source: "manual-url",
+      duration: 8,
+      downloadable: true,
+    },
+  });
+
+  assert.equal(response.ok, false);
+  assert.match(response.error, /did not find any downloadable video formats/i);
+}
+
+async function testChooseDownloadFolderPersistsNativeSelectedPath() {
+  const selectedPath = "C:\\Users\\Viewer\\Videos";
+  const nativeMessages = [];
+  const harness = createBackgroundHarness((message, native) => {
+    nativeMessages.push(message);
+    if (message.type !== "chooseFolder") {
+      return;
+    }
+    native.emit({
+      type: "folder",
+      id: message.id,
+      path: selectedPath,
+    });
+  });
+
+  const response = await harness.sendRuntimeMessage({
+    type: "chooseDownloadFolder",
+    tabId: TAB_ID,
+  });
+  const settingsResponse = await harness.sendRuntimeMessage({
+    type: "getSettings",
+    tabId: TAB_ID,
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.path, selectedPath);
+  assert.equal(response.settings.downloadFolder, selectedPath);
+  assert.equal(settingsResponse.settings.downloadFolder, selectedPath);
+  assert.equal(nativeMessages[0].type, "chooseFolder");
+  assert.equal(nativeMessages[0].initialFolder, "");
+}
+
+async function testChooseFolderAliasPersistsNativeSelectedPath() {
+  const selectedPath = "C:\\Users\\Viewer\\Media";
+  const harness = createBackgroundHarness((message, native) => {
+    if (message.type !== "chooseFolder") {
+      return;
+    }
+    native.emit({
+      type: "folder",
+      id: message.id,
+      path: selectedPath,
+    });
+  });
+
+  const response = await harness.sendRuntimeMessage({
+    type: "chooseFolder",
+    tabId: TAB_ID,
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.path, selectedPath);
+  assert.equal(response.settings.downloadFolder, selectedPath);
+}
+
 (async () => {
   await testFormatLookupFallsBackToFreshDetectedVariant();
   await testDownloadRetriesFreshVariantAfterHardAccessError();
   await testDownloadRetriesFreshVariantAfterInvalidMediaSourceError();
   await testPausedDownloadDoesNotStartDuplicateNativeDownload();
+  await testManualUrlFormatLookupUsesYtDlpExtractorPage();
+  await testManualUrlFormatLookupRejectsStoryboardOnlyExtractorResult();
+  await testChooseDownloadFolderPersistsNativeSelectedPath();
+  await testChooseFolderAliasPersistsNativeSelectedPath();
   console.log("background hard access fallback tests passed");
 })();

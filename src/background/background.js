@@ -841,6 +841,11 @@ function downloadableVariants(video, attemptedUrls = new Set()) {
   return result;
 }
 
+function isExtractorPageVideo(video) {
+  const format = String(video?.format || "").toUpperCase();
+  return video?.source === "manual-url" || video?.source === "youtube-page" || format === "PAGE" || format === "YOUTUBE";
+}
+
 function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls) {
   const groupedVideo = findGroupedVideoForAnyVariant(tabId, failedVideo) || failedVideo;
   const variants = downloadableVariants(groupedVideo, attemptedUrls);
@@ -895,7 +900,7 @@ async function startNativeDownload(tabId, videoId, formatId = "best", variantId 
   }
   if (!selectedVideo.downloadable) {
     throw new Error(
-      "This is a browser-only blob/data URL. Wait for the underlying MP4, WebM, M3U8, or MPD network URL to appear."
+      "This is a browser-only blob/data URL. Wait for a supported video page, MP4, WebM, M3U8, or MPD URL to appear."
     );
   }
 
@@ -1138,7 +1143,7 @@ async function getBestDownloadableVideo(tabId) {
   const videos = await getTabVideos(tabId);
   const video = videos.find((item) => item.downloadable);
   if (!video) {
-    throw new Error("No downloadable MP4, WebM, M3U8, or MPD URL has been detected for this player yet.");
+    throw new Error("No downloadable video page, MP4, WebM, M3U8, or MPD URL has been detected for this player yet.");
   }
   return video;
 }
@@ -1278,6 +1283,28 @@ async function openDownloadedPath(jobId, nativeType) {
   return { jobId };
 }
 
+async function chooseDownloadFolder() {
+  await ensureStateLoaded();
+  const requestId = `folder_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const response = await nativeRequest(
+    {
+      type: "chooseFolder",
+      id: requestId,
+      initialFolder: settings.downloadFolder || "",
+    },
+    600000
+  );
+
+  const selectedPath = String(response.path || "").trim();
+  if (response.canceled || !selectedPath) {
+    return { canceled: true, settings };
+  }
+
+  settings = { ...settings, downloadFolder: selectedPath };
+  await persistSettings();
+  return { path: selectedPath, settings };
+}
+
 async function removeDownload(jobId) {
   await ensureStateLoaded();
   const job = getDownloadJob(jobId);
@@ -1383,6 +1410,12 @@ function sourceHost(url) {
 }
 
 function sourceText(video) {
+  if (video.source === "youtube-page" || String(video.format || "").toUpperCase() === "YOUTUBE") {
+    return "YouTube full video";
+  }
+  if (video.source === "manual-url" || String(video.format || "").toUpperCase() === "PAGE") {
+    return "Manual link";
+  }
   return [video.source || "detected", sourceHost(video.url)].filter(Boolean).join(" / ");
 }
 
@@ -1514,11 +1547,16 @@ async function getNativeFormatsForVideo(tabId, video) {
 
   const sourceFormats = nativeFormats.length
     ? []
+    : isExtractorPageVideo(refreshedVideo)
+      ? []
     : downloadableVariants(refreshedVideo, excludedUrls)
         .map(detectedVariantOption);
 
   if (nativeError && !nativeFormats.length && !sourceFormats.length) {
     throw new Error(nativeError);
+  }
+  if (!nativeFormats.length && !sourceFormats.length) {
+    throw new Error("yt-dlp did not find any downloadable video formats for this link.");
   }
 
   const formats = nativeFormats.length ? nativeFormats : sourceFormats;
@@ -1693,7 +1731,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
         ok: true,
         ...(await startNativeDownloadForUrl(tabId, {
           ...(message.video || {}),
-          pageUrl: (sender.tab && sender.tab.url) || "",
+          pageUrl: (message.video && message.video.pageUrl) || (sender.tab && sender.tab.url) || "",
           frameUrl: sender.url || "",
           formatId: message.formatId || "best",
           variantId: message.variantId || "",
@@ -1711,7 +1749,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "getFormatsForUrl") {
       const video = await addDetectedVideo(tabId, {
         ...(message.video || {}),
-        pageUrl: (sender.tab && sender.tab.url) || "",
+        pageUrl: (message.video && message.video.pageUrl) || (sender.tab && sender.tab.url) || "",
         frameUrl: sender.url || "",
         source: (message.video && message.video.source) || "overlay",
       });
@@ -1731,6 +1769,10 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
       settings = { ...settings, ...(message.settings || {}) };
       await persistSettings();
       return { ok: true, settings };
+    }
+
+    if (["chooseDownloadFolder", "chooseFolder", "selectDownloadFolder", "browseDownloadFolder"].includes(message.type)) {
+      return { ok: true, ...(await chooseDownloadFolder()) };
     }
 
     if (message.type === "getSettings") {
