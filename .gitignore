@@ -1,4 +1,6 @@
 __pycache__/
 *.pyc
 .tmp-aria2-install/
+node_modules/
 tools/
+dist/

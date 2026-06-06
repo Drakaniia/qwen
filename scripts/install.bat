@@ -73,6 +73,13 @@ if %ERRORLEVEL% neq 0 (
   echo Downloads will still work, but fast segmented mode will be unavailable.
 )
 
+echo Building browser-specific extension folders...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%build-extension.ps1" -Target all -RootDir "%ROOT_DIR%"
+if %ERRORLEVEL% neq 0 (
+  echo ERROR: Could not build browser-specific extension folders.
+  exit /b 1
+)
+
 :RegisterHost
 if not exist "%NATIVE_DIR%" mkdir "%NATIVE_DIR%"
 
