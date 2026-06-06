@@ -159,6 +159,40 @@ function buildCandidate(url, source, mimeType = "", video = null) {
   return videoFilters.isLikelyFullLengthVideoCandidate(candidate) ? candidate : null;
 }
 
+function currentYouTubeVideoPageUrl() {
+  if (!videoFilters || typeof videoFilters.normalizeYouTubeVideoPageUrl !== "function") {
+    return "";
+  }
+  return videoFilters.normalizeYouTubeVideoPageUrl(location.href);
+}
+
+function youtubePageCandidateForVideo(video) {
+  const pageUrl = currentYouTubeVideoPageUrl();
+  if (!pageUrl || !video) {
+    return null;
+  }
+
+  const details = videoElementDetails(video);
+  if (!videoFilters.isLikelyRealVideoBox(details)) {
+    return null;
+  }
+
+  const candidate = {
+    url: pageUrl,
+    format: detectFormat(pageUrl),
+    source: "youtube-page",
+    contentType: "",
+    pageUrl,
+    frameUrl: location.href,
+    title: titleForVideo(video, pageUrl),
+    thumbnailUrl: thumbnailForVideo(video),
+    downloadable: true,
+    ...details,
+  };
+
+  return videoFilters.isLikelyFullLengthVideoCandidate(candidate) ? candidate : null;
+}
+
 function candidateMetadataSignature(candidate) {
   return [
     candidate.title || "",
@@ -170,8 +204,7 @@ function candidateMetadataSignature(candidate) {
   ].join("|");
 }
 
-function addCandidate(candidates, url, source, mimeType = "", video = null) {
-  const candidate = buildCandidate(url, source, mimeType, video);
+function addBuiltCandidate(candidates, candidate) {
   if (!candidate) {
     return null;
   }
@@ -183,6 +216,11 @@ function addCandidate(candidates, url, source, mimeType = "", video = null) {
   }
 
   return candidate;
+}
+
+function addCandidate(candidates, url, source, mimeType = "", video = null) {
+  const candidate = buildCandidate(url, source, mimeType, video);
+  return addBuiltCandidate(candidates, candidate);
 }
 
 function videoHasBlockedMediaSource(video) {
@@ -600,6 +638,11 @@ function scanVideoElements() {
       if (candidate) {
         videoCandidates.push(candidate);
       }
+    }
+
+    const youtubeCandidate = addBuiltCandidate(candidates, youtubePageCandidateForVideo(video));
+    if (youtubeCandidate) {
+      videoCandidates.push(youtubeCandidate);
     }
 
     const overlayCandidate = findOverlayCandidate(video, videoCandidates);
