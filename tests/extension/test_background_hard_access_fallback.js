@@ -15,6 +15,7 @@ const HINT_ONLY_URL = "https://cdn.example.com/player/hls/provider?id=123";
 const PROVIDER_ASSET_URL = "https://george.xtremestream.xyz/player/assets/jwplayer-8.34.0/provider.hlsjs";
 const PLAYER_URL = "https://george.xtremestream.xyz/player/index.php?data=40542c0b28735b6a870c5cf8bc13269d";
 const PLAYER_MANIFEST_URL = "https://george.xtremestream.xyz/hls/40542c0b28735b6a870c5cf8bc13269d/master.m3u8";
+const PLAYER_BACKUP_MANIFEST_URL = "https://backup.example.com/hls/40542c0b28735b6a870c5cf8bc13269d/master.m3u8";
 const ACCESS_ERROR = "ERROR: [generic] Unable to download webpage: HTTP Error 410: Gone";
 const UNSUPPORTED_URL_ERROR = `ERROR: Unsupported URL: ${PLAYER_URL}`;
 const INVALID_MEDIA_ERROR = [
@@ -352,6 +353,48 @@ async function testFormatLookupRetriesPlayerPageAfterInvalidDetectedSource() {
   assert.equal(downloadMessages[0].url, PAGE_URL);
 }
 
+async function testFormatLookupRetriesPlayerPageAfterUnsupportedDetectedSource() {
+  const formatMessages = [];
+  const harness = createBackgroundHarness((message, native) => {
+    if (message.type !== "formats") {
+      return;
+    }
+    formatMessages.push(message);
+    if (message.url === STALE_URL) {
+      native.emit({ type: "error", id: message.id, error: `ERROR: Unsupported URL: ${STALE_URL}` });
+      return;
+    }
+    if (message.url === PAGE_URL) {
+      native.emit({
+        type: "formats",
+        id: message.id,
+        title: "Movie From Unsupported Source Page",
+        formats: [
+          {
+            id: "best",
+            label: "Best available MP4",
+            ext: "mp4",
+            note: "Recommended",
+          },
+        ],
+      });
+    }
+  });
+  const video = await addSingleDetectedVideo(harness);
+
+  const response = await harness.sendRuntimeMessage({
+    type: "getVideoFormats",
+    tabId: TAB_ID,
+    videoId: video.id,
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(formatMessages.length, 2);
+  assert.equal(formatMessages[0].url, STALE_URL);
+  assert.equal(formatMessages[1].url, PAGE_URL);
+  assert.equal(response.title, "Movie From Unsupported Source Page");
+}
+
 async function testDownloadRetriesFreshVariantAfterHardAccessError() {
   const downloadMessages = [];
   const harness = createBackgroundHarness((message, native) => {
@@ -408,6 +451,68 @@ async function testDownloadRetriesFreshVariantAfterInvalidMediaSourceError() {
   assert.equal(downloadMessages[1].url, FRESH_URL);
   assert.equal(downloadMessages[1].id, downloadMessages[0].id);
   assert.equal(downloadMessages[1].formatId, "best");
+}
+
+async function testDownloadTriesEveryResolvedMediaCandidate() {
+  const nativeMessages = [];
+  const downloadMessages = [];
+  const harness = createBackgroundHarness((message, native) => {
+    nativeMessages.push(message);
+    if (message.type === "resolveMediaCandidates") {
+      native.emit({
+        type: "mediaCandidates",
+        id: message.id,
+        title: "Movie From Player Config",
+        candidates: [
+          {
+            url: PLAYER_MANIFEST_URL,
+            format: "M3U8",
+            source: "player-config",
+            confidence: 95,
+          },
+          {
+            url: PLAYER_BACKUP_MANIFEST_URL,
+            format: "M3U8",
+            source: "player-config",
+            confidence: 90,
+          },
+        ],
+      });
+      return;
+    }
+    if (message.type !== "download") {
+      return;
+    }
+    downloadMessages.push(message);
+    if (message.url === PLAYER_URL || message.url === PLAYER_MANIFEST_URL) {
+      native.emit({ type: "error", id: message.id, error: `ERROR: Unsupported URL: ${message.url}` });
+    }
+  });
+  const video = await addSingleDetectedVideo(harness, {
+    url: PLAYER_URL,
+    pageUrl: PLAYER_URL,
+    frameUrl: PLAYER_URL,
+    format: "PAGE",
+    source: "page-fallback",
+    sizeBytes: 0,
+  });
+
+  const response = await harness.sendRuntimeMessage({
+    type: "downloadVideo",
+    tabId: TAB_ID,
+    videoId: video.id,
+    formatId: "best",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(response.ok, true);
+  assert.deepEqual(
+    downloadMessages.map((message) => message.url),
+    [PLAYER_URL, PLAYER_MANIFEST_URL, PLAYER_BACKUP_MANIFEST_URL]
+  );
+  assert.equal(downloadMessages[2].id, downloadMessages[0].id);
+  assert.equal(nativeMessages.some((message) => message.type === "resolveMediaCandidates" && message.url === PLAYER_URL), true);
 }
 
 async function testDownloadRetriesPlayerPageAfterInvalidDetectedSource() {
@@ -817,8 +922,10 @@ async function testChooseFolderAliasPersistsNativeSelectedPath() {
   await testBeforeRequestDoesNotListHintOnlyUrlBeforeHeadersConfirmMedia();
   await testFormatLookupFallsBackToFreshDetectedVariant();
   await testFormatLookupRetriesPlayerPageAfterInvalidDetectedSource();
+  await testFormatLookupRetriesPlayerPageAfterUnsupportedDetectedSource();
   await testDownloadRetriesFreshVariantAfterHardAccessError();
   await testDownloadRetriesFreshVariantAfterInvalidMediaSourceError();
+  await testDownloadTriesEveryResolvedMediaCandidate();
   await testDownloadRetriesPlayerPageAfterInvalidDetectedSource();
   await testDownloadResolvesMediaCandidatesAfterUnsupportedPlayerPage();
   await testFormatLookupResolvesMediaCandidatesAfterUnsupportedPlayerPage();

@@ -883,43 +883,79 @@ function pageFallbackVideoForSource(video, attemptedUrls = new Set()) {
   };
 }
 
-async function resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls = new Set()) {
-  const url = sourceVideo?.url || sourceVideo?.pageUrl || sourceVideo?.frameUrl || "";
-  if (!url || !isDownloadableUrl(url, "")) {
-    return [];
-  }
+function resolverUrlsForSource(sourceVideo) {
+  const urls = [
+    sourceVideo?.pageUrl || "",
+    sourceVideo?.frameUrl || "",
+    sourceVideo?.url || "",
+  ];
+  const seen = new Set();
+  const result = [];
 
-  let response = null;
-  try {
-    const requestId = `resolve_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    response = await nativeRequest(
-      {
-        type: "resolveMediaCandidates",
-        id: requestId,
-        url,
-        pageUrl: sourceVideo.pageUrl || sourceVideo.frameUrl || "",
-        userAgent: navigator.userAgent || "",
-        requestHeaders: await nativeRequestHeadersForVideo(url, sourceVideo.pageUrl || sourceVideo.frameUrl || ""),
-      },
-      20000
-    );
-  } catch (_error) {
-    return [];
-  }
-
-  const rawCandidates = Array.isArray(response?.candidates) ? response.candidates : [];
-  const candidates = [];
-  for (const candidate of rawCandidates) {
-    const candidateUrl = normalizeUrl(candidate?.url || "");
-    if (!candidateUrl || attemptedUrls.has(candidateUrl) || !isDownloadableUrl(candidateUrl, candidate?.contentType || "")) {
+  for (const value of urls) {
+    const url = normalizeUrl(value);
+    if (!url || seen.has(url) || !isDownloadableUrl(url, "")) {
       continue;
     }
+    seen.add(url);
+    result.push(url);
+  }
+
+  return result;
+}
+
+async function resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls = new Set()) {
+  const resolverUrls = resolverUrlsForSource(sourceVideo);
+  if (!resolverUrls.length) {
+    return [];
+  }
+
+  const rawCandidates = [];
+  let title = "";
+  for (const url of resolverUrls) {
+    const requestId = `resolve_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    try {
+      const response = await nativeRequest(
+        {
+          type: "resolveMediaCandidates",
+          id: requestId,
+          url,
+          pageUrl: sourceVideo.pageUrl || sourceVideo.frameUrl || "",
+          userAgent: navigator.userAgent || "",
+          requestHeaders: await nativeRequestHeadersForVideo(url, sourceVideo.pageUrl || sourceVideo.frameUrl || ""),
+        },
+        20000
+      );
+      title = title || response?.title || "";
+      rawCandidates.push(...(Array.isArray(response?.candidates) ? response.candidates : []));
+    } catch (_error) {
+      // Some media URLs are binary or server-blocked. Keep inspecting the page/frame fallbacks.
+    }
+  }
+
+  if (!rawCandidates.length) {
+    return [];
+  }
+
+  const candidates = [];
+  const seenCandidateUrls = new Set();
+  for (const candidate of rawCandidates) {
+    const candidateUrl = normalizeUrl(candidate?.url || "");
+    if (
+      !candidateUrl ||
+      seenCandidateUrls.has(candidateUrl) ||
+      attemptedUrls.has(candidateUrl) ||
+      !isDownloadableUrl(candidateUrl, candidate?.contentType || "")
+    ) {
+      continue;
+    }
+    seenCandidateUrls.add(candidateUrl);
     const detected = await addDetectedVideo(tabId, {
       url: candidate.url,
       format: candidate.format || detectFormat(candidate.url, candidate.contentType || ""),
       source: candidate.source || "resolved-page",
       contentType: candidate.contentType || "",
-      title: candidate.title || response.title || sourceVideo.title || titleFromUrl(candidate.url),
+      title: candidate.title || title || sourceVideo.title || titleFromUrl(candidate.url),
       pageUrl: sourceVideo.pageUrl || sourceVideo.url || "",
       frameUrl: sourceVideo.frameUrl || sourceVideo.pageUrl || "",
       downloadable: true,
@@ -935,7 +971,7 @@ async function resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls
       id: detected?.id || candidate.id || hashId(candidate.url),
       format: candidate.format || detected?.format || detectFormat(candidate.url, candidate.contentType || ""),
       source: candidate.source || detected?.source || "resolved-page",
-      title: detected?.title || candidate.title || response.title || sourceVideo.title || titleFromUrl(candidate.url),
+      title: detected?.title || candidate.title || title || sourceVideo.title || titleFromUrl(candidate.url),
       pageUrl: sourceVideo.pageUrl || sourceVideo.url || "",
       frameUrl: sourceVideo.frameUrl || sourceVideo.pageUrl || "",
       contentType: candidate.contentType || detected?.contentType || "",
@@ -962,27 +998,25 @@ async function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls) {
     };
   }
 
-  if (isExtractorPageVideo(failedVideo) || failedVideo.source === "iframe-page") {
-    const resolvedCandidates = await resolveMediaCandidatesForSource(tabId, failedVideo, attemptedUrls);
-    if (resolvedCandidates.length) {
-      return {
-        ...resolvedCandidates[0],
-        groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
-        groupVariants: variantsForVideo(groupedVideo),
-      };
-    }
-  }
-
   const pageFallback = pageFallbackVideoForSource(failedVideo, attemptedUrls);
-  if (!pageFallback) {
-    return null;
+  if (pageFallback) {
+    return {
+      ...pageFallback,
+      groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
+      groupVariants: variantsForVideo(groupedVideo),
+    };
   }
 
-  return {
-    ...pageFallback,
-    groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
-    groupVariants: variantsForVideo(groupedVideo),
-  };
+  const resolvedCandidates = await resolveMediaCandidatesForSource(tabId, failedVideo, attemptedUrls);
+  if (resolvedCandidates.length) {
+    return {
+      ...resolvedCandidates[0],
+      groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
+      groupVariants: variantsForVideo(groupedVideo),
+    };
+  }
+
+  return null;
 }
 
 function isBlockingDownloadStatus(status) {
@@ -1703,7 +1737,7 @@ async function getNativeFormatsForVideo(tabId, video) {
   } catch (error) {
     nativeError = error.message || String(error);
     firstNativeError = nativeError;
-    const pageFallback = isHardAccessError(nativeError)
+    const pageFallback = isRetryableSourceError(nativeError)
       ? pageFallbackVideoForSource(lookupVideo, new Set([normalizeUrl(lookupVideo.url || "")]))
       : null;
     if (pageFallback) {
