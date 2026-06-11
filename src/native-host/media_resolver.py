@@ -25,6 +25,10 @@ SEGMENT_RE = re.compile(
     re.IGNORECASE,
 )
 STATIC_ASSET_RE = re.compile(r"\.(?:hlsjs|js|mjs|cjs|css|map)(?:$|[?#])", re.IGNORECASE)
+WEB_APP_MANIFEST_RE = re.compile(
+    r"(?:\.webmanifest|(?:^|[/?#._-])manifest\.json)(?:$|[?#])",
+    re.IGNORECASE,
+)
 
 
 def decode_candidate_url(value):
@@ -47,22 +51,43 @@ def absolute_candidate_url(value, base_url):
     return urljoin(base_url, candidate)
 
 
-def classify_media_url(url):
+def is_ephemeral_media_url(url):
+    try:
+        parsed = urlparse(str(url or ""))
+    except ValueError:
+        return False
+
+    host = (parsed.hostname or "").lower()
+    return (host == "googlevideo.com" or host.endswith(".googlevideo.com")) and parsed.path == "/videoplayback"
+
+
+def classify_media_url(url, content_type=""):
     text = str(url or "").lower()
-    if ".m3u8" in text:
+    media_type = str(content_type or "").lower()
+    if re.search(r"\.m3u8(?:$|[?#])", text):
         return "M3U8"
-    if ".mpd" in text:
+    if re.search(r"\.mpd(?:$|[?#])", text):
         return "MPD"
     if re.search(r"\.ism(?:/manifest)?(?:$|[?#])", text):
         return "ISM"
-    if ".webm" in text:
+    if re.search(r"\.webm(?:$|[?#])", text):
         return "WEBM"
-    if ".mp4" in text or ".m4v" in text:
+    if re.search(r"\.(?:mp4|m4v)(?:$|[?#])", text):
         return "MP4"
+    if "mpegurl" in media_type or "x-mpegurl" in media_type:
+        return "M3U8"
+    if "dash+xml" in media_type:
+        return "MPD"
+    if "video/webm" in media_type:
+        return "WEBM"
+    if "video/mp4" in media_type:
+        return "MP4"
+    if media_type.startswith("video/"):
+        return media_type.replace("video/", "", 1).upper()
     return "VIDEO"
 
 
-def is_reusable_media_url(url):
+def is_reusable_media_url(url, content_type=""):
     try:
         parsed = urlparse(str(url or ""))
     except ValueError:
@@ -72,11 +97,21 @@ def is_reusable_media_url(url):
         return False
 
     text = parsed.geturl()
+    media_type = str(content_type or "").lower()
     if text.startswith(("blob:", "data:", "file:")):
         return False
-    if AD_RE.search(text) or GIF_RE.search(text) or SEGMENT_RE.search(text) or STATIC_ASSET_RE.search(text):
+    if (
+        AD_RE.search(text)
+        or GIF_RE.search(text)
+        or SEGMENT_RE.search(text)
+        or STATIC_ASSET_RE.search(text)
+        or WEB_APP_MANIFEST_RE.search(text)
+        or "manifest+json" in media_type
+        or "webmanifest" in media_type
+        or is_ephemeral_media_url(text)
+    ):
         return False
-    return classify_media_url(text) != "VIDEO"
+    return classify_media_url(text, media_type) != "VIDEO"
 
 
 def extract_media_candidates_from_text(text, base_url, source="page-scan"):

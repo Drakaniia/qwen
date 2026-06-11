@@ -1,7 +1,29 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 
 const filters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
+const candidateRules = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "../fixtures/media_candidate_rules.json"), "utf8")
+);
+
+for (const rule of candidateRules) {
+  assert.equal(
+    filters.classifyVideoUrl(rule.url, rule.contentType),
+    rule.format,
+    `${rule.name} should classify consistently`
+  );
+  assert.equal(
+    filters.isBlockedVideoUrl(rule.url, rule.contentType),
+    rule.blocked,
+    `${rule.name} should have expected blocked status`
+  );
+  assert.equal(
+    filters.isDownloadableUrl(rule.url, rule.contentType),
+    rule.downloadable,
+    `${rule.name} should have expected downloadable status`
+  );
+}
 
 assert.equal(filters.isBlockedVideoUrl("https://ads.example.com/preroll.mp4"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/banner.gif"), true);
