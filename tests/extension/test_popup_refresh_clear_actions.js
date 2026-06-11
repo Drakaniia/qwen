@@ -161,9 +161,11 @@ function createHarness({
   initialDownloads = [],
   refreshedVideos = [],
   clearResponse = { ok: true },
+  activeTabs = [{ id: 42, url: "https://old.example.test/watch" }],
 } = {}) {
   const document = createDocument();
   const messages = [];
+  let tabsQueryCount = 0;
   let rescanCount = 0;
   let videosCleared = false;
   let downloadsCleared = false;
@@ -173,7 +175,9 @@ function createHarness({
   const browser = {
     tabs: {
       async query() {
-        return [{ id: 42 }];
+        const tab = activeTabs[Math.min(tabsQueryCount, activeTabs.length - 1)];
+        tabsQueryCount += 1;
+        return tab ? [tab] : [];
       },
     },
     runtime: {
@@ -299,6 +303,23 @@ function createHarness({
     "refresh button must reload the popup list after requesting a tab rescan"
   );
   assert.equal(refreshHarness.element("message").textContent, "1 full video detected.");
+
+  const changedTabHarness = createHarness({
+    activeTabs: [
+      { id: 42, url: "https://old.example.test/watch" },
+      { id: 84, url: "https://new.example.test/watch" },
+    ],
+  });
+  await changedTabHarness.ready();
+  await changedTabHarness.element("rescan").click();
+  await flushPromises();
+
+  const userRescans = changedTabHarness.messages.filter((message) => message.type === "rescanTab");
+  assert.equal(
+    userRescans.at(-1).tabId,
+    84,
+    "refresh button must rescan the currently active tab instead of the tab captured when the popup opened"
+  );
 
   const animationHarness = createHarness();
   await animationHarness.ready();

@@ -7,6 +7,7 @@ const qualityFormat = globalThis.QwinQualityFormat;
 const qualityDialog = globalThis.QwinQualityDialog;
 
 let activeTabId = null;
+let activeTabUrl = "";
 let currentVideos = [];
 let currentDownloads = [];
 let viewMode = "videos";
@@ -94,6 +95,18 @@ function tabsQuery(query) {
     return api.tabs.query(query);
   }
   return new Promise((resolve) => api.tabs.query(query, resolve));
+}
+
+async function updateActiveTabContext() {
+  const tabs = await tabsQuery({ active: true, currentWindow: true });
+  const activeTab = tabs && tabs[0] ? tabs[0] : null;
+  const nextTabId = activeTab ? activeTab.id : null;
+  const nextTabUrl = activeTab && typeof activeTab.url === "string" ? activeTab.url : "";
+  const changed = activeTabId !== nextTabId || activeTabUrl !== nextTabUrl;
+
+  activeTabId = nextTabId;
+  activeTabUrl = nextTabUrl;
+  return changed;
 }
 
 function shortenUrl(url) {
@@ -697,7 +710,11 @@ function chooseQuality({ title, formats, nativeError }) {
   });
 }
 
-async function refresh() {
+async function refresh(options = {}) {
+  if (options.syncActiveTab !== false) {
+    await updateActiveTabContext();
+  }
+
   if (!hasActiveTab()) {
     return false;
   }
@@ -736,20 +753,21 @@ async function checkNativeHost() {
 }
 
 async function init() {
-  const tabs = await tabsQuery({ active: true, currentWindow: true });
-  activeTabId = tabs && tabs[0] ? tabs[0].id : null;
+  await updateActiveTabContext();
 
   if (!hasActiveTab()) {
     setMessage("No active tab found.", true);
     return;
   }
 
-  await refresh();
+  await refresh({ syncActiveTab: false });
   await runtimeMessage({ type: "rescanTab", tabId: activeTabId });
   await checkNativeHost();
 }
 
 async function rescanActiveTab() {
+  await updateActiveTabContext();
+
   if (!hasActiveTab()) {
     setMessage("No active tab found.", true);
     elements.message.hidden = false;
@@ -765,14 +783,16 @@ async function rescanActiveTab() {
       return;
     }
 
-    await refresh();
-    window.setTimeout(refresh, 350);
+    await refresh({ syncActiveTab: false });
+    window.setTimeout(() => refresh({ syncActiveTab: false }), 350);
   } finally {
     setRescanRefreshing(false);
   }
 }
 
 async function clearActiveTabVideos() {
+  await updateActiveTabContext();
+
   if (!hasActiveTab()) {
     setMessage("No active tab found.", true);
     elements.message.hidden = false;
@@ -812,6 +832,25 @@ elements.videoList.addEventListener("click", async (event) => {
 
   button.disabled = true;
   button.textContent = "Loading...";
+
+  const tabChanged = await updateActiveTabContext();
+  if (!hasActiveTab()) {
+    hideQualityDialog();
+    setMessage("No active tab found.", true);
+    elements.message.hidden = false;
+    button.disabled = false;
+    button.textContent = "Download";
+    return;
+  }
+  if (tabChanged) {
+    button.disabled = false;
+    button.textContent = "Download";
+    await rescanActiveTab();
+    setMessage("Active tab changed. Choose a video from the refreshed list.");
+    elements.message.hidden = false;
+    return;
+  }
+
   const requestToken = showQualityLoading();
   const formatsResponse = await runtimeMessage({
     type: "getVideoFormats",
@@ -965,6 +1004,8 @@ elements.chooseDownloadFolder.addEventListener("click", async () => {
 });
 
 elements.downloadManualUrl.addEventListener("click", async () => {
+  await updateActiveTabContext();
+
   const manualUrl = normalizeManualUrl(elements.manualUrl.value);
   if (!manualUrl) {
     setSettingsStatus("Enter a valid http:// or https:// video page URL.", true);

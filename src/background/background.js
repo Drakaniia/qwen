@@ -1505,6 +1505,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === "rescanTab") {
+      await clearTab(tabId);
       await callTabsSendMessage(tabId, { type: "scanNow" });
       await callExecuteScript({
         target: { tabId, allFrames: true },

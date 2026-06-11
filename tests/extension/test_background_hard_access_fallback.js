@@ -869,6 +869,34 @@ async function testManualUrlFormatLookupRejectsStoryboardOnlyExtractorResult() {
   assert.match(response.error, /did not find any downloadable video formats/i);
 }
 
+async function testRescanClearsStaleVideosBeforeRequestingContentScan() {
+  const harness = createBackgroundHarness();
+  await addSingleDetectedVideo(harness);
+
+  const response = await harness.sendRuntimeMessage({
+    type: "rescanTab",
+    tabId: TAB_ID,
+  });
+  const videosResponse = await harness.sendRuntimeMessage({
+    type: "getVideos",
+    tabId: TAB_ID,
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(
+    videosResponse.videos.length,
+    0,
+    "refresh must remove stale videos before content script reports fresh detections"
+  );
+  assert.equal(
+    harness.runtimeMessages.some(
+      (message) => message.type === "videoListUpdated" && message.tabId === TAB_ID && message.videos.length === 0
+    ),
+    true,
+    "background must notify the popup that stale detected videos were cleared"
+  );
+}
+
 async function testChooseDownloadFolderPersistsNativeSelectedPath() {
   const selectedPath = "C:\\Users\\Viewer\\Videos";
   const nativeMessages = [];
@@ -940,6 +968,7 @@ async function testChooseFolderAliasPersistsNativeSelectedPath() {
   await testPausedDownloadDoesNotStartDuplicateNativeDownload();
   await testManualUrlFormatLookupUsesYtDlpExtractorPage();
   await testManualUrlFormatLookupRejectsStoryboardOnlyExtractorResult();
+  await testRescanClearsStaleVideosBeforeRequestingContentScan();
   await testChooseDownloadFolderPersistsNativeSelectedPath();
   await testChooseFolderAliasPersistsNativeSelectedPath();
   console.log("background hard access fallback tests passed");
