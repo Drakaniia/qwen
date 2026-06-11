@@ -3,11 +3,16 @@
 const extensionApi = typeof browser !== "undefined" ? browser : chrome;
 const videoFilters = globalThis.QwinVideoFilters;
 const qualityFormat = globalThis.QwinQualityFormat;
+const qualityDialog = globalThis.QwinQualityDialog;
 const seenUrls = new Map();
 const overlayByVideo = new WeakMap();
 const overlayRecords = new Set();
-let qualityDialog = null;
-let qualityRequestSerial = 0;
+
+let overlayDialog = null;
+let overlayQualityChooser = null;
+let overlayRequestSerial = 0;
+let lastDetectedVideos = [];
+
 const MEDIA_URL_TEXT_RE =
   /(?:(?:https?:)?\\?\/\\?\/|\/)[^"'`<>\s]+(?:\.(?:mp4|m4v|webm|m3u8|mpd)(?:[?#][^"'`<>\s]*)?|\.ism(?:\\?\/Manifest)?(?:[?#][^"'`<>\s]*)?)/gi;
 
@@ -332,72 +337,20 @@ function createOverlayButton(video) {
   button.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
-    sendMessage({ type: "openPopup" });
+    showAvailableVideosOverlay();
   });
   return button;
 }
 
-function formatQualityValue(format) {
-  return qualityFormat.formatQualityValue(format);
-}
-
-function formatSizeValue(format) {
-  return qualityFormat.formatSizeValue(format, videoFilters);
-}
-
-function formatFormatValue(format) {
-  return qualityFormat.formatFormatValue(format);
-}
-
-function formatBitrateValue(format) {
-  return qualityFormat.formatBitrateValue(format);
-}
-
-function formatSourceValue(format) {
-  return qualityFormat.formatSourceValue(format);
-}
-
-function appendQualityCell(row, text, primary = false) {
-  const cell = document.createElement("span");
-  cell.textContent = text || "Unknown";
-  cell.style.minWidth = "0";
-  cell.style.overflowWrap = "anywhere";
-  cell.style.fontSize = "11px";
-  cell.style.lineHeight = "1.25";
-  if (primary) {
-    cell.style.fontWeight = "800";
-    cell.style.color = "#171b22";
-  }
-  row.append(cell);
-}
-
-function styleQualityRow(row) {
-  row.style.display = "grid";
-  row.style.gridTemplateColumns = "1fr 0.78fr 0.68fr 0.82fr 1.18fr";
-  row.style.gap = "7px";
-  row.style.alignItems = "center";
-}
-
-function appendQualityHeader(table) {
-  const header = document.createElement("div");
-  styleQualityRow(header);
-  header.style.padding = "0 8px";
-  header.style.color = "#687386";
-  header.style.font = "800 10px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-  header.style.textTransform = "uppercase";
-  for (const label of ["Quality", "Size", "Format", "Bitrate", "Source"]) {
-    appendQualityCell(header, label);
-  }
-  table.append(header);
-}
-
-function ensureQualityDialog() {
-  if (qualityDialog && qualityDialog.root.isConnected) {
-    return qualityDialog;
+function ensureOverlay() {
+  if (overlayDialog && overlayDialog.root.isConnected) {
+    return overlayDialog;
   }
 
   const root = document.createElement("div");
   const card = document.createElement("div");
+  const header = document.createElement("div");
+  const back = document.createElement("button");
   const title = document.createElement("div");
   const list = document.createElement("div");
   const cancel = document.createElement("button");
@@ -409,145 +362,275 @@ function ensureQualityDialog() {
   root.style.placeItems = "center";
   root.style.background = "rgba(0, 0, 0, 0.48)";
 
-  card.style.width = "min(620px, calc(100vw - 28px))";
-  card.style.maxHeight = "min(420px, calc(100vh - 28px))";
-  card.style.overflow = "auto";
-  card.style.padding = "12px";
+  card.style.width = "min(640px, calc(100vw - 28px))";
+  card.style.maxHeight = "min(520px, calc(100vh - 28px))";
+  card.style.display = "flex";
+  card.style.flexDirection = "column";
+  card.style.padding = "16px";
   card.style.border = "1px solid rgba(255, 255, 255, 0.24)";
-  card.style.borderRadius = "8px";
+  card.style.borderRadius = "12px";
   card.style.background = "#ffffff";
-  card.style.boxShadow = "0 18px 42px rgba(0, 0, 0, 0.35)";
-  card.style.font = "13px/1.4 system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  card.style.boxShadow = "0 18px 48px rgba(0, 0, 0, 0.35)";
+  card.style.font = "14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
   card.style.color = "#171b22";
 
-  title.style.fontWeight = "750";
-  title.style.marginBottom = "10px";
+  header.style.display = "flex";
+  header.style.alignItems = "center";
+  header.style.gap = "12px";
+  header.style.marginBottom = "14px";
 
+  back.type = "button";
+  back.textContent = "Back";
+  back.style.display = "none";
+  back.style.padding = "4px 10px";
+  back.style.border = "1px solid #dce1e8";
+  back.style.borderRadius = "6px";
+  back.style.background = "#fff";
+  back.style.color = "#171b22";
+  back.style.font = "600 12px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  back.style.cursor = "pointer";
+
+  title.style.fontWeight = "800";
+  title.style.fontSize = "16px";
+  title.style.flex = "1";
+  title.style.whiteSpace = "nowrap";
+  title.style.overflow = "hidden";
+  title.style.textOverflow = "ellipsis";
+
+  list.style.flex = "1";
   list.style.display = "grid";
-  list.style.gap = "7px";
-  list.style.overflowX = "auto";
+  list.style.gap = "10px";
+  list.style.overflow = "auto";
+  list.style.paddingRight = "4px";
 
   cancel.type = "button";
   cancel.textContent = "Cancel";
-  cancel.style.marginTop = "10px";
-  cancel.style.minHeight = "32px";
-  cancel.style.padding = "6px 10px";
+  cancel.style.marginTop = "14px";
+  cancel.style.minHeight = "36px";
+  cancel.style.padding = "8px 12px";
   cancel.style.border = "1px solid #dce1e8";
-  cancel.style.borderRadius = "6px";
+  cancel.style.borderRadius = "8px";
   cancel.style.background = "#fff";
   cancel.style.color = "#171b22";
-  cancel.style.font = "600 13px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  cancel.style.font = "600 14px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
   cancel.style.cursor = "pointer";
 
-  card.append(title, list, cancel);
+  header.append(back, title);
+  card.append(header, list, cancel);
   root.append(card);
   (document.body || document.documentElement).append(root);
-  qualityDialog = { root, card, title, list, cancel };
-  return qualityDialog;
+  overlayDialog = { root, card, header, back, title, list, cancel };
+  overlayQualityChooser = null;
+  return overlayDialog;
 }
 
-function hideQualityDialog() {
-  if (qualityDialog && qualityDialog.root) {
-    qualityDialog.root.style.display = "none";
-    qualityDialog.list.textContent = "";
-    qualityDialog.cancel.disabled = false;
-    qualityDialog.cancel.textContent = "Cancel";
+function hideOverlay() {
+  if (!overlayDialog || !overlayDialog.root) {
+    return;
   }
+
+  if (overlayQualityChooser) {
+    overlayQualityChooser.hide();
+    return;
+  }
+
+  overlayDialog.root.style.display = "none";
+  overlayDialog.list.textContent = "";
+  overlayDialog.back.style.display = "none";
+  overlayDialog.cancel.disabled = false;
+  overlayDialog.cancel.textContent = "Cancel";
+}
+
+function ensureQualityChooser() {
+  const dialog = ensureOverlay();
+  if (overlayQualityChooser) {
+    return overlayQualityChooser;
+  }
+  if (!qualityDialog || typeof qualityDialog.create !== "function") {
+    throw new Error("QwinQualityDialog is not loaded.");
+  }
+
+  overlayQualityChooser = qualityDialog.create({
+    document,
+    root: dialog.root,
+    title: dialog.title,
+    list: dialog.list,
+    cancel: dialog.cancel,
+    back: dialog.back,
+    qualityFormat,
+    videoFilters,
+    loadingStatusId: "qwin-quality-loading-status",
+    style: "inline",
+    hideOnSelect: false,
+    hideOnBack: false,
+    showRoot(root) {
+      root.style.display = "grid";
+    },
+    hideRoot(root) {
+      root.style.display = "none";
+    },
+  });
+  return overlayQualityChooser;
 }
 
 function showQualityLoadingDialog(title = "Loading versions...") {
-  const requestToken = ++qualityRequestSerial;
-  const dialog = ensureQualityDialog();
-  dialog.title.textContent = title;
-  dialog.list.textContent = "";
-
-  const loading = document.createElement("div");
-  loading.id = "qwin-quality-loading-status";
-  loading.textContent = "Checking available video versions...";
-  loading.style.minHeight = "48px";
-  loading.style.display = "grid";
-  loading.style.placeItems = "center";
-  loading.style.padding = "12px";
-  loading.style.border = "1px solid #dce1e8";
-  loading.style.borderRadius = "6px";
-  loading.style.background = "#eef7f5";
-  loading.style.color = "#0b5e58";
-  loading.style.font = "750 12px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-  dialog.list.append(loading);
-
-  dialog.cancel.disabled = false;
-  dialog.cancel.textContent = "Cancel";
-  dialog.cancel.onclick = () => {
-    qualityRequestSerial += 1;
-    hideQualityDialog();
-  };
-  dialog.root.style.display = "grid";
+  const requestToken = ++overlayRequestSerial;
+  ensureQualityChooser().showLoading({
+    loadingTitle: title,
+    onCancel() {
+      overlayRequestSerial += 1;
+    },
+  });
   return requestToken;
 }
 
 function updateQualityLoadingStatus(text) {
-  const loading = document.getElementById("qwin-quality-loading-status");
-  if (loading) {
-    loading.textContent = text;
-  }
+  ensureQualityChooser().updateLoadingStatus(text);
 }
 
 function isCurrentQualityRequest(requestToken) {
-  return requestToken === qualityRequestSerial;
+  return requestToken === overlayRequestSerial;
 }
 
-function showQualityDialog({ title, formats }) {
-  return new Promise((resolve) => {
-    const dialog = ensureQualityDialog();
-    dialog.title.textContent = title ? `Compare versions: ${title}` : "Compare versions";
-    dialog.list.textContent = "";
+async function handleVideoSelection(video) {
+  const dialog = ensureOverlay();
+  dialog.list.textContent = "";
+  dialog.title.textContent = "Loading...";
 
-    const choices = formats && formats.length ? formats : [{ id: "best", label: "Best available MP4" }];
-    const table = document.createElement("div");
-    table.style.display = "grid";
-    table.style.gap = "6px";
-    table.style.minWidth = "520px";
-    appendQualityHeader(table);
+  const requestToken = showQualityLoadingDialog(video.title || "Video");
+  const formatsResponse = await sendMessageWithResponse({
+    type: "getFormatsForUrl",
+    video: video,
+  });
 
-    for (const format of choices) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.formatId = format.formatId || format.id || "best";
-      button.dataset.variantId = format.variantId || "";
-      button.dataset.backend = format.backend || "auto";
-      button.title = format.sourceUrl || format.label || "";
-      styleQualityRow(button);
-      button.style.minHeight = "34px";
-      button.style.padding = "7px 9px";
-      button.style.border = "1px solid #dce1e8";
-      button.style.borderRadius = "6px";
-      button.style.background = "#fff";
-      button.style.color = "#171b22";
-      button.style.textAlign = "left";
-      button.style.font = "600 13px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-      button.style.cursor = "pointer";
-      appendQualityCell(button, formatQualityValue(format), true);
-      appendQualityCell(button, formatSizeValue(format));
-      appendQualityCell(button, formatFormatValue(format));
-      appendQualityCell(button, formatBitrateValue(format));
-      appendQualityCell(button, formatSourceValue(format));
-      button.addEventListener("click", () => {
-        dialog.root.style.display = "none";
-        resolve({
-          formatId: button.dataset.formatId || "best",
-          variantId: button.dataset.variantId || "",
-          backend: button.dataset.backend || "auto",
-        });
-      });
-      table.append(button);
+  if (!isCurrentQualityRequest(requestToken)) {
+    return;
+  }
+
+  if (!formatsResponse || !formatsResponse.ok) {
+    hideOverlay();
+    return;
+  }
+
+  const selectedFormat = await showQualityDialog(formatsResponse, true);
+  if (!selectedFormat) {
+    showAvailableVideosOverlay();
+    return;
+  }
+
+  dialog.title.textContent = "Sending...";
+  const response = await sendMessageWithResponse({
+    type: "downloadVideo",
+    videoId: formatsResponse.videoId,
+    formatId: selectedFormat.formatId,
+    variantId: selectedFormat.variantId,
+    backend: selectedFormat.backend,
+  });
+
+  if (!response || !response.ok) {
+    dialog.title.textContent = "Error";
+    window.setTimeout(showAvailableVideosOverlay, 2000);
+    return;
+  }
+
+  dialog.title.textContent = "Queued";
+  window.setTimeout(hideOverlay, 1500);
+}
+
+function showAvailableVideosOverlay() {
+  const dialog = ensureOverlay();
+  dialog.title.textContent = "Available Videos";
+  dialog.list.textContent = "";
+  dialog.back.style.display = "none";
+  dialog.root.style.display = "grid";
+
+  void (async () => {
+    const response = await sendMessageWithResponse({ type: "getVideos" });
+    const videos = response && response.ok ? response.videos : lastDetectedVideos;
+
+    if (!videos || !videos.length) {
+      dialog.list.textContent = "No downloadable video detected yet.";
+      return;
     }
-    dialog.list.append(table);
 
-    dialog.cancel.onclick = () => {
-      dialog.root.style.display = "none";
-      resolve(null);
-    };
-    dialog.root.style.display = "grid";
+    dialog.list.textContent = "";
+    for (const video of videos) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.style.display = "flex";
+      item.style.alignItems = "center";
+      item.style.gap = "12px";
+      item.style.padding = "10px";
+      item.style.border = "1px solid #dce1e8";
+      item.style.borderRadius = "8px";
+      item.style.background = "#fff";
+      item.style.textAlign = "left";
+      item.style.cursor = "pointer";
+      item.style.transition = "background 0.2s";
+
+      item.onmouseover = () => { item.style.background = "#f8fafc"; };
+      item.onmouseout = () => { item.style.background = "#fff"; };
+
+      const thumbContainer = document.createElement("div");
+      thumbContainer.style.width = "80px";
+      thumbContainer.style.height = "45px";
+      thumbContainer.style.background = "#f1f5f9";
+      thumbContainer.style.borderRadius = "4px";
+      thumbContainer.style.overflow = "hidden";
+      thumbContainer.style.flexShrink = "0";
+
+      if (video.thumbnailUrl) {
+        const thumb = document.createElement("img");
+        thumb.src = video.thumbnailUrl;
+        thumb.style.width = "100%";
+        thumb.style.height = "100%";
+        thumb.style.objectFit = "cover";
+        thumbContainer.append(thumb);
+      }
+
+      const info = document.createElement("div");
+      info.style.flex = "1";
+      info.style.minWidth = "0";
+
+      const title = document.createElement("div");
+      title.textContent = video.title || "Video";
+      title.style.fontWeight = "700";
+      title.style.fontSize = "13px";
+      title.style.whiteSpace = "nowrap";
+      title.style.overflow = "hidden";
+      title.style.textOverflow = "ellipsis";
+
+      const meta = document.createElement("div");
+      meta.style.fontSize = "11px";
+      meta.style.color = "#64748b";
+      meta.style.marginTop = "2px";
+
+      const badge = document.createElement("span");
+      badge.textContent = video.format || "VIDEO";
+      badge.style.background = "#e2e8f0";
+      badge.style.padding = "1px 4px";
+      badge.style.borderRadius = "3px";
+      badge.style.marginRight = "6px";
+      badge.style.fontWeight = "800";
+
+      const variants = document.createElement("span");
+      variants.textContent = video.variantCount > 1 ? `${video.variantCount} versions` : "Single version";
+
+      meta.append(badge, variants);
+      info.append(title, meta);
+      item.append(thumbContainer, info);
+
+      item.onclick = () => handleVideoSelection(video);
+      dialog.list.append(item);
+    }
+  })();
+}
+
+function showQualityDialog({ title, formats }, hasBack = false) {
+  return ensureQualityChooser().showChoices({
+    choiceTitle: title,
+    formats,
+    hasBack,
   });
 }
 
@@ -733,6 +816,7 @@ function publishScan() {
     ...scanInlinePlayerScripts(),
     ...scanVisiblePlayerFrames(),
   ];
+  lastDetectedVideos = videos;
   if (videos.length > 0) {
     sendMessage({ type: "contentDetectedVideos", videos });
   }

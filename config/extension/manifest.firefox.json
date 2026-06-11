@@ -36,6 +36,7 @@
       "js": [
         "src/shared/video_filters.js",
         "src/shared/quality_format.js",
+        "src/shared/quality_dialog.js",
         "src/content/content.js"
       ],
       "run_at": "document_start",

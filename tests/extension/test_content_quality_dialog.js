@@ -2,78 +2,210 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const source = fs.readFileSync(path.join(__dirname, "../../src/content/content.js"), "utf8");
+const qualityDialog = require(path.join(__dirname, "../../src/shared/quality_dialog.js"));
+const qualityFormat = require(path.join(__dirname, "../../src/shared/quality_format.js"));
+const videoFilters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
 
-assert.match(
-  source,
-  /function\s+formatQualityValue\s*\(/,
-  "content overlay must format quality metadata for comparison rows"
-);
+const contentSource = fs.readFileSync(path.join(__dirname, "../../src/content/content.js"), "utf8");
+const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../manifest.json"), "utf8"));
 
-assert.match(
-  source,
-  /function\s+showQualityLoadingDialog\s*\(/,
-  "content overlay must still include quality dialog helpers for future extension use"
-);
+class TestElement {
+  constructor(tagName = "div") {
+    this.tagName = tagName.toUpperCase();
+    this.children = [];
+    this.dataset = {};
+    this.attributes = {};
+    this.listeners = {};
+    this.style = {};
+    this.hidden = false;
+    this.disabled = false;
+    this.title = "";
+    this.onclick = null;
+    this._textContent = "";
+  }
 
-assert.match(
-  source,
-  /sendMessage\(\{\s*type:\s*"openPopup"\s*\}\)/,
-  "content overlay clicks must send a message to open the extension popup instead of showing a local quality dialog"
-);
+  set textContent(value) {
+    this._textContent = String(value || "");
+    this.children = [];
+  }
 
-assert.match(
-  source,
-  /button\.textContent\s*=\s*"Download"/,
-  "content overlay button must be labeled as Download for clear intent"
-);
+  get textContent() {
+    return this._textContent;
+  }
 
-assert.match(
-  source,
-  /button\.title\s*=\s*"Open available video"/,
-  "content overlay button must have a title explaining its navigation behavior"
-);
+  append(...nodes) {
+    this.children.push(...nodes);
+  }
 
-assert.match(
-  source,
-  /function\s+thumbnailForVideo\s*\(/,
-  "content scanner must read a thumbnail or poster URL for downloadable videos"
-);
+  setAttribute(name, value) {
+    this.attributes[name] = String(value);
+  }
 
-assert.match(
-  source,
-  /thumbnailUrl:\s*thumbnailForVideo\(video\)/,
-  "content scanner must include thumbnailUrl in detected video candidates"
-);
+  addEventListener(type, listener) {
+    if (!this.listeners[type]) {
+      this.listeners[type] = [];
+    }
+    this.listeners[type].push(listener);
+  }
 
-assert.match(
-  source,
-  /function\s+pageFallbackCandidateForVideo\s*\(/,
-  "content overlay must build a yt-dlp page fallback candidate when the player uses a browser-only media URL"
-);
+  click() {
+    for (const listener of this.listeners.click || []) {
+      listener({ target: this });
+    }
+    if (this.onclick) {
+      this.onclick({ target: this });
+    }
+  }
+}
 
-assert.match(
-  source,
-  /source:\s*"page-fallback"/,
-  "content overlay page fallback candidates must be marked so background downloads the page URL, not an unrelated detected stream"
-);
+function createDocument() {
+  return {
+    createElement(tagName) {
+      return new TestElement(tagName);
+    },
+  };
+}
 
-assert.match(
-  source,
-  /overlayCandidate\s*\|\|\s*pageFallbackCandidate/,
-  "content overlay must prefer the clicked player's page fallback over getBestVideoFormats"
-);
+function createChooser(options = {}) {
+  const document = createDocument();
+  const root = new TestElement("div");
+  const title = new TestElement("div");
+  const list = new TestElement("div");
+  const cancel = new TestElement("button");
+  const back = new TestElement("button");
+  const chooser = qualityDialog.create({
+    document,
+    root,
+    title,
+    list,
+    cancel,
+    back,
+    qualityFormat,
+    videoFilters,
+    style: "inline",
+    hideOnSelect: false,
+    hideOnBack: false,
+    showRoot(element) {
+      element.style.display = "grid";
+    },
+    hideRoot(element) {
+      element.style.display = "none";
+    },
+    ...options,
+  });
 
-assert.match(
-  source,
-  /const\s+seenUrls\s*=\s*new Map\(\)/,
-  "content scanner must track per-URL metadata signatures, not just suppress repeated URLs"
-);
+  return { chooser, root, title, list, cancel, back };
+}
 
-assert.match(
-  source,
-  /seenUrls\.set\(candidate\.url,\s*signature\)/,
-  "content scanner must republish a URL when thumbnail or metadata improves"
-);
+(async () => {
+  {
+    const { chooser, root, title, list, cancel } = createChooser();
+    let canceled = false;
 
-console.log("content quality dialog tests passed");
+    chooser.showLoading({
+      loadingTitle: "Sample video",
+      statusText: "Looking...",
+      onCancel() {
+        canceled = true;
+      },
+    });
+
+    assert.equal(root.style.display, "grid");
+    assert.equal(title.textContent, "Sample video");
+    assert.equal(list.children[0].textContent, "Looking...");
+
+    chooser.updateLoadingStatus("Almost done...");
+    assert.equal(list.children[0].textContent, "Almost done...");
+
+    cancel.click();
+    assert.equal(canceled, true);
+    assert.equal(root.style.display, "none");
+  }
+
+  {
+    const { chooser, root, title, list, back } = createChooser();
+    const selectedPromise = chooser.showChoices({
+      choiceTitle: "Sample video",
+      hasBack: true,
+      formats: [
+        {
+          formatId: "137",
+          variantId: "native-137",
+          backend: "yt-dlp",
+          height: 1080,
+          sizeBytes: 98_000_000,
+          ext: "mp4",
+          bitrate: 2500,
+          source: "yt-dlp",
+        },
+      ],
+    });
+
+    assert.equal(root.style.display, "grid");
+    assert.equal(title.textContent, "Compare versions: Sample video");
+    assert.equal(back.style.display, "block");
+
+    const table = list.children[0];
+    const option = table.children[1];
+    assert.equal(option.children[0].textContent, "1080p");
+    assert.equal(option.children[1].textContent, "93.5 MB");
+    assert.equal(option.children[2].textContent, "MP4");
+    assert.equal(option.children[3].textContent, "2500 kbps");
+    assert.equal(option.children[4].textContent, "yt-dlp");
+
+    option.click();
+    assert.deepEqual(await selectedPromise, {
+      formatId: "137",
+      variantId: "native-137",
+      backend: "yt-dlp",
+    });
+    assert.equal(root.style.display, "grid", "content chooser must remain visible while the download is queued");
+    assert.equal(back.style.display, "none");
+  }
+
+  {
+    const { chooser, root, back } = createChooser();
+    const selectedPromise = chooser.showChoices({
+      choiceTitle: "Sample video",
+      hasBack: true,
+      formats: [{ id: "best", label: "Best available MP4" }],
+    });
+
+    back.click();
+    assert.equal(await selectedPromise, null);
+    assert.equal(root.style.display, "grid", "back must keep the overlay open so the video list can be restored");
+  }
+
+  assert.match(
+    contentSource,
+    /button\.addEventListener\("click", async \(event\) => \{[\s\S]*?showAvailableVideosOverlay\(\);/m,
+    "content overlay clicks must show the in-page available videos list instead of opening the extension popup"
+  );
+  assert.match(
+    contentSource,
+    /item\.onclick\s*=\s*\(\)\s*=>\s*handleVideoSelection\(video\)/,
+    "clicking a video in the overlay must transition to quality selection for that video"
+  );
+  assert.match(
+    contentSource,
+    /type:\s*"downloadVideo"[\s\S]*formatId:\s*selectedFormat\.formatId/s,
+    "quality selection must start a download with the selected format"
+  );
+
+  const contentScripts = manifest.content_scripts[0].js;
+  assert.deepEqual(
+    contentScripts.slice(contentScripts.indexOf("src/shared/video_filters.js")),
+    [
+      "src/shared/video_filters.js",
+      "src/shared/quality_format.js",
+      "src/shared/quality_dialog.js",
+      "src/content/content.js",
+    ],
+    "content script must load shared quality dialog dependencies before content.js"
+  );
+
+  console.log("content quality dialog tests passed");
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
