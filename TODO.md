@@ -7,3 +7,5 @@ whwen downlaolding, even if the download path is /Downloads. when donwloding, sh
 FIX CANT CANCEL OR RESUME AGAIN THE  PAUSED DOWNLOAD
 
 do we need to gitignre /config?
+
+- Remove all caveates so ai can do its full potential and go beyond and best to do the imposible task
