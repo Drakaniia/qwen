@@ -7,6 +7,7 @@ const popupDir = path.join(__dirname, "../../src/popup");
 const html = fs.readFileSync(path.join(popupDir, "popup.html"), "utf8");
 const js = fs.readFileSync(path.join(popupDir, "popup.js"), "utf8");
 const css = fs.readFileSync(path.join(popupDir, "popup.css"), "utf8");
+const qualityDialogJs = fs.readFileSync(path.join(__dirname, "../../src/shared/quality_dialog.js"), "utf8");
 
 function popupLabelHelpers() {
   const start = js.indexOf("function hasDownloadPercent");
@@ -41,6 +42,12 @@ assert.match(
   html,
   /id="videoToolbar"/,
   "popup must include a video-only toolbar for list and box controls"
+);
+
+assert.match(
+  html,
+  /<script src="\.\.\/shared\/quality_dialog\.js"><\/script>\s*<script src="popup\.js"><\/script>/,
+  "popup must load the shared quality dialog before popup.js"
 );
 
 assert.match(
@@ -405,14 +412,20 @@ assert.match(
 
 assert.match(
   js,
-  /function\s+formatQualityValue\s*\(/,
-  "popup must format quality metadata for comparison rows"
+  /const\s+qualityChooser\s*=\s*qualityDialog\.create\(/,
+  "popup must create the shared quality chooser"
 );
 
 assert.match(
   js,
   /function\s+showQualityLoading\s*\(/,
   "popup must show the quality dialog immediately while versions load"
+);
+
+assert.match(
+  js,
+  /qualityChooser\.showLoading\(/,
+  "popup loading state must be delegated to the shared quality chooser"
 );
 
 assert.match(
@@ -469,13 +482,13 @@ assert.match(
 );
 
 assert.match(
-  js,
+  qualityDialogJs,
   /button\.dataset\.variantId\s*=/,
   "quality choices must preserve the selected source variant id"
 );
 
 assert.match(
-  js,
+  qualityDialogJs,
   /button\.dataset\.backend\s*=/,
   "quality choices must preserve the selected downloader backend"
 );

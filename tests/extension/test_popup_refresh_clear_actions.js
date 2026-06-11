@@ -5,6 +5,7 @@ const vm = require("node:vm");
 
 const popupSource = fs.readFileSync(path.join(__dirname, "../../src/popup/popup.js"), "utf8");
 const popupCss = fs.readFileSync(path.join(__dirname, "../../src/popup/popup.css"), "utf8");
+const qualityDialog = require(path.join(__dirname, "../../src/shared/quality_dialog.js"));
 
 const POPUP_ELEMENT_IDS = [
   "helperStatus",
@@ -249,6 +250,7 @@ function createHarness({
         return "Detected";
       },
     },
+    QwinQualityDialog: qualityDialog,
   };
 
   vm.runInNewContext(popupSource, sandbox);

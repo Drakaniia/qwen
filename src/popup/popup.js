@@ -4,6 +4,7 @@ const api = typeof browser !== "undefined" ? browser : chrome;
 const isPromiseApi = typeof browser !== "undefined";
 const videoFilters = globalThis.QwinVideoFilters;
 const qualityFormat = globalThis.QwinQualityFormat;
+const qualityDialog = globalThis.QwinQualityDialog;
 
 let activeTabId = null;
 let currentVideos = [];
@@ -43,6 +44,17 @@ const elements = {
   rescan: document.getElementById("rescan"),
   clear: document.getElementById("clear"),
 };
+
+const qualityChooser = qualityDialog.create({
+  document,
+  root: elements.qualityDialog,
+  title: elements.qualityTitle,
+  list: elements.qualityList,
+  cancel: elements.cancelQuality,
+  qualityFormat,
+  videoFilters,
+  style: "classes",
+});
 
 function hasActiveTab() {
   return activeTabId !== null && activeTabId !== undefined;
@@ -642,38 +654,22 @@ function render() {
 }
 
 function hideQualityDialog() {
-  elements.qualityDialog.hidden = true;
-  elements.qualityList.textContent = "";
-  elements.cancelQuality.disabled = false;
-  elements.cancelQuality.textContent = "Cancel";
+  qualityChooser.hide();
 }
 
 function showQualityLoading(title = "Loading versions...") {
   const requestToken = ++qualityRequestSerial;
-  elements.qualityTitle.textContent = title;
-  elements.qualityList.textContent = "";
-
-  const loading = document.createElement("div");
-  loading.className = "quality-loading";
-  loading.textContent = "Checking available video versions...";
-  elements.qualityList.append(loading);
-
-  elements.cancelQuality.disabled = false;
-  elements.cancelQuality.textContent = "Cancel";
-  elements.cancelQuality.onclick = () => {
-    qualityRequestSerial += 1;
-    hideQualityDialog();
-  };
-  elements.qualityDialog.hidden = false;
+  qualityChooser.showLoading({
+    loadingTitle: title,
+    onCancel() {
+      qualityRequestSerial += 1;
+    },
+  });
   return requestToken;
 }
 
 function isCurrentQualityRequest(requestToken) {
   return requestToken === qualityRequestSerial;
-}
-
-function formatQualityValue(format) {
-  return qualityFormat.formatQualityValue(format);
 }
 
 function normalizeManualUrl(value) {
@@ -693,91 +689,11 @@ function normalizeManualUrl(value) {
   }
 }
 
-function formatSizeValue(format) {
-  return qualityFormat.formatSizeValue(format, videoFilters);
-}
-
-function formatFormatValue(format) {
-  return qualityFormat.formatFormatValue(format);
-}
-
-function formatBitrateValue(format) {
-  return qualityFormat.formatBitrateValue(format);
-}
-
-function formatSourceValue(format) {
-  return qualityFormat.formatSourceValue(format);
-}
-
-function appendQualityCell(row, text, className = "") {
-  const cell = document.createElement("span");
-  cell.className = `quality-cell ${className}`.trim();
-  cell.textContent = text || "Unknown";
-  row.append(cell);
-}
-
-function appendQualityHeader(table) {
-  const header = document.createElement("div");
-  header.className = "quality-row quality-header";
-  header.setAttribute("role", "row");
-  for (const label of ["Quality", "Size", "Format", "Bitrate", "Source"]) {
-    appendQualityCell(header, label);
-  }
-  table.append(header);
-}
-
 function chooseQuality({ title, formats, nativeError }) {
-  return new Promise((resolve) => {
-    elements.qualityTitle.textContent = title ? `Compare versions: ${title}` : "Compare versions";
-    elements.qualityList.textContent = "";
-
-    const choices = formats && formats.length ? formats : [{ id: "best", label: "Best available MP4" }];
-    const table = document.createElement("div");
-    table.className = "quality-table";
-    table.setAttribute("role", "table");
-    appendQualityHeader(table);
-
-    for (const format of choices) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "quality-row quality-option";
-      button.dataset.formatId = format.formatId || format.id || "best";
-      button.dataset.variantId = format.variantId || "";
-      button.dataset.backend = format.backend || "auto";
-      button.setAttribute("role", "row");
-      button.title = format.sourceUrl || format.label || "";
-
-      appendQualityCell(button, formatQualityValue(format), "primary-cell");
-      appendQualityCell(button, formatSizeValue(format));
-      appendQualityCell(button, formatFormatValue(format));
-      appendQualityCell(button, formatBitrateValue(format));
-      appendQualityCell(button, formatSourceValue(format));
-
-      button.addEventListener("click", () => {
-        hideQualityDialog();
-        resolve({
-          formatId: button.dataset.formatId || "best",
-          variantId: button.dataset.variantId || "",
-          backend: button.dataset.backend || "auto",
-        });
-      });
-      table.append(button);
-    }
-
-    elements.qualityList.append(table);
-    if (nativeError) {
-      const note = document.createElement("div");
-      note.className = "quality-note";
-      note.textContent = nativeError;
-      elements.qualityList.append(note);
-    }
-
-    const cancel = () => {
-      hideQualityDialog();
-      resolve(null);
-    };
-    elements.cancelQuality.onclick = cancel;
-    elements.qualityDialog.hidden = false;
+  return qualityChooser.showChoices({
+    choiceTitle: title,
+    formats,
+    nativeError,
   });
 }
 
