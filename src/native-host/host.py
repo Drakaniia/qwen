@@ -12,6 +12,7 @@ import format_list as _format_list
 import media_resolver as _media_resolver
 import stream_backends as _stream_backends
 import yt_dlp_adapter as _yt_dlp_adapter
+import host_dispatch as _host_dispatch
 from artifacts import (
     build_open_path_command,
     delete_download_artifacts,
@@ -187,61 +188,46 @@ def run_resolve_media_candidates(message):
 
 
 def dependency_status():
-    return {
-        "ytDlp": has_yt_dlp(),
-        "ffmpeg": has_ffmpeg(),
-        "aria2c": has_aria2c(),
-        "nM3u8DlRe": has_n_m3u8dl_re(),
-        "streamlink": has_streamlink(),
-    }
+    return _host_dispatch.dependency_status(_dispatch_deps(include_dispatch=False))
 
 
 def handle_message(message):
-    message_type = request_type(message)
-
-    match message_type:
-        case "ping":
-            send_native_message(pong_response(message, HOST_VERSION, dependency_status()))
-        case "download":
-            run_download(message)
-        case "pause" | "resume" | "cancel":
-            control_download(message, message_type)
-        case "openFile":
-            open_download_path(message, reveal=False)
-        case "showFile":
-            open_download_path(message, reveal=True)
-        case "deleteArtifacts":
-            delete_download_artifacts(message)
-        case "formats":
-            run_format_list(message)
-        case "resolveMediaCandidates":
-            run_resolve_media_candidates(message)
-        case "chooseFolder":
-            run_choose_folder(message)
-        case _:
-            raise HostError(f"Unknown native host request type: {message_type}")
+    return _host_dispatch.handle_message(message, _dispatch_deps())
 
 
 def main():
-    configure_binary_stdio()
-    while True:
-        try:
-            message = read_native_message()
-        except EOFError:
-            return 0
-        except Exception as exc:
-            print(f"Native messaging protocol error: {exc}", file=sys.stderr)
-            return 1
+    return _host_dispatch.main(_dispatch_deps())
 
-        request_id_value = request_id(message)
 
-        try:
-            handle_message(message)
-        except HostError as exc:
-            send_native_message(error_response(request_id_value, exc))
-        except Exception as exc:
-            print(f"Unhandled host error: {exc}", file=sys.stderr)
-            send_native_message(unexpected_error_response(request_id_value, exc))
+def _dispatch_deps(include_dispatch=True):
+    values = {
+        "HostError": HostError,
+        "configure_binary_stdio": configure_binary_stdio,
+        "control_download": control_download,
+        "delete_download_artifacts": delete_download_artifacts,
+        "dependency_status": dependency_status,
+        "error_response": error_response,
+        "has_aria2c": has_aria2c,
+        "has_ffmpeg": has_ffmpeg,
+        "has_n_m3u8dl_re": has_n_m3u8dl_re,
+        "has_streamlink": has_streamlink,
+        "has_yt_dlp": has_yt_dlp,
+        "host_version": HOST_VERSION,
+        "open_download_path": open_download_path,
+        "pong_response": pong_response,
+        "read_native_message": read_native_message,
+        "request_id": request_id,
+        "request_type": request_type,
+        "run_choose_folder": run_choose_folder,
+        "run_download": run_download,
+        "run_format_list": run_format_list,
+        "run_resolve_media_candidates": run_resolve_media_candidates,
+        "send_native_message": send_native_message,
+        "unexpected_error_response": unexpected_error_response,
+    }
+    if include_dispatch:
+        values["handle_message"] = handle_message
+    return _host_dispatch.namespace(**values)
 
 
 if __name__ == "__main__":
