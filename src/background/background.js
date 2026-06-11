@@ -6,11 +6,19 @@ if (typeof importScripts === "function" && typeof globalThis.QwinVideoFilters ==
 if (typeof importScripts === "function" && typeof globalThis.QwinDownloadState === "undefined") {
   importScripts("./download_state.js");
 }
+if (typeof importScripts === "function" && typeof globalThis.QwinNativeRequests === "undefined") {
+  importScripts("./native_requests.js");
+}
+if (typeof importScripts === "function" && typeof globalThis.QwinDownloadFallbacks === "undefined") {
+  importScripts("./download_fallbacks.js");
+}
 
 const api = typeof browser !== "undefined" ? browser : chrome;
 const isPromiseApi = typeof browser !== "undefined";
 const videoFilters = globalThis.QwinVideoFilters;
 const downloadState = globalThis.QwinDownloadState;
+const nativeRequests = globalThis.QwinNativeRequests;
+const downloadFallbacks = globalThis.QwinDownloadFallbacks;
 
 const HOST_NAME = "com.qwin.video_downloader";
 const STORAGE_VIDEOS = "qwinVideosByTab";
@@ -38,10 +46,6 @@ const NATIVE_HEADER_NAMES = new Set([
   "sec-fetch-user",
   "x-requested-with",
 ]);
-const HARD_ACCESS_ERROR_RE =
-  /\bHTTP Error\s+(?:401|403|404|410|451)\b|\b(?:Unauthorized|Forbidden|Gone|Not Found|Unavailable For Legal Reasons)\b|Invalid data found when processing input/i;
-const RETRYABLE_SOURCE_ERROR_RE =
-  /Unsupported URL|did not find any downloadable video formats|No video formats|Requested format is not available|Invalid data found when processing input/i;
 const BLOCKING_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
 
 let videosByTab = {};
@@ -697,19 +701,32 @@ function progressDetailPatchFromMessage(message) {
   return downloadState.progressDetailPatchFromMessage(message);
 }
 
+function downloadFallbackDeps() {
+  return {
+    addDetectedVideo,
+    detectFormat,
+    findGroupedVideoForAnyVariant,
+    hashId,
+    isDownloadableUrl,
+    nativeRequest,
+    nativeRequestHeadersForVideo,
+    normalizeUrl,
+    titleFromUrl,
+    userAgent: navigator.userAgent || "",
+    variantsForVideo,
+  };
+}
+
 function isHardAccessError(error) {
-  return HARD_ACCESS_ERROR_RE.test(String(error || ""));
+  return downloadFallbacks.isHardAccessError(error);
 }
 
 function isRetryableSourceError(error) {
-  const text = String(error || "");
-  return isHardAccessError(text) || RETRYABLE_SOURCE_ERROR_RE.test(text);
+  return downloadFallbacks.isRetryableSourceError(error);
 }
 
 function exhaustedSourcesError(error, attemptedUrls) {
-  const count = attemptedUrls && attemptedUrls.size ? attemptedUrls.size : 1;
-  const details = String(error || "The helper could not download this source.").trim();
-  return count > 1 ? `${details}\nTried ${count} sources.` : details;
+  return downloadFallbacks.exhaustedSourcesError(error, attemptedUrls);
 }
 
 async function markVideoUrlUnavailable(tabId, url, error) {
@@ -838,185 +855,27 @@ function findVariant(video, variantId) {
 }
 
 function downloadableVariants(video, attemptedUrls = new Set()) {
-  const variants = [
-    ...variantsForVideo(video),
-    ...(Array.isArray(video?.groupVariants) ? video.groupVariants : []),
-  ];
-  const seenUrls = new Set();
-  const result = [];
-
-  for (const variant of variants) {
-    const url = normalizeUrl(variant?.url || "");
-    if (!url || seenUrls.has(url) || attemptedUrls.has(url) || !variant.downloadable) {
-      continue;
-    }
-    seenUrls.add(url);
-    result.push(variant);
-  }
-
-  return result;
+  return downloadFallbacks.downloadableVariants(video, attemptedUrls, downloadFallbackDeps());
 }
 
 function isExtractorPageVideo(video) {
-  const format = String(video?.format || "").toUpperCase();
-  return video?.source === "manual-url" || video?.source === "youtube-page" || format === "PAGE" || format === "YOUTUBE";
+  return downloadFallbacks.isExtractorPageVideo(video);
 }
 
 function pageFallbackVideoForSource(video, attemptedUrls = new Set()) {
-  const pageUrl = normalizeUrl(video?.pageUrl || video?.frameUrl || "");
-  const sourceUrl = normalizeUrl(video?.url || "");
-  if (!pageUrl || pageUrl === sourceUrl || attemptedUrls.has(pageUrl) || !isDownloadableUrl(pageUrl, "")) {
-    return null;
-  }
-
-  return {
-    ...video,
-    id: hashId(pageUrl),
-    url: pageUrl,
-    format: "PAGE",
-    source: "page-fallback",
-    contentType: "",
-    pageUrl,
-    requestHeaders: [],
-    downloadable: true,
-    sizeBytes: null,
-  };
+  return downloadFallbacks.pageFallbackVideoForSource(video, attemptedUrls, downloadFallbackDeps());
 }
 
 function resolverUrlsForSource(sourceVideo) {
-  const urls = [
-    sourceVideo?.pageUrl || "",
-    sourceVideo?.frameUrl || "",
-    sourceVideo?.url || "",
-  ];
-  const seen = new Set();
-  const result = [];
-
-  for (const value of urls) {
-    const url = normalizeUrl(value);
-    if (!url || seen.has(url) || !isDownloadableUrl(url, "")) {
-      continue;
-    }
-    seen.add(url);
-    result.push(url);
-  }
-
-  return result;
+  return downloadFallbacks.resolverUrlsForSource(sourceVideo, downloadFallbackDeps());
 }
 
 async function resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls = new Set()) {
-  const resolverUrls = resolverUrlsForSource(sourceVideo);
-  if (!resolverUrls.length) {
-    return [];
-  }
-
-  const rawCandidates = [];
-  let title = "";
-  for (const url of resolverUrls) {
-    const requestId = `resolve_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    try {
-      const response = await nativeRequest(
-        {
-          type: "resolveMediaCandidates",
-          id: requestId,
-          url,
-          pageUrl: sourceVideo.pageUrl || sourceVideo.frameUrl || "",
-          userAgent: navigator.userAgent || "",
-          requestHeaders: await nativeRequestHeadersForVideo(url, sourceVideo.pageUrl || sourceVideo.frameUrl || ""),
-        },
-        20000
-      );
-      title = title || response?.title || "";
-      rawCandidates.push(...(Array.isArray(response?.candidates) ? response.candidates : []));
-    } catch (_error) {
-      // Some media URLs are binary or server-blocked. Keep inspecting the page/frame fallbacks.
-    }
-  }
-
-  if (!rawCandidates.length) {
-    return [];
-  }
-
-  const candidates = [];
-  const seenCandidateUrls = new Set();
-  for (const candidate of rawCandidates) {
-    const candidateUrl = normalizeUrl(candidate?.url || "");
-    if (
-      !candidateUrl ||
-      seenCandidateUrls.has(candidateUrl) ||
-      attemptedUrls.has(candidateUrl) ||
-      !isDownloadableUrl(candidateUrl, candidate?.contentType || "")
-    ) {
-      continue;
-    }
-    seenCandidateUrls.add(candidateUrl);
-    const detected = await addDetectedVideo(tabId, {
-      url: candidate.url,
-      format: candidate.format || detectFormat(candidate.url, candidate.contentType || ""),
-      source: candidate.source || "resolved-page",
-      contentType: candidate.contentType || "",
-      title: candidate.title || title || sourceVideo.title || titleFromUrl(candidate.url),
-      pageUrl: sourceVideo.pageUrl || sourceVideo.url || "",
-      frameUrl: sourceVideo.frameUrl || sourceVideo.pageUrl || "",
-      downloadable: true,
-      duration: sourceVideo.duration || null,
-      width: sourceVideo.width || null,
-      height: sourceVideo.height || null,
-      bitrate: candidate.bitrate || null,
-      thumbnailUrl: sourceVideo.thumbnailUrl || "",
-    });
-    candidates.push({
-      ...(detected || candidate),
-      url: candidate.url,
-      id: detected?.id || candidate.id || hashId(candidate.url),
-      format: candidate.format || detected?.format || detectFormat(candidate.url, candidate.contentType || ""),
-      source: candidate.source || detected?.source || "resolved-page",
-      title: detected?.title || candidate.title || title || sourceVideo.title || titleFromUrl(candidate.url),
-      pageUrl: sourceVideo.pageUrl || sourceVideo.url || "",
-      frameUrl: sourceVideo.frameUrl || sourceVideo.pageUrl || "",
-      contentType: candidate.contentType || detected?.contentType || "",
-      downloadable: true,
-      sizeBytes: detected?.sizeBytes || null,
-      backend: "auto",
-      fallbackReason: "resolved-media-candidate",
-      confidence: Number(candidate.confidence || 0),
-    });
-  }
-
-  return candidates.sort((left, right) => Number(right.confidence || 0) - Number(left.confidence || 0));
+  return downloadFallbacks.resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls, downloadFallbackDeps());
 }
 
 async function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls) {
-  const groupedVideo = findGroupedVideoForAnyVariant(tabId, failedVideo) || failedVideo;
-  const variants = downloadableVariants(groupedVideo, attemptedUrls);
-  const fallback = variants[0];
-  if (fallback) {
-    return {
-      ...fallback,
-      groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
-      groupVariants: variantsForVideo(groupedVideo),
-    };
-  }
-
-  const pageFallback = pageFallbackVideoForSource(failedVideo, attemptedUrls);
-  if (pageFallback) {
-    return {
-      ...pageFallback,
-      groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
-      groupVariants: variantsForVideo(groupedVideo),
-    };
-  }
-
-  const resolvedCandidates = await resolveMediaCandidatesForSource(tabId, failedVideo, attemptedUrls);
-  if (resolvedCandidates.length) {
-    return {
-      ...resolvedCandidates[0],
-      groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
-      groupVariants: variantsForVideo(groupedVideo),
-    };
-  }
-
-  return null;
+  return downloadFallbacks.fallbackVideoForDownload(tabId, failedVideo, attemptedUrls, downloadFallbackDeps());
 }
 
 function isBlockingDownloadStatus(status) {
@@ -1521,58 +1380,7 @@ async function clearDownloads() {
 }
 
 function nativeRequest(payload, timeoutMs = 60000) {
-  return new Promise((resolve, reject) => {
-    let port;
-    let settled = false;
-    const finish = (error, response) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      try {
-        if (port) {
-          port.disconnect();
-        }
-      } catch (_error) {}
-      if (error) {
-        reject(error);
-      } else {
-        resolve(response);
-      }
-    };
-
-    try {
-      port = api.runtime.connectNative(HOST_NAME);
-    } catch (error) {
-      reject(new Error(`Native messaging is not connected: ${error.message || error}`));
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      finish(new Error("Native helper did not respond in time."));
-    }, timeoutMs);
-
-    port.onMessage.addListener((message) => {
-      if (!message || message.id !== payload.id) {
-        return;
-      }
-      if (message.type === "error") {
-        finish(new Error(message.error || "Native helper returned an error."));
-        return;
-      }
-      finish(null, message);
-    });
-
-    port.onDisconnect.addListener(() => {
-      const runtimeError = api.runtime.lastError ? api.runtime.lastError.message : "";
-      if (!settled) {
-        finish(new Error(runtimeError || "Native helper disconnected."));
-      }
-    });
-
-    port.postMessage(payload);
-  });
+  return nativeRequests.nativeRequest(api, HOST_NAME, payload, timeoutMs);
 }
 
 function humanSize(numBytes) {
