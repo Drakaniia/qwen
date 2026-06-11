@@ -45,8 +45,14 @@ from native_protocol import (
     HostError,
     configure_binary_stdio,
     encode_native_message,
+    error_response,
+    folder_response,
+    pong_response,
     read_native_message,
+    request_id,
+    request_type,
     send_native_message,
+    unexpected_error_response,
 )
 from media_resolver import extract_media_candidates_from_text, resolve_media_candidates
 from stream_backends import (
@@ -172,12 +178,8 @@ def run_format_list(message):
 
 
 def run_choose_folder(message):
-    request_id = str(message.get("id") or message.get("requestId") or "")
     selected = choose_download_folder(message.get("initialFolder"))
-    if selected:
-        send_native_message({"type": "folder", "id": request_id, "path": str(selected)})
-    else:
-        send_native_message({"type": "folder", "id": request_id, "canceled": True})
+    send_native_message(folder_response(message, selected))
 
 
 def run_resolve_media_candidates(message):
@@ -195,53 +197,29 @@ def dependency_status():
 
 
 def handle_message(message):
-    message_type = message.get("type")
-    request_id = str(message.get("id") or message.get("requestId") or "")
+    message_type = request_type(message)
 
-    if message_type == "ping":
-        send_native_message(
-            {
-                "type": "pong",
-                "id": request_id,
-                "version": HOST_VERSION,
-                "dependencies": dependency_status(),
-            }
-        )
-        return
-
-    if message_type == "download":
-        run_download(message)
-        return
-
-    if message_type in {"pause", "resume", "cancel"}:
-        control_download(message, message_type)
-        return
-
-    if message_type == "openFile":
-        open_download_path(message, reveal=False)
-        return
-
-    if message_type == "showFile":
-        open_download_path(message, reveal=True)
-        return
-
-    if message_type == "deleteArtifacts":
-        delete_download_artifacts(message)
-        return
-
-    if message_type == "formats":
-        run_format_list(message)
-        return
-
-    if message_type == "resolveMediaCandidates":
-        run_resolve_media_candidates(message)
-        return
-
-    if message_type == "chooseFolder":
-        run_choose_folder(message)
-        return
-
-    raise HostError(f"Unknown native host request type: {message_type}")
+    match message_type:
+        case "ping":
+            send_native_message(pong_response(message, HOST_VERSION, dependency_status()))
+        case "download":
+            run_download(message)
+        case "pause" | "resume" | "cancel":
+            control_download(message, message_type)
+        case "openFile":
+            open_download_path(message, reveal=False)
+        case "showFile":
+            open_download_path(message, reveal=True)
+        case "deleteArtifacts":
+            delete_download_artifacts(message)
+        case "formats":
+            run_format_list(message)
+        case "resolveMediaCandidates":
+            run_resolve_media_candidates(message)
+        case "chooseFolder":
+            run_choose_folder(message)
+        case _:
+            raise HostError(f"Unknown native host request type: {message_type}")
 
 
 def main():
@@ -255,23 +233,15 @@ def main():
             print(f"Native messaging protocol error: {exc}", file=sys.stderr)
             return 1
 
-        request_id = ""
-        if isinstance(message, dict):
-            request_id = str(message.get("id") or message.get("requestId") or "")
+        request_id_value = request_id(message)
 
         try:
             handle_message(message)
         except HostError as exc:
-            send_native_message({"type": "error", "id": request_id, "error": str(exc)})
+            send_native_message(error_response(request_id_value, exc))
         except Exception as exc:
             print(f"Unhandled host error: {exc}", file=sys.stderr)
-            send_native_message(
-                {
-                    "type": "error",
-                    "id": request_id,
-                    "error": f"Unexpected helper error: {exc}",
-                }
-            )
+            send_native_message(unexpected_error_response(request_id_value, exc))
 
 
 if __name__ == "__main__":

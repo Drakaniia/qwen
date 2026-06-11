@@ -13,6 +13,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
 
 import host
+import native_protocol
 
 
 class HostHelperTests(unittest.TestCase):
@@ -23,7 +24,6 @@ class HostHelperTests(unittest.TestCase):
         import folder_picker
         import media_resolver
         import native_paths
-        import native_protocol
         import process_control
         import progress_parser
         import stream_backends
@@ -31,6 +31,12 @@ class HostHelperTests(unittest.TestCase):
         import yt_dlp_adapter
 
         self.assertIs(host.HostError, native_protocol.HostError)
+        self.assertIs(host.request_id, native_protocol.request_id)
+        self.assertIs(host.request_type, native_protocol.request_type)
+        self.assertIs(host.pong_response, native_protocol.pong_response)
+        self.assertIs(host.folder_response, native_protocol.folder_response)
+        self.assertIs(host.error_response, native_protocol.error_response)
+        self.assertIs(host.unexpected_error_response, native_protocol.unexpected_error_response)
         self.assertIs(host.sanitize_filename, native_paths.sanitize_filename)
         self.assertIs(host.clean_request_headers, browser_context.clean_request_headers)
         self.assertIs(host.build_yt_dlp_command, yt_dlp_adapter.build_yt_dlp_command)
@@ -627,11 +633,46 @@ class HostHelperTests(unittest.TestCase):
 
     def test_native_message_round_trip_uses_length_prefixed_json(self):
         payload = {"type": "progress", "percent": 42.5}
-        encoded = host.encode_native_message(payload)
+        encoded = native_protocol.encode_native_message(payload)
         length = struct.unpack("=I", encoded[:4])[0]
 
         self.assertEqual(length, len(encoded[4:]))
-        self.assertEqual(host.read_native_message(io.BytesIO(encoded)), payload)
+        self.assertEqual(native_protocol.read_native_message(io.BytesIO(encoded)), payload)
+        self.assertIs(host.encode_native_message, native_protocol.encode_native_message)
+        self.assertIs(host.read_native_message, native_protocol.read_native_message)
+
+    def test_native_protocol_shapes_host_response_envelopes(self):
+        request = {"type": "ping", "requestId": "legacy_1"}
+        dependencies = {"ytDlp": True, "ffmpeg": False}
+
+        self.assertEqual(native_protocol.request_id(request), "legacy_1")
+        self.assertEqual(native_protocol.request_type(request), "ping")
+        self.assertEqual(
+            native_protocol.pong_response(request, "1.2.3", dependencies),
+            {
+                "type": "pong",
+                "id": "legacy_1",
+                "version": "1.2.3",
+                "dependencies": dependencies,
+            },
+        )
+        self.assertEqual(
+            native_protocol.folder_response({"id": "folder_1"}, Path(r"C:\Users\Viewer\Videos")),
+            {
+                "type": "folder",
+                "id": "folder_1",
+                "path": r"C:\Users\Viewer\Videos",
+            },
+        )
+        self.assertEqual(
+            native_protocol.folder_response({"id": "folder_1"}, None),
+            {"type": "folder", "id": "folder_1", "canceled": True},
+        )
+        self.assertEqual(native_protocol.error_response("job_1", "failed"), {"type": "error", "id": "job_1", "error": "failed"})
+        self.assertEqual(
+            native_protocol.unexpected_error_response("job_1", "boom"),
+            {"type": "error", "id": "job_1", "error": "Unexpected helper error: boom"},
+        )
 
     def test_handle_choose_folder_sends_selected_path(self):
         sent = []

@@ -14,6 +14,42 @@ class HostError(Exception):
     pass
 
 
+def request_id(message):
+    if not isinstance(message, dict):
+        return ""
+    return str(message.get("id") or message.get("requestId") or "")
+
+
+def request_type(message):
+    return message.get("type")
+
+
+def pong_response(message, version, dependencies):
+    return {
+        "type": "pong",
+        "id": request_id(message),
+        "version": version,
+        "dependencies": dependencies,
+    }
+
+
+def folder_response(message, selected_path):
+    response = {"type": "folder", "id": request_id(message)}
+    if selected_path:
+        response["path"] = str(selected_path)
+    else:
+        response["canceled"] = True
+    return response
+
+
+def error_response(request_id_value, error):
+    return {"type": "error", "id": str(request_id_value or ""), "error": str(error)}
+
+
+def unexpected_error_response(request_id_value, error):
+    return error_response(request_id_value, f"Unexpected helper error: {error}")
+
+
 def configure_binary_stdio():
     if os.name != "nt":
         return
