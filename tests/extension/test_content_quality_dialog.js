@@ -194,11 +194,13 @@ function createChooser(options = {}) {
 
   const contentScripts = manifest.content_scripts[0].js;
   assert.deepEqual(
-    contentScripts.slice(contentScripts.indexOf("src/shared/video_filters.js")),
+    contentScripts.slice(contentScripts.indexOf("src/shared/media_candidates.js")),
     [
+      "src/shared/media_candidates.js",
       "src/shared/video_filters.js",
       "src/shared/quality_format.js",
       "src/shared/quality_dialog.js",
+      "src/content/page_detection.js",
       "src/content/content.js",
     ],
     "content script must load shared quality dialog dependencies before content.js"

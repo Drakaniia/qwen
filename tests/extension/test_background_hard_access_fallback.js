@@ -8,6 +8,7 @@ const filters = require(path.join(__dirname, "../../src/shared/video_filters.js"
 const downloadState = require(path.join(__dirname, "../../src/background/download_state.js"));
 const nativeRequests = require(path.join(__dirname, "../../src/background/native_requests.js"));
 const downloadFallbacks = require(path.join(__dirname, "../../src/background/download_fallbacks.js"));
+const downloadOrchestration = require(path.join(__dirname, "../../src/background/download_orchestration.js"));
 
 const TAB_ID = 42;
 const PAGE_URL = "https://example.com/watch/movie";
@@ -165,6 +166,7 @@ function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
   context.QwinDownloadState = downloadState;
   context.QwinNativeRequests = nativeRequests;
   context.QwinDownloadFallbacks = downloadFallbacks;
+  context.QwinDownloadOrchestration = downloadOrchestration;
 
   vm.createContext(context);
   vm.runInContext(source, context, { filename: "background.js" });

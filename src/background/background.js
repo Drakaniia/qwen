@@ -1,5 +1,8 @@
 "use strict";
 
+if (typeof importScripts === "function" && typeof globalThis.QwinMediaCandidates === "undefined") {
+  importScripts("../shared/media_candidates.js");
+}
 if (typeof importScripts === "function" && typeof globalThis.QwinVideoFilters === "undefined") {
   importScripts("../shared/video_filters.js");
 }
@@ -12,6 +15,9 @@ if (typeof importScripts === "function" && typeof globalThis.QwinNativeRequests 
 if (typeof importScripts === "function" && typeof globalThis.QwinDownloadFallbacks === "undefined") {
   importScripts("./download_fallbacks.js");
 }
+if (typeof importScripts === "function" && typeof globalThis.QwinDownloadOrchestration === "undefined") {
+  importScripts("./download_orchestration.js");
+}
 
 const api = typeof browser !== "undefined" ? browser : chrome;
 const isPromiseApi = typeof browser !== "undefined";
@@ -19,6 +25,7 @@ const videoFilters = globalThis.QwinVideoFilters;
 const downloadState = globalThis.QwinDownloadState;
 const nativeRequests = globalThis.QwinNativeRequests;
 const downloadFallbacks = globalThis.QwinDownloadFallbacks;
+const downloadOrchestrationModule = globalThis.QwinDownloadOrchestration;
 
 const HOST_NAME = "com.qwin.video_downloader";
 const STORAGE_VIDEOS = "qwinVideosByTab";
@@ -878,507 +885,129 @@ async function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls) {
   return downloadFallbacks.fallbackVideoForDownload(tabId, failedVideo, attemptedUrls, downloadFallbackDeps());
 }
 
+function downloadOrchestrationDeps() {
+  return {
+    api,
+    artifactPatchFromMessage,
+    blockingDownloadStatuses: BLOCKING_DOWNLOAD_STATUSES,
+    callTabsQuery,
+    cleanupDownloadArtifacts,
+    cleanupPatchFromMessage,
+    clearedArtifactPatch,
+    detectFormat,
+    downloadPortsById,
+    downloadProgressMessage,
+    ensureStateLoaded,
+    exhaustedSourcesError,
+    fallbackVideoForDownload,
+    findVariant,
+    getDownloadsById: () => downloadsById,
+    getSettings: () => settings,
+    getTabVideos,
+    hashId,
+    hostName: HOST_NAME,
+    isHardAccessError,
+    isRetryableSourceError,
+    markVideoUrlUnavailable,
+    nativeRequest,
+    nativeRequestHeadersForVideo,
+    normalizeDownloadProgress,
+    normalizeUrl,
+    notifyPopup,
+    pageFallbackVideoForSource,
+    persistDownloads,
+    persistSettings,
+    progressDetailPatchFromMessage,
+    resetDownloadProgressDetails,
+    setDownloadsById(nextDownloadsById) {
+      downloadsById = nextDownloadsById;
+    },
+    setSettings(nextSettings) {
+      settings = nextSettings;
+    },
+    titleFromUrl,
+    updateDownload,
+    userAgent: () => navigator.userAgent || "",
+    variantsForVideo,
+    videoFilters,
+  };
+}
+
+let downloadOrchestration = null;
+function getDownloadOrchestration() {
+  if (!downloadOrchestration) {
+    downloadOrchestration = downloadOrchestrationModule.create(downloadOrchestrationDeps());
+  }
+  return downloadOrchestration;
+}
+
 function isBlockingDownloadStatus(status) {
-  return BLOCKING_DOWNLOAD_STATUSES.has(status || "queued");
+  return getDownloadOrchestration().isBlockingDownloadStatus(status);
 }
 
 function findBlockingDownloadJobForVideo(video, selectedVideo) {
-  const ids = new Set();
-  for (const value of [video?.id, video?.groupId, selectedVideo?.id, selectedVideo?.groupId]) {
-    if (value) {
-      ids.add(value);
-    }
-  }
-  const selectedUrl = normalizeUrl(selectedVideo?.url || "");
-
-  return Object.values(downloadsById).find((job) => {
-    if (!job || !isBlockingDownloadStatus(job.status)) {
-      return false;
-    }
-    if ((job.videoId && ids.has(job.videoId)) || (job.variantId && ids.has(job.variantId))) {
-      return true;
-    }
-    return selectedUrl && normalizeUrl(job.url || "") === selectedUrl;
-  });
+  return getDownloadOrchestration().findBlockingDownloadJobForVideo(video, selectedVideo);
 }
 
 async function startNativeDownload(tabId, videoId, formatId = "best", variantId = "", backend = "auto") {
-  await ensureStateLoaded();
-  const videos = await getTabVideos(tabId);
-  const video = videos.find(
-    (item) => item.id === videoId || variantsForVideo(item).some((variant) => variant.id === videoId)
-  );
-
-  if (!video) {
-    throw new Error("That video URL is no longer in the detected list.");
-  }
-  const selectedVideo = findVariant(video, variantId || (video.id === videoId ? "" : videoId));
-  if (!selectedVideo) {
-    throw new Error("That video version is no longer in the detected list.");
-  }
-  if (!selectedVideo.downloadable) {
-    throw new Error(
-      "This is a browser-only blob/data URL. Wait for a supported video page, MP4, WebM, M3U8, or MPD URL to appear."
-    );
-  }
-
-  const blockingJob = findBlockingDownloadJobForVideo(video, selectedVideo);
-  if (blockingJob) {
-    return { jobId: blockingJob.id, existing: true };
-  }
-
-  return startNativeDownloadFromVideo(
-    tabId,
-    { ...selectedVideo, groupId: video.id, groupVariants: variantsForVideo(video), backend: backend || "auto" },
-    formatId,
-    { backend: backend || "auto" }
-  );
+  return getDownloadOrchestration().startNativeDownload(tabId, videoId, formatId, variantId, backend);
 }
 
 async function startNativeDownloadFromVideo(tabId, video, formatId = "best", options = {}) {
-  const tabs = await callTabsQuery({ active: true, currentWindow: true });
-  const activeTab = tabs && tabs[0] ? tabs[0] : {};
-  const jobId = options.jobId || `job_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const existingJob = downloadsById[jobId] || {};
-  const pageUrl = video.pageUrl || activeTab.url || "";
-  const requestHeaders =
-    (Array.isArray(video.requestHeaders) && video.requestHeaders.length ? video.requestHeaders : null) ||
-    (Array.isArray(existingJob.requestHeaders) && existingJob.requestHeaders.length ? existingJob.requestHeaders : null) ||
-    (await nativeRequestHeadersForVideo(video.url, pageUrl));
-  const attemptedUrls = new Set((options.attemptedUrls || []).map((url) => normalizeUrl(url)));
-  attemptedUrls.add(normalizeUrl(video.url || ""));
-  const backend = options.backend || video.backend || "auto";
-  let port;
-  let finished = false;
-
-  updateDownload(jobId, {
-    id: jobId,
-    tabId,
-    videoId: video.groupId || video.id,
-    variantId: video.groupId ? video.id : "",
-    url: video.url,
-    format: video.format,
-    title: video.title || "Video",
-    formatId: formatId || "best",
-    downloadFolder: settings.downloadFolder || "",
-    requestHeaders: requestHeaders,
-    pageUrl,
-    backend,
-    filepath: existingJob.filepath || "",
-    artifactRoot: existingJob.artifactRoot || "",
-    status: "connecting",
-    message: options.resume ? "Reconnecting to native helper..." : "Connecting to native helper...",
-    ...resetDownloadProgressDetails(),
-    percent: options.resume && typeof existingJob.percent === "number" ? existingJob.percent : null,
-    createdAt: existingJob.createdAt || Date.now(),
-  });
-
-  try {
-    port = api.runtime.connectNative(HOST_NAME);
-  } catch (error) {
-    updateDownload(jobId, {
-      status: "error",
-      error: `Native messaging is not connected: ${error.message || error}`,
-    });
-    return { jobId };
-  }
-  downloadPortsById[jobId] = port;
-
-  port.onMessage.addListener((message) => {
-    if (!message || message.id !== jobId) {
-      return;
-    }
-
-    if (message.type === "started") {
-      updateDownload(jobId, { status: "running", message: "" });
-      return;
-    }
-
-    if (message.type === "progress") {
-      const patch = {
-        status: "running",
-        stage: message.stage,
-        ...artifactPatchFromMessage(message),
-        ...progressDetailPatchFromMessage(message),
-      };
-      if (typeof message.percent === "number") {
-        patch.percent = normalizeDownloadProgress(jobId, message.percent);
-        patch.message = downloadProgressMessage(patch.percent);
-      }
-      updateDownload(jobId, patch);
-      return;
-    }
-
-    if (message.type === "control") {
-      updateDownload(jobId, {
-        status: message.status || downloadsById[jobId]?.status || "running",
-        message: message.message || "Download control command sent.",
-      });
-      return;
-    }
-
-    if (message.type === "paused") {
-      updateDownload(jobId, {
-        status: "paused",
-        message: message.message || "Download paused.",
-        ...artifactPatchFromMessage(message),
-      });
-      return;
-    }
-
-    if (message.type === "resumed") {
-      updateDownload(jobId, {
-        status: "running",
-        message: message.message || "Resuming download...",
-      });
-      return;
-    }
-
-    if (message.type === "canceled") {
-      finished = true;
-      delete downloadPortsById[jobId];
-      const cleanupPatch = cleanupPatchFromMessage(message);
-      updateDownload(jobId, {
-        status: "canceled",
-        message: message.message || "Download canceled.",
-        ...artifactPatchFromMessage(message),
-        ...cleanupPatch,
-        ...clearedArtifactPatch(cleanupPatch),
-      });
-      try {
-        port.disconnect();
-      } catch (_error) {}
-      return;
-    }
-
-    if (message.type === "done") {
-      finished = true;
-      delete downloadPortsById[jobId];
-      updateDownload(jobId, {
-        status: "done",
-        percent: 100,
-        rawPercent: 100,
-        speed: "",
-        eta: "",
-        stage: "done",
-        filepath: message.filepath || "",
-        artifactRoot: message.artifactRoot || "",
-        message: message.message || "Download complete.",
-      });
-      try {
-        port.disconnect();
-      } catch (_error) {}
-      return;
-    }
-
-    if (message.type === "error") {
-      const errorText = message.error || "yt-dlp failed.";
-      finished = true;
-      delete downloadPortsById[jobId];
-      const artifactPatch = artifactPatchFromMessage(message);
-      try {
-        port.disconnect();
-      } catch (_error) {}
-      if (isRetryableSourceError(errorText)) {
-        void (async () => {
-          if (isHardAccessError(errorText)) {
-            await markVideoUrlUnavailable(tabId, video.url, errorText);
-          }
-          const fallbackVideo = await fallbackVideoForDownload(tabId, video, attemptedUrls);
-          if (!fallbackVideo) {
-            updateDownload(jobId, {
-              status: "error",
-              error: exhaustedSourcesError(errorText, attemptedUrls),
-              ...artifactPatch,
-            });
-            return;
-          }
-
-          updateDownload(jobId, {
-            status: "connecting",
-            error: "",
-            message: "Source expired; trying another detected source...",
-            ...artifactPatch,
-          });
-          await startNativeDownloadFromVideo(tabId, fallbackVideo, "best", {
-            jobId,
-            attemptedUrls: Array.from(attemptedUrls),
-            backend: fallbackVideo.backend || backend,
-          });
-        })();
-        return;
-      }
-
-      updateDownload(jobId, {
-        status: "error",
-        error: errorText,
-        ...artifactPatch,
-      });
-    }
-  });
-
-  port.onDisconnect.addListener(() => {
-    const runtimeError = api.runtime.lastError ? api.runtime.lastError.message : "";
-    delete downloadPortsById[jobId];
-    if (!finished) {
-      updateDownload(jobId, {
-        status: "error",
-        error:
-          runtimeError ||
-          "Native messaging helper disconnected. Run scripts\\install.bat, restart the browser, and try again.",
-      });
-    }
-  });
-
-  port.postMessage({
-    type: "download",
-    id: jobId,
-    url: video.url,
-    format: video.format || "",
-    pageUrl,
-    userAgent: navigator.userAgent || "",
-    requestHeaders,
-    downloadFolder: settings.downloadFolder || "",
-    formatId: formatId || "best",
-    backend,
-  });
-
-  updateDownload(jobId, {
-    status: "queued",
-    message: "Sent to native helper.",
-  });
-
-  return { jobId };
+  return getDownloadOrchestration().startNativeDownloadFromVideo(tabId, video, formatId, options);
 }
 
 async function startNativeDownloadForUrl(tabId, input) {
-  const video = await addDetectedVideo(tabId, {
-    ...input,
-    source: input.source || "overlay",
-  });
-
-  if (!video) {
-    throw new Error("That media was filtered as an ad, GIF-style clip, or unsupported URL.");
-  }
-
-  return startNativeDownload(tabId, video.id, input.formatId || "best", input.variantId || "", input.backend || "auto");
+  return getDownloadOrchestration().startNativeDownloadForUrl(tabId, input);
 }
 
 async function getBestDownloadableVideo(tabId) {
-  const videos = await getTabVideos(tabId);
-  const video = videos.find((item) => item.downloadable);
-  if (!video) {
-    throw new Error("No downloadable video page, MP4, WebM, M3U8, or MPD URL has been detected for this player yet.");
-  }
-  return video;
+  return getDownloadOrchestration().getBestDownloadableVideo(tabId);
 }
 
 async function startBestNativeDownload(tabId, formatId = "best", variantId = "") {
-  const video = await getBestDownloadableVideo(tabId);
-  return startNativeDownload(tabId, video.id, formatId, variantId);
+  return getDownloadOrchestration().startBestNativeDownload(tabId, formatId, variantId);
 }
 
 function getDownloadJob(jobId) {
-  const job = downloadsById[jobId];
-  if (!job) {
-    throw new Error("That download is no longer in the history.");
-  }
-  return job;
+  return getDownloadOrchestration().getDownloadJob(jobId);
 }
 
 function videoFromDownloadJob(job) {
-  const video = {
-    id: job.videoId || hashId(job.url),
-    url: job.url,
-    format: job.format || detectFormat(job.url),
-    title: job.title || titleFromUrl(job.url),
-    pageUrl: job.pageUrl || "",
-    requestHeaders: job.requestHeaders || [],
-    downloadable: true,
-  };
-  if (videoFilters.isBlockedVideoUrl(video.url, job.contentType || "")) {
-    return pageFallbackVideoForSource(video, new Set([normalizeUrl(video.url || "")])) || video;
-  }
-  return video;
+  return getDownloadOrchestration().videoFromDownloadJob(job);
 }
 
 function controlActiveDownload(jobId, nativeType) {
-  const port = downloadPortsById[jobId];
-  if (!port) {
-    throw new Error("That download is not active anymore. Use Retry to start it again.");
-  }
-
-  const nextStatus = {
-    pause: "pausing",
-    resume: "running",
-    cancel: "canceling",
-  }[nativeType];
-  const nextMessage = {
-    pause: "Pausing download...",
-    resume: "Resuming download...",
-    cancel: "Canceling download...",
-  }[nativeType];
-
-  updateDownload(jobId, {
-    status: nextStatus || downloadsById[jobId]?.status || "running",
-    message: nextMessage || "Sending download command...",
-  });
-  if (nativeType === "pause") {
-    port.postMessage({ type: "pause", id: jobId });
-  } else if (nativeType === "resume") {
-    port.postMessage({ type: "resume", id: jobId });
-  } else if (nativeType === "cancel") {
-    port.postMessage({ type: "cancel", id: jobId });
-  }
-  return { jobId };
+  return getDownloadOrchestration().controlActiveDownload(jobId, nativeType);
 }
 
 async function resumeDownload(tabId, jobId) {
-  await ensureStateLoaded();
-  if (downloadPortsById[jobId]) {
-    return controlActiveDownload(jobId, "resume");
-  }
-
-  const job = getDownloadJob(jobId);
-  if (job.status !== "paused") {
-    throw new Error("That download is not paused.");
-  }
-  if (!job.url) {
-    throw new Error("That download does not have a URL to resume.");
-  }
-
-  return startNativeDownloadFromVideo(
-    job.tabId || tabId,
-    videoFromDownloadJob(job),
-    job.formatId || "best",
-    { jobId, resume: true }
-  );
+  return getDownloadOrchestration().resumeDownload(tabId, jobId);
 }
 
-async function cancelDownload(_tabId, jobId) {
-  await ensureStateLoaded();
-  if (downloadPortsById[jobId]) {
-    return controlActiveDownload(jobId, "cancel");
-  }
-
-  const job = getDownloadJob(jobId);
-  if (["done", "error", "canceled"].includes(job.status)) {
-    throw new Error("This download is no longer active.");
-  }
-
-  const cleanupPatch = await cleanupDownloadArtifacts(jobId, job);
-  updateDownload(jobId, {
-    status: "canceled",
-    message: cleanupPatch.artifactCleanupError
-      ? `Download canceled. Could not clean leftover files: ${cleanupPatch.artifactCleanupError}`
-      : "Download canceled. No active helper connection remained.",
-    ...cleanupPatch,
-    ...clearedArtifactPatch(cleanupPatch),
-  });
-  return { jobId };
+async function cancelDownload(tabId, jobId) {
+  return getDownloadOrchestration().cancelDownload(tabId, jobId);
 }
 
 async function retryDownload(tabId, jobId) {
-  await ensureStateLoaded();
-  const job = getDownloadJob(jobId);
-  if (["queued", "connecting", "running", "paused", "pausing", "canceling"].includes(job.status)) {
-    throw new Error("That download is still active. Cancel it or wait before retrying.");
-  }
-  if (!job.url) {
-    throw new Error("That download does not have a URL to retry.");
-  }
-
-  return startNativeDownloadFromVideo(
-    job.tabId || tabId,
-    videoFromDownloadJob(job),
-    job.formatId || "best"
-  );
+  return getDownloadOrchestration().retryDownload(tabId, jobId);
 }
 
 async function openDownloadedPath(jobId, nativeType) {
-  await ensureStateLoaded();
-  const job = getDownloadJob(jobId);
-  if (!job.filepath) {
-    throw new Error("That download has no saved file path yet.");
-  }
-
-  const requestId = `open_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const payload =
-    nativeType === "openFile"
-      ? { type: "openFile", id: requestId, path: job.filepath }
-      : { type: "showFile", id: requestId, path: job.filepath };
-
-  await nativeRequest(payload, 10000);
-  return { jobId };
+  return getDownloadOrchestration().openDownloadedPath(jobId, nativeType);
 }
 
 async function chooseDownloadFolder() {
-  await ensureStateLoaded();
-  const requestId = `folder_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const response = await nativeRequest(
-    {
-      type: "chooseFolder",
-      id: requestId,
-      initialFolder: settings.downloadFolder || "",
-    },
-    600000
-  );
-
-  const selectedPath = String(response.path || "").trim();
-  if (response.canceled || !selectedPath) {
-    return { canceled: true, settings };
-  }
-
-  settings = { ...settings, downloadFolder: selectedPath };
-  await persistSettings();
-  return { path: selectedPath, settings };
+  return getDownloadOrchestration().chooseDownloadFolder();
 }
 
 async function removeDownload(jobId) {
-  await ensureStateLoaded();
-  const job = getDownloadJob(jobId);
-  if (downloadPortsById[jobId]) {
-    throw new Error("Cancel the active download before removing it.");
-  }
-  if (job.filepath || job.artifactRoot || (Array.isArray(job.artifactPaths) && job.artifactPaths.length)) {
-    const requestId = `delete_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    await nativeRequest(
-      {
-        type: "deleteArtifacts",
-        id: requestId,
-        path: job.filepath || "",
-        artifactRoot: job.artifactRoot || "",
-        artifactPaths: job.artifactPaths || [],
-        downloadFolder: job.downloadFolder || settings.downloadFolder || "",
-      },
-      30000
-    );
-  }
-  delete downloadsById[jobId];
-  await persistDownloads();
-  notifyPopup({ type: "downloadRemoved", jobId });
-  return { jobId };
+  return getDownloadOrchestration().removeDownload(jobId);
 }
 
 async function clearDownloads() {
-  await ensureStateLoaded();
-  const removedJobIds = [];
-  const activeDownloads = {};
-
-  for (const [jobId, job] of Object.entries(downloadsById)) {
-    if (downloadPortsById[jobId] || BLOCKING_DOWNLOAD_STATUSES.has(job?.status || "queued")) {
-      activeDownloads[jobId] = job;
-    } else {
-      removedJobIds.push(jobId);
-    }
-  }
-
-  downloadsById = activeDownloads;
-  await persistDownloads();
-  notifyPopup({ type: "downloadsCleared", jobIds: removedJobIds, downloads: Object.values(downloadsById) });
-  return { jobIds: removedJobIds, downloads: Object.values(downloadsById) };
+  return getDownloadOrchestration().clearDownloads();
 }
-
 function nativeRequest(payload, timeoutMs = 60000) {
   return nativeRequests.nativeRequest(api, HOST_NAME, payload, timeoutMs);
 }

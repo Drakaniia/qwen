@@ -2,7 +2,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const source = fs.readFileSync(path.join(__dirname, "../../src/background/background.js"), "utf8");
+const source = [
+  fs.readFileSync(path.join(__dirname, "../../src/background/background.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../src/background/download_orchestration.js"), "utf8"),
+].join("\n");
 const downloadStateSource = fs.readFileSync(path.join(__dirname, "../../src/background/download_state.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../manifest.json"), "utf8"));
 
@@ -90,7 +93,7 @@ assert.match(
 
 assert.match(
   source,
-  /await cleanupDownloadArtifacts\(jobId,\s*job\)/,
+  /await (?:deps\.)?cleanupDownloadArtifacts\(jobId,\s*job\)/,
   "background no-port cancellation must request artifact cleanup before recording the canceled state"
 );
 
@@ -162,7 +165,7 @@ assert.match(
 
 assert.match(
   source,
-  /requestHeaders:\s*await nativeRequestHeadersForVideo/,
+  /requestHeaders:\s*\(?await (?:deps\.)?nativeRequestHeadersForVideo/,
   "background must send browser-context headers to the native helper"
 );
 assert.match(
@@ -230,7 +233,7 @@ assert.match(
 
 assert.match(
   source,
-  /patch\.percent\s*=\s*normalizeDownloadProgress\(jobId,\s*message\.percent\)/,
+  /patch\.percent\s*=\s*(?:deps\.)?normalizeDownloadProgress\(jobId,\s*message\.percent\)/,
   "background must route helper percent through download progress normalization"
 );
 

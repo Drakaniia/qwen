@@ -8,6 +8,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
 
 import media_resolver
+import media_candidates
 
 
 class MediaCandidateRuleTests(unittest.TestCase):
@@ -18,6 +19,14 @@ class MediaCandidateRuleTests(unittest.TestCase):
 
         for rule in rules:
             with self.subTest(rule=rule["name"]):
+                self.assertEqual(
+                    media_candidates.classify_media_url(rule["url"], rule["contentType"]),
+                    rule["format"],
+                )
+                self.assertEqual(
+                    media_candidates.is_reusable_media_url(rule["url"], rule["contentType"]),
+                    rule["reusable"],
+                )
                 self.assertEqual(
                     media_resolver.classify_media_url(rule["url"], rule["contentType"]),
                     rule["format"],

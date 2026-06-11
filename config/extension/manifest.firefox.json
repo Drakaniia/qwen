@@ -18,9 +18,13 @@
   ],
   "background": {
     "scripts": [
+      "src/shared/media_candidates.js",
       "src/shared/video_filters.js",
       "src/shared/quality_format.js",
       "src/background/download_state.js",
+      "src/background/native_requests.js",
+      "src/background/download_fallbacks.js",
+      "src/background/download_orchestration.js",
       "src/background/background.js"
     ]
   },
@@ -34,9 +38,11 @@
         "<all_urls>"
       ],
       "js": [
+        "src/shared/media_candidates.js",
         "src/shared/video_filters.js",
         "src/shared/quality_format.js",
         "src/shared/quality_dialog.js",
+        "src/content/page_detection.js",
         "src/content/content.js"
       ],
       "run_at": "document_start",

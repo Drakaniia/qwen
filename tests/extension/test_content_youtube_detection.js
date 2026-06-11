@@ -5,6 +5,7 @@ const vm = require("node:vm");
 
 const filters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
 const qualityFormat = require(path.join(__dirname, "../../src/shared/quality_format.js"));
+const pageDetection = require(path.join(__dirname, "../../src/content/page_detection.js"));
 const source = fs.readFileSync(path.join(__dirname, "../../src/content/content.js"), "utf8");
 
 function createContentContext(locationHref) {
@@ -61,6 +62,7 @@ function createContentContext(locationHref) {
   context.globalThis = context;
   context.QwinVideoFilters = filters;
   context.QwinQualityFormat = qualityFormat;
+  context.QwinPageDetection = pageDetection;
   vm.createContext(context);
   vm.runInContext(source, context, { filename: "content.js" });
   return context;
