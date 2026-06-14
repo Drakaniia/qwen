@@ -501,6 +501,12 @@ function scanVisiblePlayerFrames() {
     if (rect.width < 220 || rect.height < 120) {
       continue;
     }
+    const iframeTitle = cleanText(frame.getAttribute("title"));
+    const finalTitle =
+      iframeTitle && !videoFilters.isGenericTitle(iframeTitle)
+        ? iframeTitle
+        : cleanText(document.title) || titleFromUrl(src) || "Video";
+
     addBuiltCandidate(candidates, {
       url: src,
       format: detectFormat(src),
@@ -508,7 +514,7 @@ function scanVisiblePlayerFrames() {
       contentType: "",
       pageUrl: src,
       frameUrl: location.href,
-      title: cleanText(frame.getAttribute("title")) || cleanText(document.title) || titleFromUrl(src) || "Video",
+      title: finalTitle,
       thumbnailUrl: pageThumbnailUrl(),
       downloadable: true,
       width: rect.width,

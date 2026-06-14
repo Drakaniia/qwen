@@ -5,7 +5,6 @@ from browser_context import append_browser_context_options
 from native_paths import sanitize_filename
 from progress_parser import FILEPATH_MARKER
 
-
 DEFAULT_FORMAT_SELECTOR = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b"
 YOUTUBE_REMOTE_COMPONENTS = "ejs:github"
 GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
@@ -161,6 +160,7 @@ def build_formats_command(
         "--no-warnings",
         "--no-color",
         "--no-playlist",
+        "--no-check-formats",
         "--skip-download",
     ]
     if nocheckcertificate:

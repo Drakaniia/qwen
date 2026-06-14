@@ -79,16 +79,23 @@
           )
         : "";
 
-      return (
-        cleanText(video.getAttribute("title")) ||
-        cleanText(video.getAttribute("aria-label")) ||
-        labelledByText ||
-        cleanText(document.querySelector('meta[property="og:title"]')?.content) ||
-        cleanText(document.querySelector('meta[name="twitter:title"]')?.content) ||
-        cleanText(document.title) ||
-        titleFromUrl(url) ||
-        "Video"
-      );
+      const candidates = [
+        cleanText(document.querySelector('meta[property="og:title"]')?.content),
+        cleanText(document.querySelector('meta[name="twitter:title"]')?.content),
+        cleanText(document.title),
+        labelledByText,
+        cleanText(video.getAttribute("aria-label")),
+        cleanText(video.getAttribute("title")),
+        titleFromUrl(url),
+      ];
+
+      for (const candidate of candidates) {
+        if (candidate && !videoFilters.isGenericTitle(candidate)) {
+          return candidate;
+        }
+      }
+
+      return "Video";
     }
 
     function pageThumbnailUrl() {

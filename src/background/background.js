@@ -1100,7 +1100,7 @@ function findGroupedVideoForVariant(tabId, variant) {
 }
 
 async function updateGroupedTitle(tabId, video, title) {
-  if (!title) {
+  if (!title || videoFilters.isGenericTitle(title)) {
     return;
   }
 
@@ -1226,17 +1226,11 @@ async function getNativeFormatsForVideo(tabId, video) {
     }
   }
 
-  // Ensure size probes are completed before returning so format sizes are populated.
-  const sizedVideo = await sizeProbePromise;
-
-  if (response && response.title) {
-    await updateGroupedTitle(tabId, sizedVideo, response.title);
-  }
-
   const nativeFormats =
     response && response.formats && response.formats.length
       ? response.formats.map((format) => normalizeNativeFormatOption(format, formatLookupVideo))
       : [];
+
   const firstHardNativeError = firstNativeError && isHardAccessError(firstNativeError);
   const hardNativeError = nativeError && !nativeFormats.length && isHardAccessError(nativeError);
   if (firstHardNativeError) {
@@ -1245,11 +1239,24 @@ async function getNativeFormatsForVideo(tabId, video) {
     await markVideoUrlUnavailable(tabId, formatLookupVideo.url, nativeError);
   }
 
-  const refreshedVideo =
-    findGroupedVideoForAnyVariant(tabId, formatLookupVideo) ||
-    findGroupedVideoForAnyVariant(tabId, sizedVideo) ||
-    formatLookupVideo ||
-    sizedVideo;
+  let refreshedVideo = null;
+  if (nativeFormats.length > 0) {
+    if (response && response.title) {
+      await updateGroupedTitle(tabId, formatLookupVideo, response.title);
+    }
+    refreshedVideo = findGroupedVideoForAnyVariant(tabId, formatLookupVideo) || formatLookupVideo;
+  } else {
+    // Only block on size probes if we have no native formats and need source formats with sizes.
+    const sizedVideo = await sizeProbePromise;
+    if (response && response.title) {
+      await updateGroupedTitle(tabId, sizedVideo, response.title);
+    }
+    refreshedVideo =
+      findGroupedVideoForAnyVariant(tabId, formatLookupVideo) ||
+      findGroupedVideoForAnyVariant(tabId, sizedVideo) ||
+      formatLookupVideo ||
+      sizedVideo;
+  }
   const excludedUrls = new Set();
   if (firstHardNativeError) {
     excludedUrls.add(normalizeUrl(lookupVideo.url || ""));
@@ -1272,10 +1279,17 @@ async function getNativeFormatsForVideo(tabId, video) {
   }
 
   const formats = nativeFormats.length ? nativeFormats : sourceFormats;
+  const pageTitle = refreshedVideo.title || lookupVideo.title || "Video";
+  const serverTitle = response && response.title && !videoFilters.isGenericTitle(response.title) ? response.title : "";
+
+  // The user wants the "site tile" (page title) over "random metadata texts" (generic server titles).
+  // If the server provides a GOOD, non-generic title, we should use it as it's most accurate for the stream.
+  // Otherwise, fallback to the page title.
+  const finalTitle = serverTitle || pageTitle;
 
   return {
     videoId: refreshedVideo.id || formatLookupVideo.id || lookupVideo.id,
-    title: (response && response.title) || refreshedVideo.title || lookupVideo.title || "Video",
+    title: finalTitle,
     formats: formats.length
       ? formats
       : [

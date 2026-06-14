@@ -183,10 +183,13 @@ function displayFormat(video) {
 }
 
 function sourceLabel(video) {
+  if (videoFilters && typeof videoFilters.sourceLabel === "function") {
+    return videoFilters.sourceLabel(video);
+  }
   if (["M3U8", "MPD", "YOUTUBE"].includes(String(video.format || "").toUpperCase())) {
     return "full video";
   }
-  if (video.source === "manual-url" || String(video.format || "").toUpperCase() === "PAGE") {
+  if (video.source === "manual-url") {
     return "manual link";
   }
   return video.source || "detected";

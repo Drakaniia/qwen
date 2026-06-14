@@ -32,11 +32,14 @@
     return video.format || "VIDEO";
   }
 
-  function sourceLabel(video) {
+  function sourceLabel(video, videoFilters) {
+    if (videoFilters && typeof videoFilters.sourceLabel === "function") {
+      return videoFilters.sourceLabel(video);
+    }
     if (["M3U8", "MPD", "YOUTUBE"].includes(String(video.format || "").toUpperCase())) {
       return "full video";
     }
-    if (video.source === "manual-url" || String(video.format || "").toUpperCase() === "PAGE") {
+    if (video.source === "manual-url") {
       return "manual link";
     }
     return video.source || "detected";
@@ -71,7 +74,7 @@
     badge.textContent = displayFormat(video, videoFilters);
 
     const source = document.createElement("span");
-    source.textContent = video.variantCount > 1 ? `${video.variantCount} versions` : sourceLabel(video);
+    source.textContent = video.variantCount > 1 ? `${video.variantCount} versions` : sourceLabel(video, videoFilters);
 
     meta.append(badge, source);
 

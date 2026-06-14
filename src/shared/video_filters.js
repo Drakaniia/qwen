@@ -170,7 +170,11 @@
     }
 
     const youtubePage = isYouTubeVideoPageUrl(details.url || "");
-    const isDomSource = details.source === "dom-video" || details.source === "dom-source";
+    const isDomSource =
+      details.source === "dom-video" ||
+      details.source === "dom-source" ||
+      details.source === "page-fallback" ||
+      details.source === "youtube-page";
 
     if (!youtubePage && !isDomSource && hasShortOrIncompleteSignal(details)) {
       return false;
