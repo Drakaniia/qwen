@@ -42,8 +42,12 @@
         "src/shared/video_filters.js",
         "src/shared/quality_format.js",
         "src/shared/quality_dialog.js",
+        "src/shared/video_picker.js",
         "src/content/page_detection.js",
         "src/content/content.js"
+      ],
+      "css": [
+        "src/shared/qwin_overlay.css"
       ],
       "run_at": "document_start",
       "all_frames": true,
