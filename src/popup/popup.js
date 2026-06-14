@@ -17,8 +17,59 @@ const ACTIVE_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "pa
 const RESCAN_IDLE_LABEL = "Rescan";
 const RESCAN_BUSY_LABEL = "Refreshing";
 
+const INDICATOR_STATES = {
+  CHECKING: "checking",
+  AVAILABLE: "available",
+  UNAVAILABLE: "unavailable",
+};
+const INDICATOR_TOOLTIPS = {
+  checking: "Checking for videos...",
+  available: "Downloadable video available",
+  unavailable: "No downloadable video detected",
+};
+const INDICATOR_ARIA_LABELS = {
+  checking: "Checking for downloadable videos",
+  available: "Downloadable video available",
+  unavailable: "No downloadable video detected",
+};
+const INDICATOR_DEBOUNCE_MS = 300;
+
+let indicatorDebounceTimer = null;
+let currentIndicatorState = INDICATOR_STATES.CHECKING;
+
+function setDownloadIndicator(status, { immediate = false } = {}) {
+  const nextStatus = INDICATOR_STATES[status.toUpperCase()] ? status : INDICATOR_STATES.UNAVAILABLE;
+
+  if (indicatorDebounceTimer) {
+    window.clearTimeout(indicatorDebounceTimer);
+    indicatorDebounceTimer = null;
+  }
+
+  const apply = () => {
+    if (currentIndicatorState === nextStatus) {
+      return;
+    }
+    currentIndicatorState = nextStatus;
+    elements.downloadIndicator.dataset.status = nextStatus;
+    elements.downloadIndicator.title = INDICATOR_TOOLTIPS[nextStatus] || "";
+    elements.downloadIndicator.setAttribute("aria-label", INDICATOR_ARIA_LABELS[nextStatus] || "");
+  };
+
+  if (immediate || nextStatus === INDICATOR_STATES.CHECKING) {
+    apply();
+  } else {
+    indicatorDebounceTimer = window.setTimeout(apply, INDICATOR_DEBOUNCE_MS);
+  }
+}
+
+function updateIndicatorFromVideos(videos) {
+  const hasDownloadable = Array.isArray(videos) && videos.some((video) => video && video.downloadable);
+  setDownloadIndicator(hasDownloadable ? INDICATOR_STATES.AVAILABLE : INDICATOR_STATES.UNAVAILABLE);
+}
+
 const elements = {
   helperStatus: document.getElementById("helperStatus"),
+  downloadIndicator: document.getElementById("downloadIndicator"),
   settingsToggle: document.getElementById("settingsToggle"),
   settingsPanel: document.getElementById("settingsPanel"),
   settingsStatus: document.getElementById("settingsStatus"),
@@ -662,6 +713,7 @@ function appendDownloadAction(container, label, action, jobId, primary = false) 
 function render() {
   renderVideos();
   renderDownloads();
+  updateIndicatorFromVideos(currentVideos);
   setVideoLayoutMode(videoLayoutMode);
   setViewMode(viewMode);
 }
@@ -753,10 +805,12 @@ async function checkNativeHost() {
 }
 
 async function init() {
+  setDownloadIndicator(INDICATOR_STATES.CHECKING, { immediate: true });
   await updateActiveTabContext();
 
   if (!hasActiveTab()) {
     setMessage("No active tab found.", true);
+    setDownloadIndicator(INDICATOR_STATES.UNAVAILABLE, { immediate: true });
     return;
   }
 
@@ -774,6 +828,7 @@ async function rescanActiveTab() {
     return;
   }
 
+  setDownloadIndicator(INDICATOR_STATES.CHECKING, { immediate: true });
   setRescanRefreshing(true);
   try {
     const response = await runtimeMessage({ type: "rescanTab", tabId: activeTabId });
@@ -799,6 +854,7 @@ async function clearActiveTabVideos() {
     return;
   }
 
+  setDownloadIndicator(INDICATOR_STATES.CHECKING, { immediate: true });
   elements.clear.disabled = true;
   try {
     const response = await runtimeMessage({ type: "clearVideos", tabId: activeTabId });

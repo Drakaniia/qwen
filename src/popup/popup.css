@@ -44,6 +44,64 @@ h1 {
   letter-spacing: 0;
 }
 
+.topbar-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.brand-logo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.download-indicator {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  background: #9ca3af;
+  transition: background-color 200ms ease, box-shadow 200ms ease;
+  flex-shrink: 0;
+  cursor: help;
+}
+
+.download-indicator[data-status="available"] {
+  background: #10b981;
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
+}
+
+.download-indicator[data-status="unavailable"] {
+  background: #ef4444;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3);
+}
+
+.download-indicator[data-status="checking"] {
+  background: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3);
+  animation: indicator-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes indicator-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .download-indicator[data-status="checking"] {
+    animation: none;
+  }
+}
+
 .helper-status,
 .hint {
   margin: 3px 0 0;

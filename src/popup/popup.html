@@ -8,8 +8,11 @@
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <h1>Qwin Video Downloader</h1>
+      <div class="topbar-brand">
+        <div class="brand-logo">
+          <h1>Qwin Video Downloader</h1>
+          <span id="downloadIndicator" class="download-indicator" data-status="checking" title="Checking for videos..." aria-label="Checking for downloadable videos"></span>
+        </div>
         <p id="helperStatus" class="helper-status">Checking helper...</p>
       </div>
       <div class="topbar-actions">
