@@ -557,6 +557,32 @@ main {
   transition: width 180ms ease;
 }
 
+.progress-bar.indeterminate {
+  position: relative;
+}
+
+.progress-bar.indeterminate span {
+  width: 40% !important;
+  animation: progress-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar.indeterminate span {
+    animation: none;
+    width: 100% !important;
+    opacity: 0.5;
+  }
+}
+
 .progress-label {
   color: var(--muted);
   font-size: 11px;

@@ -295,13 +295,21 @@ function formatDownloadPercent(percent) {
   return `${Math.round(clampDownloadPercent(percent))}%`;
 }
 
+function isProcessingStage(job) {
+  const stage = String(job?.stage || "").trim();
+  return stage === "postprocess" || stage === "destination" || stage === "filepath";
+}
+
 function downloadProgressButtonText(job) {
   const stage = String(job?.stage || "").trim();
   if (stage === "postprocess") {
-    return "Converting";
+    return "Merging";
+  }
+  if (stage === "destination" || stage === "filepath") {
+    return "Finalizing";
   }
 
-  if (hasDownloadPercent(job)) {
+  if (hasDownloadPercent(job) && !isProcessingStage(job)) {
     return formatDownloadPercent(job.percent);
   }
 
@@ -330,36 +338,39 @@ function downloadProgressButtonText(job) {
   if (stage === "download") {
     return "Active";
   }
+  if (stage === "extract") {
+    return "Preparing";
+  }
   return "Starting";
 }
 
 function downloadProgressLabel(job) {
   const stage = String(job?.stage || "").trim();
   if (stage === "postprocess") {
-    return "Converting into playable video";
+    return "Merging downloaded segments...";
+  }
+  if (stage === "destination" || stage === "filepath") {
+    return "Finalizing output...";
   }
 
-  if (hasDownloadPercent(job)) {
+  if (hasDownloadPercent(job) && !isProcessingStage(job)) {
     return `${formatDownloadPercent(job.percent)} downloaded`;
   }
 
   if (stage === "download") {
     if (job?.fragment) {
-      return `Downloading fragments ${job.fragment}`;
+      return `Downloading video segments... (${job.fragment})`;
     }
     if (job?.speed) {
-      return `Downloading at ${job.speed}`;
+      return `Downloading video segments at ${job.speed}`;
     }
-    return "Downloading video";
+    return "Downloading video segments...";
   }
   if (stage === "extract") {
     if (job?.fragment) {
       return `Preparing fragments ${job.fragment}`;
     }
-    return "Preparing video";
-  }
-  if (stage === "destination") {
-    return "Preparing file";
+    return "Preparing video...";
   }
 
   const status = job?.status || "queued";
@@ -431,15 +442,18 @@ function downloadDetailEntries(job) {
     return entries;
   }
 
+  const processing = isProcessingStage(job);
   appendDetailEntry(entries, "Status", job.status || "queued");
-  if (hasDownloadPercent(job)) {
+  if (hasDownloadPercent(job) && !processing) {
     appendDetailEntry(entries, "Progress", `${formatDownloadPercent(job.percent)} of 100%`);
   }
-  if (typeof job.rawPercent === "number" && Number.isFinite(job.rawPercent)) {
+  if (typeof job.rawPercent === "number" && Number.isFinite(job.rawPercent) && !processing) {
     appendDetailEntry(entries, "Tool percent", formatDownloadPercent(job.rawPercent));
   }
-  appendDetailEntry(entries, "Speed", job.speed);
-  appendDetailEntry(entries, "ETA", job.eta);
+  if (!processing) {
+    appendDetailEntry(entries, "Speed", job.speed);
+    appendDetailEntry(entries, "ETA", job.eta);
+  }
   appendDetailEntry(entries, "Downloaded", job.downloadedSize);
   appendDetailEntry(entries, "Total size", job.totalSize);
   appendDetailEntry(entries, "Connections", job.connections);
@@ -489,13 +503,14 @@ function appendDownloadProgress(container, job, options = {}) {
     return;
   }
 
-  const knownPercent = hasDownloadPercent(job);
+  const processing = isProcessingStage(job);
+  const knownPercent = hasDownloadPercent(job) && !processing;
   const displayPercent = knownPercent ? clampDownloadPercent(job.percent) : 0;
 
   const progress = document.createElement("div");
   progress.className = `progress ${options.compact ? "compact" : ""}`.trim();
   progress.setAttribute("role", "progressbar");
-  progress.setAttribute("aria-label", "Download progress");
+  progress.setAttribute("aria-label", processing ? "Processing progress" : "Download progress");
   progress.setAttribute("aria-valuemin", "0");
   progress.setAttribute("aria-valuemax", "100");
   progress.setAttribute("aria-valuetext", downloadProgressLabel(job));
@@ -504,9 +519,9 @@ function appendDownloadProgress(container, job, options = {}) {
   }
 
   const bar = document.createElement("div");
-  bar.className = "progress-bar";
+  bar.className = `progress-bar ${processing ? "indeterminate" : ""}`.trim();
   const fill = document.createElement("span");
-  fill.style.width = `${displayPercent}%`;
+  fill.style.width = processing ? "" : `${displayPercent}%`;
   bar.append(fill);
 
   const label = document.createElement("div");
