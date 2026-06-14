@@ -269,13 +269,17 @@ assert.doesNotMatch(
   "active downloads must still render a progress bar while exact percent is not available yet",
 );
 
-assert.doesNotMatch(
+assert.match(
   css,
-  /\.progress\.indeterminate/,
-  "popup must not show a fake loading-loop progress bar when exact percent is unavailable",
+  /\.progress-bar\.indeterminate/,
+  "popup must style an indeterminate progress bar for post-download processing stages",
 );
 
-assert.doesNotMatch(js, /indeterminate/, "popup script must not render fake indeterminate download progress");
+assert.match(
+  js,
+  /isProcessingStage\(job\)/,
+  "popup script must gate indeterminate progress on processing stage detection",
+);
 
 assert.doesNotMatch(
   js,
@@ -301,19 +305,23 @@ assert.match(
   "popup must omit the download message row when there is no real progress or useful status text",
 );
 
-assert.doesNotMatch(css, /@keyframes\s+progress-indeterminate/, "popup must not animate fake download progress");
+assert.match(
+  css,
+  /@keyframes\s+progress-indeterminate/,
+  "popup must animate indeterminate progress for post-download processing",
+);
 
 assert.match(css, /\.progress-label/, "popup must show a readable progress label next to the bar");
 
 assert.match(
   js,
-  /Downloading fragments/,
+  /Downloading video segments/,
   "popup progress label must show segmented download activity when fragment details are available",
 );
 
 assert.match(
   js,
-  /Downloading at/,
+  /Downloading video segments at/,
   "popup progress label must show speed-based activity when segmented downloads lack exact percent",
 );
 
@@ -323,13 +331,13 @@ assert.match(
 
   assert.equal(
     helpers.downloadProgressLabel(postprocessJob),
-    "Converting into playable video",
-    "postprocess stage must show conversion text instead of stale 100% downloaded text",
+    "Merging downloaded segments...",
+    "postprocess stage must show merging text instead of stale 100% downloaded text",
   );
   assert.equal(
     helpers.downloadProgressButtonText(postprocessJob),
-    "Converting",
-    "compact active download buttons must show conversion after segmented downloads finish",
+    "Merging",
+    "compact active download buttons must show merging after segmented downloads finish",
   );
 }
 
