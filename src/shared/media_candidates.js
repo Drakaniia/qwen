@@ -23,6 +23,7 @@
   const NUMBERED_MEDIA_FRAGMENT_RE = /\/(?:\d{3,}|[a-f0-9]{12,})(?:\.(?:mp4|m4v|webm)|(?:$|[?#]))/i;
   const AD_RE =
     /(?:doubleclick|googlesyndication|googleads|imasdk|adservice|adserver|\/ads?\/|[._-]ads?[._-]|vast|vpaid|prebid|preroll|midroll|postroll|companionad|moatads|scorecardresearch|outbrain|taboola)/i;
+  const EMBED_PLAYER_HOST_RE = /(?:^|[/.])player\.hanime\.tv(?:$|[/?#])/i;
   const CDN_HINT_RE =
     /(videoplayback|video[-_/]?cdn|\/video\/|\/videos\/|hls|dash|manifest|playlist|master\.m3u8|akamaihd|akamaized|cloudfront|mux\.com|jwplatform|brightcove|kaltura|fastly|edgekey)/i;
   const YOUTUBE_PAGE_PATH_RE = /^\/(?:embed|shorts|live)\/([^/?#]+)/i;
@@ -34,7 +35,7 @@
   function isHttpUrl(url) {
     try {
       const parsed = new URL(url);
-      return parsed.protocol === "http:" || parsed.protocol === "https:";
+      return parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "blob:";
     } catch (_error) {
       return false;
     }
@@ -145,6 +146,9 @@
     ) {
       return true;
     }
+    if (EMBED_PLAYER_HOST_RE.test(text)) {
+      return true;
+    }
     return AD_RE.test(text);
   }
 
@@ -190,6 +194,8 @@
       format === "M3U8" ||
       format === "MPD" ||
       format === "ISM" ||
+      format === "YOUTUBE" ||
+      format === "PAGE" ||
       HLS_RE.test(details.url || "") ||
       DASH_RE.test(details.url || "") ||
       ISM_RE.test(details.url || "") ||
