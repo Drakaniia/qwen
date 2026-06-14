@@ -22,7 +22,12 @@ body {
   width: 390px;
   min-height: 280px;
   margin: 0;
-  font: 13px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font:
+    13px/1.4 system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   background: var(--bg);
   color: var(--text);
 }
@@ -66,7 +71,9 @@ h1 {
   border: 2px solid var(--surface);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
   background: #9ca3af;
-  transition: background-color 200ms ease, box-shadow 200ms ease;
+  transition:
+    background-color 200ms ease,
+    box-shadow 200ms ease;
   flex-shrink: 0;
   cursor: help;
 }
@@ -88,7 +95,8 @@ h1 {
 }
 
 @keyframes indicator-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -445,9 +453,7 @@ main {
   height: 100%;
   display: grid;
   place-items: center;
-  background:
-    linear-gradient(135deg, rgba(15, 118, 110, 0.92), rgba(32, 41, 54, 0.98)),
-    #202936;
+  background: linear-gradient(135deg, rgba(15, 118, 110, 0.92), rgba(32, 41, 54, 0.98)), #202936;
 }
 
 .video-placeholder-icon {
