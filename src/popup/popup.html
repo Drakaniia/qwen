@@ -1,29 +1,52 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Qwin Video Downloader</title>
-    <link rel="stylesheet" href="popup.css">
+    <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header class="topbar">
       <div class="topbar-brand">
         <div class="brand-logo">
           <h1>Qwin Video Downloader</h1>
-          <span id="downloadIndicator" class="download-indicator" data-status="checking" title="Checking for videos..." aria-label="Checking for downloadable videos"></span>
+          <span
+            id="downloadIndicator"
+            class="download-indicator"
+            data-status="checking"
+            title="Checking for videos..."
+            aria-label="Checking for downloadable videos"
+          ></span>
         </div>
         <p id="helperStatus" class="helper-status">Checking helper...</p>
       </div>
       <div class="topbar-actions">
         <button id="rescan" class="icon-button" type="button" aria-label="Rescan" title="Rescan">
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4m-4 4a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"></path>
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4m-4 4a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"
+            ></path>
           </svg>
         </button>
-        <button id="settingsToggle" class="icon-button" type="button" aria-label="Settings" title="Settings" aria-controls="settingsPanel" aria-expanded="false">
+        <button
+          id="settingsToggle"
+          class="icon-button"
+          type="button"
+          aria-label="Settings"
+          title="Settings"
+          aria-controls="settingsPanel"
+          aria-expanded="false"
+        >
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.5-2.4 1a8 8 0 0 0-2.6-1.5L14 2h-4l-.4 2.5A8 8 0 0 0 7 6L4.6 5 2.6 8.5l2 1.5a9.8 9.8 0 0 0 0 3l-2 1.5 2 3.5L7 18a8 8 0 0 0 2.6 1.5L10 22h4l.4-2.5A8 8 0 0 0 17 18l2.4 1 2-3.5-2-1.5ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"></path>
+            <path
+              d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.5-2.4 1a8 8 0 0 0-2.6-1.5L14 2h-4l-.4 2.5A8 8 0 0 0 7 6L4.6 5 2.6 8.5l2 1.5a9.8 9.8 0 0 0 0 3l-2 1.5 2 3.5L7 18a8 8 0 0 0 2.6 1.5L10 22h4l.4-2.5A8 8 0 0 0 17 18l2.4 1 2-3.5-2-1.5ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"
+            ></path>
           </svg>
         </button>
       </div>
@@ -31,13 +54,18 @@
 
     <section id="settingsPanel" class="settings-panel" hidden>
       <label for="manualUrl">Download from link</label>
-      <input id="manualUrl" type="url" spellcheck="false" placeholder="Paste YouTube, Instagram, TikTok, X, Threads, or other video URL">
+      <input
+        id="manualUrl"
+        type="url"
+        spellcheck="false"
+        placeholder="Paste YouTube, Instagram, TikTok, X, Threads, or other video URL"
+      />
       <button id="downloadManualUrl" class="primary settings-button" type="button">Download link</button>
       <p class="hint">Uses yt-dlp and stream fallbacks. Cannot bypass DRM or blocked private access.</p>
 
       <label for="downloadFolder">Download folder</label>
       <div class="folder-picker">
-        <input id="downloadFolder" type="text" spellcheck="false" placeholder="Default: Windows Downloads">
+        <input id="downloadFolder" type="text" spellcheck="false" placeholder="Default: Windows Downloads" />
         <button id="chooseDownloadFolder" type="button">Browse</button>
       </div>
       <button id="saveSettings" class="settings-button" type="button">Save</button>
@@ -54,7 +82,14 @@
       <div id="message" class="message">Scanning for videos...</div>
       <div id="videoToolbar" class="video-toolbar" hidden>
         <div class="layout-toggle" role="group" aria-label="Video list layout">
-          <button id="showListLayout" class="active" type="button" aria-pressed="true" aria-label="List view" title="List view">
+          <button
+            id="showListLayout"
+            class="active"
+            type="button"
+            aria-pressed="true"
+            aria-label="List view"
+            title="List view"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 5h3v3H4V5Zm5 0h11v3H9V5ZM4 11h3v3H4v-3Zm5 0h11v3H9v-3ZM4 17h3v3H4v-3Zm5 0h11v3H9v-3Z"></path>
             </svg>
