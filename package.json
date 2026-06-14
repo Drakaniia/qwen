@@ -14,6 +14,18 @@
     "test:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1 -Suite all",
     "test:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1 -Suite native",
     "test:extension": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1 -Suite extension",
-    "test:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1 -Suite build"
+    "test:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1 -Suite build",
+    "lint": "npx eslint src/ tests/ && python -m ruff check src/native-host/ tests/native-host/",
+    "lint:js": "npx eslint src/ tests/",
+    "lint:py": "python -m ruff check src/native-host/ tests/native-host/",
+    "lint:fix": "npx eslint --fix src/ tests/ && python -m ruff check --fix src/native-host/ tests/native-host/",
+    "format": "npx prettier --write \"src/**/*.{js,css,json}\" \"tests/**/*.js\" \"*.{json,js}\" && python -m ruff format src/native-host/ tests/native-host/",
+    "format:js": "npx prettier --write \"src/**/*.{js,css,json}\" \"tests/**/*.js\" \"*.{json,js}\"",
+    "format:py": "python -m ruff format src/native-host/ tests/native-host/"
+  },
+  "devDependencies": {
+    "eslint": "^10.5.0",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.4"
   }
 }
