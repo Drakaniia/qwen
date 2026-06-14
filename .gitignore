@@ -4,3 +4,4 @@ __pycache__/
 node_modules/
 tools/
 dist/
+.opencode/plugins/emdash-notifications.js

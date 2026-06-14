@@ -40,7 +40,9 @@
       "Bash(cd \"C:\\\\Users\\\\Qwenzy\\\\Desktop\\\\qwin\" && git add src/background/background.js src/background/download_fallbacks.js src/background/download_orchestration.js src/background/download_state.js src/content/content.js src/content/page_detection.js src/popup/popup.js src/shared/media_candidates.js src/shared/video_filters.js src/shared/video_picker.js && git commit -m \"$\\(cat <<'EOF'\nstyle: format JavaScript source with Prettier\n\nApply Prettier formatting across all source modules — background,\ncontent, popup, and shared — normalizing trailing commas, line\nbreaks, and expression wrapping.\nEOF\n\\)\")",
       "Bash(cd C:\\\\Users\\\\Qwenzy\\\\Desktop\\\\qwin && npm run build 2>&1)",
       "Bash(cd \"C:/Users/Qwenzy/Desktop/qwin\" && npm test 2>&1)",
-      "Bash(cd \"C:/Users/Qwenzy/Desktop/qwin\" && npm run build 2>&1 && npm test 2>&1)"
+      "Bash(cd \"C:/Users/Qwenzy/Desktop/qwin\" && npm run build 2>&1 && npm test 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\Qwenzy\\\\Desktop\\\\qwin\" && npm run build 2>&1 | tail -5)",
+      "Bash(cd \"C:\\\\Users\\\\Qwenzy\\\\Desktop\\\\qwin\" && node -e \"\nglobalThis.QwinMediaCandidates = require\\('./src/shared/media_candidates.js'\\);\nconst mc = globalThis.QwinMediaCandidates;\n\n// Should be blocked \\(embed player\\)\nconsole.log\\('player.hanime.tv blocked:', mc.isBlockedMediaUrl\\('https://player.hanime.tv/?&'\\)\\);\nconsole.log\\('player.hanime.tv/video/123 blocked:', mc.isBlockedMediaUrl\\('https://player.hanime.tv/video/123'\\)\\);\n\n// Should NOT be blocked\nconsole.log\\('hanime.tv NOT blocked:', !mc.isBlockedMediaUrl\\('https://hanime.tv/watch/123'\\)\\);\nconsole.log\\('example.com NOT blocked:', !mc.isBlockedMediaUrl\\('https://example.com/video.mp4'\\)\\);\nconsole.log\\('player.vimeo.com NOT blocked:', !mc.isBlockedMediaUrl\\('https://player.vimeo.com/video/12345'\\)\\);\n\n// isDownloadableMediaUrl should also block embed player\nconsole.log\\('embed player not downloadable:', !mc.isDownloadableMediaUrl\\('https://player.hanime.tv/?&'\\)\\);\n\"\n)"
     ]
   }
 }
