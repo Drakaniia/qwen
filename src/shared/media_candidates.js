@@ -12,14 +12,12 @@
   const DASH_RE = /\.mpd(?:$|[?#])/i;
   const ISM_RE = /\.ism(?:\/Manifest)?(?:$|[?#])/i;
   const GIF_RE = /\.(gif|gifv)(?:$|[?#])/i;
-  const WEB_APP_MANIFEST_RE =
-    /(?:\.webmanifest|(?:^|[/?#._-])manifest\.json)(?:$|[?#])/i;
+  const WEB_APP_MANIFEST_RE = /(?:\.webmanifest|(?:^|[/?#._-])manifest\.json)(?:$|[?#])/i;
   const STATIC_PLAYER_ASSET_RE = /\.(?:hlsjs|js|mjs|cjs|css|map)(?:$|[?#])/i;
   const GIF_VIDEO_RE =
     /(?:^|[/?#._-])(?:gif|gifs|gifv|animated-gif|giphy|tenor|gifpreview|gif-preview|loop-preview)(?:[/?#._-]|$)/i;
   const SEGMENT_EXTENSION_RE = /\.(ts|m4s|cmfv|cmfa)(?:$|[?#])/i;
-  const SEGMENT_NAME_RE =
-    /(?:^|[/?#._-])(?:seg(?:ment)?|frag(?:ment)?|chunk|part)[._-]?\d+(?:[/?#._-]|$)/i;
+  const SEGMENT_NAME_RE = /(?:^|[/?#._-])(?:seg(?:ment)?|frag(?:ment)?|chunk|part)[._-]?\d+(?:[/?#._-]|$)/i;
   const FRAGMENTED_STREAM_CONTEXT_RE =
     /(?:^|[/?#._-])(?:hls|dash|cmaf|fmp4|m3u8|mpd|fragments?|segments?|chunks?|parts?)(?:[/?#._-]|$)/i;
   const NUMBERED_MEDIA_FRAGMENT_RE = /\/(?:\d{3,}|[a-f0-9]{12,})(?:\.(?:mp4|m4v|webm)|(?:$|[?#]))/i;
@@ -46,10 +44,7 @@
     try {
       const parsed = new URL(url);
       const host = parsed.hostname.toLowerCase();
-      return (
-        (host === "googlevideo.com" || host.endsWith(".googlevideo.com")) &&
-        parsed.pathname === "/videoplayback"
-      );
+      return (host === "googlevideo.com" || host.endsWith(".googlevideo.com")) && parsed.pathname === "/videoplayback";
     } catch (_error) {
       return false;
     }
@@ -187,7 +182,9 @@
     if (!details || typeof details !== "object") {
       return false;
     }
-    const format = String(details.format || classifyMediaUrl(details.url || "", details.contentType || "")).toUpperCase();
+    const format = String(
+      details.format || classifyMediaUrl(details.url || "", details.contentType || ""),
+    ).toUpperCase();
     const type = lower(details.contentType);
     return (
       format === "M3U8" ||

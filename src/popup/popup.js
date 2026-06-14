@@ -278,7 +278,9 @@ function setVideoLayoutMode(mode) {
 }
 
 function jobForVideo(videoId) {
-  return currentDownloads.find((job) => job.videoId === videoId && ACTIVE_DOWNLOAD_STATUSES.has(job.status || "queued"));
+  return currentDownloads.find(
+    (job) => job.videoId === videoId && ACTIVE_DOWNLOAD_STATUSES.has(job.status || "queued"),
+  );
 }
 
 function hasDownloadPercent(job) {
@@ -610,7 +612,8 @@ function renderVideos() {
     if (!video.downloadable) {
       const warning = document.createElement("div");
       warning.className = "download-message error";
-      warning.textContent = "Browser-only URL. Wait for a downloadable video stream. The helper saves supported streams as MP4.";
+      warning.textContent =
+        "Browser-only URL. Wait for a downloadable video stream. The helper saves supported streams as MP4.";
       content.append(main, meta, warning);
     } else {
       content.append(main, meta);
@@ -866,7 +869,10 @@ async function clearActiveTabVideos() {
 
     const downloadsResponse = await runtimeMessage({ type: "clearDownloads", tabId: activeTabId });
     if (!downloadsResponse || !downloadsResponse.ok) {
-      setMessage(downloadsResponse && downloadsResponse.error ? downloadsResponse.error : "Could not clear downloaded list.", true);
+      setMessage(
+        downloadsResponse && downloadsResponse.error ? downloadsResponse.error : "Could not clear downloaded list.",
+        true,
+      );
       elements.message.hidden = false;
       return;
     }
@@ -922,7 +928,10 @@ elements.videoList.addEventListener("click", async (event) => {
 
   if (!formatsResponse || !formatsResponse.ok) {
     hideQualityDialog();
-    setMessage(formatsResponse && formatsResponse.error ? formatsResponse.error : "Could not load quality choices.", true);
+    setMessage(
+      formatsResponse && formatsResponse.error ? formatsResponse.error : "Could not load quality choices.",
+      true,
+    );
     button.disabled = false;
     button.textContent = "Download";
     return;
@@ -1044,7 +1053,10 @@ elements.chooseDownloadFolder.addEventListener("click", async () => {
 
   if (!response || !response.ok) {
     if (isUnknownMessageTypeError(response)) {
-      setSettingsStatus("Reload Qwin from the browser extensions page, then open settings and click Browse again.", true);
+      setSettingsStatus(
+        "Reload Qwin from the browser extensions page, then open settings and click Browse again.",
+        true,
+      );
       return;
     }
     setSettingsStatus(response && response.error ? response.error : "Could not open the folder picker.", true);
@@ -1094,8 +1106,10 @@ elements.downloadManualUrl.addEventListener("click", async () => {
   if (!formatsResponse || !formatsResponse.ok) {
     hideQualityDialog();
     setSettingsStatus(
-      formatsResponse && formatsResponse.error ? formatsResponse.error : "Could not load quality choices for that link.",
-      true
+      formatsResponse && formatsResponse.error
+        ? formatsResponse.error
+        : "Could not load quality choices for that link.",
+      true,
     );
     elements.downloadManualUrl.disabled = false;
     elements.downloadManualUrl.textContent = "Download link";

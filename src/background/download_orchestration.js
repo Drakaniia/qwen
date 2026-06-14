@@ -44,7 +44,7 @@
       await deps.ensureStateLoaded();
       const videos = await deps.getTabVideos(tabId);
       const video = videos.find(
-        (item) => item.id === videoId || deps.variantsForVideo(item).some((variant) => variant.id === videoId)
+        (item) => item.id === videoId || deps.variantsForVideo(item).some((variant) => variant.id === videoId),
       );
 
       if (!video) {
@@ -56,7 +56,7 @@
       }
       if (!selectedVideo.downloadable) {
         throw new Error(
-          "This is a browser-only blob/data URL. Wait for a supported video page, MP4, WebM, M3U8, or MPD URL to appear."
+          "This is a browser-only blob/data URL. Wait for a supported video page, MP4, WebM, M3U8, or MPD URL to appear.",
         );
       }
 
@@ -67,9 +67,14 @@
 
       return startNativeDownloadFromVideo(
         tabId,
-        { ...selectedVideo, groupId: video.id, groupVariants: deps.variantsForVideo(video), backend: backend || "auto" },
+        {
+          ...selectedVideo,
+          groupId: video.id,
+          groupVariants: deps.variantsForVideo(video),
+          backend: backend || "auto",
+        },
         formatId,
-        { backend: backend || "auto" }
+        { backend: backend || "auto" },
       );
     }
 
@@ -81,7 +86,9 @@
       const pageUrl = video.pageUrl || activeTab.url || "";
       const requestHeaders =
         (Array.isArray(video.requestHeaders) && video.requestHeaders.length ? video.requestHeaders : null) ||
-        (Array.isArray(existingJob.requestHeaders) && existingJob.requestHeaders.length ? existingJob.requestHeaders : null) ||
+        (Array.isArray(existingJob.requestHeaders) && existingJob.requestHeaders.length
+          ? existingJob.requestHeaders
+          : null) ||
         (await deps.nativeRequestHeadersForVideo(video.url, pageUrl));
       const attemptedUrls = new Set((options.attemptedUrls || []).map((url) => deps.normalizeUrl(url)));
       attemptedUrls.add(deps.normalizeUrl(video.url || ""));
@@ -299,14 +306,22 @@
         throw new Error("That media was filtered as an ad, GIF-style clip, or unsupported URL.");
       }
 
-      return startNativeDownload(tabId, video.id, input.formatId || "best", input.variantId || "", input.backend || "auto");
+      return startNativeDownload(
+        tabId,
+        video.id,
+        input.formatId || "best",
+        input.variantId || "",
+        input.backend || "auto",
+      );
     }
 
     async function getBestDownloadableVideo(tabId) {
       const videos = await deps.getTabVideos(tabId);
       const video = videos.find((item) => item.downloadable);
       if (!video) {
-        throw new Error("No downloadable video page, MP4, WebM, M3U8, or MPD URL has been detected for this player yet.");
+        throw new Error(
+          "No downloadable video page, MP4, WebM, M3U8, or MPD URL has been detected for this player yet.",
+        );
       }
       return video;
     }
@@ -385,12 +400,10 @@
         throw new Error("That download does not have a URL to resume.");
       }
 
-      return startNativeDownloadFromVideo(
-        job.tabId || tabId,
-        videoFromDownloadJob(job),
-        job.formatId || "best",
-        { jobId, resume: true }
-      );
+      return startNativeDownloadFromVideo(job.tabId || tabId, videoFromDownloadJob(job), job.formatId || "best", {
+        jobId,
+        resume: true,
+      });
     }
 
     async function cancelDownload(_tabId, jobId) {
@@ -426,11 +439,7 @@
         throw new Error("That download does not have a URL to retry.");
       }
 
-      return startNativeDownloadFromVideo(
-        job.tabId || tabId,
-        videoFromDownloadJob(job),
-        job.formatId || "best"
-      );
+      return startNativeDownloadFromVideo(job.tabId || tabId, videoFromDownloadJob(job), job.formatId || "best");
     }
 
     async function openDownloadedPath(jobId, nativeType) {
@@ -459,7 +468,7 @@
           id: requestId,
           initialFolder: settings().downloadFolder || "",
         },
-        600000
+        600000,
       );
 
       const selectedPath = String(response.path || "").trim();
@@ -489,7 +498,7 @@
             artifactPaths: job.artifactPaths || [],
             downloadFolder: job.downloadFolder || settings().downloadFolder || "",
           },
-          30000
+          30000,
         );
       }
       delete downloadsById()[jobId];

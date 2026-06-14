@@ -42,14 +42,7 @@
     if (!details || typeof details !== "object") {
       return String(details || "");
     }
-    return [
-      details.url,
-      details.title,
-      details.label,
-      details.note,
-      details.source,
-      details.contentType,
-    ]
+    return [details.url, details.title, details.label, details.note, details.source, details.contentType]
       .filter(Boolean)
       .join(" ");
   }
@@ -73,9 +66,7 @@
 
   function displayVideoFormat(videoOrFormat) {
     const format = lower(
-      typeof videoOrFormat === "object" && videoOrFormat !== null
-        ? videoOrFormat.format || ""
-        : videoOrFormat
+      typeof videoOrFormat === "object" && videoOrFormat !== null ? videoOrFormat.format || "" : videoOrFormat,
     );
     if (format === "m3u8" || format === "mpd" || format === "ism") {
       return "MP4";
@@ -145,18 +136,6 @@
       }
     }
     return largestSize > 0 ? humanSize(largestSize) : fallbackLabel;
-  }
-
-  function isHttpUrl(url) {
-    return mediaCandidates.isHttpUrl(url);
-  }
-
-  function isEphemeralMediaUrl(url) {
-    return mediaCandidates.isEphemeralMediaUrl(url);
-  }
-
-  function youtubeVideoIdFromPageUrl(url) {
-    return mediaCandidates.youtubeVideoIdFromPageUrl(url);
   }
 
   function isYouTubeVideoPageUrl(url) {
@@ -283,7 +262,10 @@
       const last = decodeURIComponent(parts.pop() || parsed.hostname || "");
       return normalizeIdentityText(last);
     } catch (_error) {
-      const clean = String(url || "").split(/[?#]/, 1)[0].split(/[\\/]/).pop();
+      const clean = String(url || "")
+        .split(/[?#]/, 1)[0]
+        .split(/[\\/]/)
+        .pop();
       return normalizeIdentityText(clean || "");
     }
   }
@@ -392,8 +374,7 @@
       height: height || null,
       bitrate: bitrate || null,
       tbr: finiteNumber(video.tbr) || bitrate || null,
-      downloadable:
-        video.downloadable === false ? false : isDownloadableUrl(video.url || "", video.contentType || ""),
+      downloadable: video.downloadable === false ? false : isDownloadableUrl(video.url || "", video.contentType || ""),
     };
   }
 
@@ -476,9 +457,7 @@
   }
 
   function buildGroupedVideo(group) {
-    const variants = group.variants
-      .map(enrichVideoVariant)
-      .sort(compareVariants);
+    const variants = group.variants.map(enrichVideoVariant).sort(compareVariants);
     const representative = variants[0] || group.seed;
     const firstSeenValues = variants.map((variant) => finiteNumber(variant.firstSeen)).filter(Boolean);
     const lastSeenValues = variants.map((variant) => finiteNumber(variant.lastSeen));
@@ -518,7 +497,7 @@
       }
 
       const existingIndex = group.variants.findIndex(
-        (variant) => normalizeComparableUrl(variant.url || "") === normalizeComparableUrl(video.url || "")
+        (variant) => normalizeComparableUrl(variant.url || "") === normalizeComparableUrl(video.url || ""),
       );
       if (existingIndex >= 0) {
         group.variants[existingIndex] = mergeVariant(group.variants[existingIndex], video);
@@ -527,9 +506,7 @@
       }
     }
 
-    return groups
-      .map(buildGroupedVideo)
-      .sort(compareGroupedVideos);
+    return groups.map(buildGroupedVideo).sort(compareGroupedVideos);
   }
 
   return {

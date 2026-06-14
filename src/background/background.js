@@ -36,7 +36,8 @@ const VIDEO_EXTENSION_RE = /\.(mp4|m4v|webm|m3u8|mpd)(?:$|[?#])/i;
 const HLS_RE = /\.m3u8(?:$|[?#])/i;
 const DASH_RE = /\.mpd(?:$|[?#])/i;
 const DIRECT_VIDEO_EXTENSION_RE = /\.(mp4|m4v|webm)(?:$|[?#])/i;
-const CDN_HINT_RE = /(videoplayback|video[-_/]?cdn|\/video\/|\/videos\/|hls|dash|manifest|playlist|master\.m3u8|akamaihd|akamaized|cloudfront|mux\.com|jwplatform|brightcove|kaltura|fastly|edgekey)/i;
+const CDN_HINT_RE =
+  /(videoplayback|video[-_/]?cdn|\/video\/|\/videos\/|hls|dash|manifest|playlist|master\.m3u8|akamaihd|akamaized|cloudfront|mux\.com|jwplatform|brightcove|kaltura|fastly|edgekey)/i;
 const SIZE_PROBE_TIMEOUT_MS = 8000;
 const SIZE_PROBE_LIMIT_PER_GROUP = 6;
 const MAX_CAPTURED_REQUEST_HEADERS = 250;
@@ -115,7 +116,9 @@ function cleanStoredVideos(storedVideosByTab) {
   const cleaned = {};
   for (const [tabId, videos] of Object.entries(storedVideosByTab || {})) {
     const list = Array.isArray(videos) ? videos : [];
-    cleaned[tabId] = list.filter((video) => video && video.url && !videoFilters.isBlockedVideoUrl(video.url, video.contentType));
+    cleaned[tabId] = list.filter(
+      (video) => video && video.url && !videoFilters.isBlockedVideoUrl(video.url, video.contentType),
+    );
   }
   return cleaned;
 }
@@ -194,7 +197,9 @@ function normalizeUrl(url) {
 }
 
 function normalizeHeaderName(name) {
-  return String(name || "").trim().toLowerCase();
+  return String(name || "")
+    .trim()
+    .toLowerCase();
 }
 
 function canonicalHeaderName(name) {
@@ -206,7 +211,9 @@ function canonicalHeaderName(name) {
 }
 
 function cleanHeaderValue(value) {
-  const text = String(value || "").replace(/[\r\n]/g, " ").trim();
+  const text = String(value || "")
+    .replace(/[\r\n]/g, " ")
+    .trim();
   return text.length > 8192 ? text.slice(0, 8192) : text;
 }
 
@@ -561,9 +568,7 @@ async function addDetectedVideo(tabId, input) {
     nextList = [nextVideo, ...existing];
   }
 
-  videosByTab[tabKey] = nextList
-    .sort((left, right) => right.lastSeen - left.lastSeen)
-    .slice(0, MAX_VIDEOS_PER_TAB);
+  videosByTab[tabKey] = nextList.sort((left, right) => right.lastSeen - left.lastSeen).slice(0, MAX_VIDEOS_PER_TAB);
 
   await persistVideos();
   notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
@@ -575,7 +580,12 @@ function titleFromUrl(url) {
   try {
     const parsed = new URL(url);
     const file = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || parsed.hostname);
-    return file.replace(/\.(mp4|m4v|webm|m3u8|mpd)$/i, "").replace(/[_-]+/g, " ").trim() || "Video";
+    return (
+      file
+        .replace(/\.(mp4|m4v|webm|m3u8|mpd)$/i, "")
+        .replace(/[_-]+/g, " ")
+        .trim() || "Video"
+    );
   } catch (_error) {
     return "Video";
   }
@@ -611,8 +621,7 @@ async function getTabVideos(tabId) {
 
 async function getTabDownloads(_tabId) {
   await ensureStateLoaded();
-  return Object.values(downloadsById)
-    .sort((left, right) => right.updatedAt - left.updatedAt);
+  return Object.values(downloadsById).sort((left, right) => right.updatedAt - left.updatedAt);
 }
 
 function handleBeforeRequest(details) {
@@ -806,7 +815,7 @@ async function cleanupDownloadArtifacts(jobId, job) {
         artifactPaths: job.artifactPaths || [],
         downloadFolder: job.downloadFolder || settings.downloadFolder || "",
       },
-      30000
+      30000,
     );
     return {
       artifactCleanupDeleted: response.deleted || [],
@@ -1087,9 +1096,7 @@ function normalizeNativeFormatOption(format, video) {
 }
 
 function findGroupedVideoForVariant(tabId, variant) {
-  return getVisibleVideosForTab(tabId).find((video) =>
-    variantsForVideo(video).some((item) => item.id === variant.id)
-  );
+  return getVisibleVideosForTab(tabId).find((video) => variantsForVideo(video).some((item) => item.id === variant.id));
 }
 
 async function updateGroupedTitle(tabId, video, title) {
@@ -1100,7 +1107,7 @@ async function updateGroupedTitle(tabId, video, title) {
   const variantIds = new Set(variantsForVideo(video).map((variant) => variant.id));
   const tabKey = String(tabId);
   videosByTab[tabKey] = (videosByTab[tabKey] || []).map((item) =>
-    variantIds.has(item.id) ? { ...item, title } : item
+    variantIds.has(item.id) ? { ...item, title } : item,
   );
   await persistVideos();
   notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
@@ -1119,7 +1126,7 @@ async function ensureComparisonSizes(tabId, video) {
     variantsToProbe.map(async (variant) => ({
       id: variant.id,
       sizeBytes: await probeVideoSize(variant),
-    }))
+    })),
   );
 
   let changed = false;
@@ -1201,7 +1208,7 @@ async function getNativeFormatsForVideo(tabId, video) {
       const resolvedCandidates = await resolveMediaCandidatesForSource(
         tabId,
         pageFallback || lookupVideo,
-        new Set([normalizeUrl(lookupVideo.url || "")])
+        new Set([normalizeUrl(lookupVideo.url || "")]),
       );
       if (resolvedCandidates.length > 0) {
         await notifyContentStatus(tabId, `Checking ${resolvedCandidates.length} resolved source(s)...`);
@@ -1255,8 +1262,7 @@ async function getNativeFormatsForVideo(tabId, video) {
     ? []
     : isExtractorPageVideo(refreshedVideo)
       ? []
-    : downloadableVariants(refreshedVideo, excludedUrls)
-        .map(detectedVariantOption);
+      : downloadableVariants(refreshedVideo, excludedUrls).map(detectedVariantOption);
 
   if (nativeError && !nativeFormats.length && !sourceFormats.length) {
     throw new Error(nativeError);
@@ -1275,7 +1281,7 @@ async function getNativeFormatsForVideo(tabId, video) {
       : [
           normalizeNativeFormatOption(
             { id: "best", label: "Best available MP4", ext: "mp4", note: "Recommended" },
-            lookupVideo
+            lookupVideo,
           ),
         ],
     nativeError,
@@ -1333,27 +1339,20 @@ function pingNativeHost() {
 
 function registerBeforeSendHeadersListener() {
   try {
-    api.webRequest.onBeforeSendHeaders.addListener(
-      handleBeforeSendHeaders,
-      { urls: ["<all_urls>"] },
-      ["requestHeaders", "extraHeaders"]
-    );
+    api.webRequest.onBeforeSendHeaders.addListener(handleBeforeSendHeaders, { urls: ["<all_urls>"] }, [
+      "requestHeaders",
+      "extraHeaders",
+    ]);
   } catch (_error) {
-    api.webRequest.onBeforeSendHeaders.addListener(
-      handleBeforeSendHeaders,
-      { urls: ["<all_urls>"] },
-      ["requestHeaders"]
-    );
+    api.webRequest.onBeforeSendHeaders.addListener(handleBeforeSendHeaders, { urls: ["<all_urls>"] }, [
+      "requestHeaders",
+    ]);
   }
 }
 
 api.webRequest.onBeforeRequest.addListener(handleBeforeRequest, { urls: ["<all_urls>"] });
 registerBeforeSendHeadersListener();
-api.webRequest.onHeadersReceived.addListener(
-  handleHeadersReceived,
-  { urls: ["<all_urls>"] },
-  ["responseHeaders"]
-);
+api.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { urls: ["<all_urls>"] }, ["responseHeaders"]);
 
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const run = async () => {
@@ -1390,7 +1389,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
           message.videoId,
           message.formatId || "best",
           message.variantId || "",
-          message.backend || "auto"
+          message.backend || "auto",
         )),
       };
     }
@@ -1430,7 +1429,8 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "getVideoFormats") {
       const videos = await getTabVideos(tabId);
       const video = videos.find(
-        (item) => item.id === message.videoId || variantsForVideo(item).some((variant) => variant.id === message.videoId)
+        (item) =>
+          item.id === message.videoId || variantsForVideo(item).some((variant) => variant.id === message.videoId),
       );
       if (!video) {
         throw new Error("That video URL is no longer in the detected list.");
@@ -1483,7 +1483,9 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return { ok: true, settings };
     }
 
-    if (["chooseDownloadFolder", "chooseFolder", "selectDownloadFolder", "browseDownloadFolder"].includes(message.type)) {
+    if (
+      ["chooseDownloadFolder", "chooseFolder", "selectDownloadFolder", "browseDownloadFolder"].includes(message.type)
+    ) {
       return { ok: true, ...(await chooseDownloadFolder()) };
     }
 

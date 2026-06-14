@@ -49,7 +49,9 @@
 
   function isExtractorPageVideo(video) {
     const format = String(video?.format || "").toUpperCase();
-    return video?.source === "manual-url" || video?.source === "youtube-page" || format === "PAGE" || format === "YOUTUBE";
+    return (
+      video?.source === "manual-url" || video?.source === "youtube-page" || format === "PAGE" || format === "YOUTUBE"
+    );
   }
 
   function pageFallbackVideoForSource(video, attemptedUrls, deps) {
@@ -74,11 +76,7 @@
   }
 
   function resolverUrlsForSource(sourceVideo, deps) {
-    const urls = [
-      sourceVideo?.pageUrl || "",
-      sourceVideo?.frameUrl || "",
-      sourceVideo?.url || "",
-    ];
+    const urls = [sourceVideo?.pageUrl || "", sourceVideo?.frameUrl || "", sourceVideo?.url || ""];
     const seen = new Set();
     const result = [];
 
@@ -112,9 +110,12 @@
             url,
             pageUrl: sourceVideo.pageUrl || sourceVideo.frameUrl || "",
             userAgent: deps.userAgent,
-            requestHeaders: await deps.nativeRequestHeadersForVideo(url, sourceVideo.pageUrl || sourceVideo.frameUrl || ""),
+            requestHeaders: await deps.nativeRequestHeadersForVideo(
+              url,
+              sourceVideo.pageUrl || sourceVideo.frameUrl || "",
+            ),
           },
-          20000
+          20000,
         );
         title = title || response?.title || "";
         rawCandidates.push(...(Array.isArray(response?.candidates) ? response.candidates : []));

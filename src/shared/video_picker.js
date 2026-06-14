@@ -71,8 +71,7 @@
     badge.textContent = displayFormat(video, videoFilters);
 
     const source = document.createElement("span");
-    source.textContent =
-      video.variantCount > 1 ? `${video.variantCount} versions` : sourceLabel(video);
+    source.textContent = video.variantCount > 1 ? `${video.variantCount} versions` : sourceLabel(video);
 
     meta.append(badge, source);
 

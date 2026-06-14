@@ -135,7 +135,7 @@ function isLikelyRealPlayer(video) {
   return pageDetection.isLikelyRealPlayer(video);
 }
 
-function createOverlayButton(video) {
+function createOverlayButton(_video) {
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = "Download";
@@ -446,12 +446,16 @@ function scanVideoElements() {
     updateOverlay(
       video,
       overlayCandidate || pageFallbackCandidate,
-      !overlayCandidate && !pageFallbackCandidate && !videoHasBlockedMediaSource(video) && isLikelyRealPlayer(video)
+      !overlayCandidate && !pageFallbackCandidate && !videoHasBlockedMediaSource(video) && isLikelyRealPlayer(video),
     );
   }
 
   for (const source of Array.from(document.querySelectorAll("source"))) {
-    if (String(source.type || "").toLowerCase().startsWith("video/")) {
+    if (
+      String(source.type || "")
+        .toLowerCase()
+        .startsWith("video/")
+    ) {
       addCandidate(candidates, source.src, "dom-source", source.type || "");
     }
   }

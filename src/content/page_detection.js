@@ -32,7 +32,9 @@
     }
 
     function cleanText(value) {
-      return String(value || "").replace(/\s+/g, " ").trim();
+      return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
     }
 
     function decodeUrlText(value) {
@@ -73,7 +75,7 @@
             labelledBy
               .split(/\s+/)
               .map((id) => document.getElementById(id)?.textContent || "")
-              .join(" ")
+              .join(" "),
           )
         : "";
 
@@ -98,9 +100,7 @@
     }
 
     function thumbnailForVideo(video) {
-      const poster = video
-        ? toAbsoluteUrl(video.getAttribute("poster") || video.poster || "")
-        : "";
+      const poster = video ? toAbsoluteUrl(video.getAttribute("poster") || video.poster || "") : "";
       const thumbnail = poster || pageThumbnailUrl();
       if (/\.(?:gif|gifv)(?:$|[?#])/i.test(thumbnail)) {
         return "";
@@ -127,8 +127,7 @@
       }
 
       const likelyVideo =
-        absoluteUrl.startsWith("blob:") ||
-        videoFilters.isLikelyVideoRequest(absoluteUrl, "media", mimeType);
+        absoluteUrl.startsWith("blob:") || videoFilters.isLikelyVideoRequest(absoluteUrl, "media", mimeType);
 
       if (!likelyVideo) {
         return null;
@@ -141,7 +140,9 @@
         contentType: mimeType || "",
         pageUrl: location.href,
         frameUrl: location.href,
-        title: video ? titleForVideo(video, absoluteUrl) : cleanText(document.title) || titleFromUrl(absoluteUrl) || "Video",
+        title: video
+          ? titleForVideo(video, absoluteUrl)
+          : cleanText(document.title) || titleFromUrl(absoluteUrl) || "Video",
         thumbnailUrl: thumbnailForVideo(video),
       };
 
@@ -274,9 +275,7 @@
     }
 
     function findOverlayCandidate(video, candidates) {
-      return candidates.find((candidate) =>
-        videoFilters.isLikelyRealVideoElement(videoMetrics(video, candidate))
-      );
+      return candidates.find((candidate) => videoFilters.isLikelyRealVideoElement(videoMetrics(video, candidate)));
     }
 
     function scanTextForMediaUrls(text, source) {

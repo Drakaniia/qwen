@@ -41,7 +41,9 @@
   }
 
   function cleanProgressText(value) {
-    const text = String(value || "").replace(/\s+/g, " ").trim();
+    const text = String(value || "")
+      .replace(/\s+/g, " ")
+      .trim();
     return text.length > 500 ? text.slice(0, 500) : text;
   }
 
