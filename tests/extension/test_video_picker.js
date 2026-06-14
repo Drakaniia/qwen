@@ -70,7 +70,7 @@ videoPicker.renderList(
     onSelect(video) {
       selectedVideo = video;
     },
-  }
+  },
 );
 
 assert.equal(container.children.length, 1);

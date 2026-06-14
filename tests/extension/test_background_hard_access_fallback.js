@@ -515,10 +515,13 @@ async function testDownloadTriesEveryResolvedMediaCandidate() {
   assert.equal(response.ok, true);
   assert.deepEqual(
     downloadMessages.map((message) => message.url),
-    [PLAYER_URL, PLAYER_MANIFEST_URL, PLAYER_BACKUP_MANIFEST_URL]
+    [PLAYER_URL, PLAYER_MANIFEST_URL, PLAYER_BACKUP_MANIFEST_URL],
   );
   assert.equal(downloadMessages[2].id, downloadMessages[0].id);
-  assert.equal(nativeMessages.some((message) => message.type === "resolveMediaCandidates" && message.url === PLAYER_URL), true);
+  assert.equal(
+    nativeMessages.some((message) => message.type === "resolveMediaCandidates" && message.url === PLAYER_URL),
+    true,
+  );
 }
 
 async function testDownloadRetriesPlayerPageAfterInvalidDetectedSource() {
@@ -602,7 +605,10 @@ async function testDownloadResolvesMediaCandidatesAfterUnsupportedPlayerPage() {
   assert.equal(downloadMessages[1].url, PLAYER_MANIFEST_URL);
   assert.equal(downloadMessages[1].format, "M3U8");
   assert.equal(downloadMessages[1].backend, "auto");
-  assert.equal(nativeMessages.some((message) => message.type === "resolveMediaCandidates" && message.url === PLAYER_URL), true);
+  assert.equal(
+    nativeMessages.some((message) => message.type === "resolveMediaCandidates" && message.url === PLAYER_URL),
+    true,
+  );
 }
 
 async function testFormatLookupResolvesMediaCandidatesAfterUnsupportedPlayerPage() {
@@ -666,8 +672,14 @@ async function testFormatLookupResolvesMediaCandidatesAfterUnsupportedPlayerPage
   assert.equal(response.ok, true);
   assert.equal(response.title, "Movie From Resolved HLS");
   assert.equal(response.formats[0].backend, "auto");
-  assert.equal(nativeMessages.some((message) => message.type === "resolveMediaCandidates" && message.url === PLAYER_URL), true);
-  assert.equal(nativeMessages.some((message) => message.type === "formats" && message.url === PLAYER_MANIFEST_URL), true);
+  assert.equal(
+    nativeMessages.some((message) => message.type === "resolveMediaCandidates" && message.url === PLAYER_URL),
+    true,
+  );
+  assert.equal(
+    nativeMessages.some((message) => message.type === "formats" && message.url === PLAYER_MANIFEST_URL),
+    true,
+  );
 }
 
 async function testDownloadReportsExhaustedSourcesAfterAllFallbacksFail() {
@@ -738,7 +750,7 @@ async function testRetryBlockedHistorySourceUsesStoredPlayerPage() {
           requestHeaders: [],
         },
       },
-    }
+    },
   );
 
   const historyResponse = await harness.sendRuntimeMessage({ type: "getVideos", tabId: TAB_ID });
@@ -886,14 +898,14 @@ async function testRescanClearsStaleVideosBeforeRequestingContentScan() {
   assert.equal(
     videosResponse.videos.length,
     0,
-    "refresh must remove stale videos before content script reports fresh detections"
+    "refresh must remove stale videos before content script reports fresh detections",
   );
   assert.equal(
     harness.runtimeMessages.some(
-      (message) => message.type === "videoListUpdated" && message.tabId === TAB_ID && message.videos.length === 0
+      (message) => message.type === "videoListUpdated" && message.tabId === TAB_ID && message.videos.length === 0,
     ),
     true,
-    "background must notify the popup that stale detected videos were cleared"
+    "background must notify the popup that stale detected videos were cleared",
   );
 }
 

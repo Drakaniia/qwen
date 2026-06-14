@@ -281,7 +281,7 @@ function createHarness({
   assert.match(
     popupCss,
     /\.icon-button\.is-refreshing\s+svg[\s\S]*animation:/,
-    "refresh icon must animate while the popup is rescanning"
+    "refresh icon must animate while the popup is rescanning",
   );
 
   const refreshedVideo = {
@@ -302,7 +302,7 @@ function createHarness({
   assert.equal(
     refreshHarness.element("videoList").children.length,
     1,
-    "refresh button must reload the popup list after requesting a tab rescan"
+    "refresh button must reload the popup list after requesting a tab rescan",
   );
   assert.equal(refreshHarness.element("message").textContent, "1 full video detected.");
 
@@ -320,7 +320,7 @@ function createHarness({
   assert.equal(
     userRescans.at(-1).tabId,
     84,
-    "refresh button must rescan the currently active tab instead of the tab captured when the popup opened"
+    "refresh button must rescan the currently active tab instead of the tab captured when the popup opened",
   );
 
   const animationHarness = createHarness();
@@ -332,7 +332,7 @@ function createHarness({
   assert.match(
     animationHarness.element("rescan").className,
     /\bis-refreshing\b/,
-    "refresh button must show a refreshing class while the rescan request is pending"
+    "refresh button must show a refreshing class while the rescan request is pending",
   );
   assert.equal(animationHarness.element("rescan").getAttribute("aria-busy"), "true");
 
@@ -359,12 +359,12 @@ function createHarness({
 
   assert.ok(
     clearDownloadsHarness.messages.some((message) => message.type === "clearDownloads"),
-    "clear button must ask the background page to clear the downloaded list"
+    "clear button must ask the background page to clear the downloaded list",
   );
   assert.equal(
     clearDownloadsHarness.element("downloadList").children[0].textContent,
     "No downloads yet.",
-    "clear button must empty the downloaded list after clearing detected videos"
+    "clear button must empty the downloaded list after clearing detected videos",
   );
 
   const clearHarness = createHarness({
@@ -381,7 +381,7 @@ function createHarness({
   assert.equal(
     clearHarness.element("message").textContent,
     "Clear failed",
-    "clear button must surface background clear failures instead of silently refreshing"
+    "clear button must surface background clear failures instead of silently refreshing",
   );
   assert.match(clearHarness.element("message").className, /\berror\b/);
 

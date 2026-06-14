@@ -179,32 +179,28 @@ function createChooser(options = {}) {
   assert.match(
     contentSource,
     /button\.addEventListener\("click", async \(event\) => \{[\s\S]*?showAvailableVideosOverlay\(\);/m,
-    "content overlay clicks must show the in-page available videos list instead of opening the extension popup"
+    "content overlay clicks must show the in-page available videos list instead of opening the extension popup",
   );
   assert.match(
     contentSource,
     /videoPicker\.renderList\(/,
-    "content overlay must render available videos through the shared video picker"
+    "content overlay must render available videos through the shared video picker",
   );
-  assert.match(
-    contentSource,
-    /style:\s*"classes"/,
-    "content quality chooser must use the shared class-based styling"
-  );
+  assert.match(contentSource, /style:\s*"classes"/, "content quality chooser must use the shared class-based styling");
   assert.match(
     contentSource,
     /root\.id\s*=\s*"qwin-video-overlay"/,
-    "content overlay must use the shared overlay shell id"
+    "content overlay must use the shared overlay shell id",
   );
   assert.doesNotMatch(
     contentSource,
     /item\.onclick\s*=\s*\(\)\s*=>\s*handleVideoSelection/,
-    "content overlay must not keep a bespoke inline-styled video list renderer"
+    "content overlay must not keep a bespoke inline-styled video list renderer",
   );
   assert.match(
     contentSource,
     /type:\s*"downloadVideo"[\s\S]*formatId:\s*selectedFormat\.formatId/s,
-    "quality selection must start a download with the selected format"
+    "quality selection must start a download with the selected format",
   );
 
   const contentScripts = manifest.content_scripts[0];
@@ -219,9 +215,13 @@ function createChooser(options = {}) {
       "src/content/page_detection.js",
       "src/content/content.js",
     ],
-    "content script must load shared quality dialog dependencies before content.js"
+    "content script must load shared quality dialog dependencies before content.js",
   );
-  assert.deepEqual(contentScripts.css, ["src/shared/qwin_overlay.css"], "content script must inject shared overlay styles");
+  assert.deepEqual(
+    contentScripts.css,
+    ["src/shared/qwin_overlay.css"],
+    "content script must inject shared overlay styles",
+  );
 
   console.log("content quality dialog tests passed");
 })().catch((error) => {

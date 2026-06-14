@@ -42,7 +42,11 @@ function createContentContext(locationHref) {
     },
     document,
     location: new URL(locationHref),
-    performance: { getEntriesByType() { return []; } },
+    performance: {
+      getEntriesByType() {
+        return [];
+      },
+    },
     window: {
       innerHeight: 720,
       innerWidth: 1280,
@@ -72,7 +76,7 @@ const context = createContentContext("https://www.youtube.com/watch?v=dQw4w9WgXc
 assert.equal(
   typeof context.youtubePageCandidateForVideo,
   "function",
-  "content script must expose a YouTube page candidate builder for scanner tests"
+  "content script must expose a YouTube page candidate builder for scanner tests",
 );
 
 const video = {

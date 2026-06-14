@@ -46,7 +46,7 @@ assert.deepEqual(
     connections: 16,
     fragment: "1/3",
     rawProgressLine: "x".repeat(500),
-  }
+  },
 );
 
 console.log("background download state tests passed");

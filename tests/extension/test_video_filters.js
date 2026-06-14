@@ -5,39 +5,39 @@ const path = require("node:path");
 const mediaCandidates = require(path.join(__dirname, "../../src/shared/media_candidates.js"));
 const filters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
 const candidateRules = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../fixtures/media_candidate_rules.json"), "utf8")
+  fs.readFileSync(path.join(__dirname, "../fixtures/media_candidate_rules.json"), "utf8"),
 );
 
 for (const rule of candidateRules) {
   assert.equal(
     mediaCandidates.classifyMediaUrl(rule.url, rule.contentType),
     rule.format,
-    `${rule.name} should classify through media candidate contract`
+    `${rule.name} should classify through media candidate contract`,
   );
   assert.equal(
     mediaCandidates.isBlockedMediaUrl(rule.url, rule.contentType),
     rule.blocked,
-    `${rule.name} should have expected blocked status through media candidate contract`
+    `${rule.name} should have expected blocked status through media candidate contract`,
   );
   assert.equal(
     mediaCandidates.isDownloadableMediaUrl(rule.url, rule.contentType),
     rule.downloadable,
-    `${rule.name} should have expected downloadable status through media candidate contract`
+    `${rule.name} should have expected downloadable status through media candidate contract`,
   );
   assert.equal(
     filters.classifyVideoUrl(rule.url, rule.contentType),
     rule.format,
-    `${rule.name} should classify consistently`
+    `${rule.name} should classify consistently`,
   );
   assert.equal(
     filters.isBlockedVideoUrl(rule.url, rule.contentType),
     rule.blocked,
-    `${rule.name} should have expected blocked status`
+    `${rule.name} should have expected blocked status`,
   );
   assert.equal(
     filters.isDownloadableUrl(rule.url, rule.contentType),
     rule.downloadable,
-    `${rule.name} should have expected downloadable status`
+    `${rule.name} should have expected downloadable status`,
   );
 }
 
@@ -49,13 +49,16 @@ assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/giphy-loop.webm"
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/hls/segment-00001.ts"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/dash/chunk-42.m4s"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/video/frag-001.mp4"), true);
-assert.equal(filters.isBlockedVideoUrl("https://george.xtremestream.xyz/player/assets/jwplayer-8.34.0/provider.hlsjs"), true);
+assert.equal(
+  filters.isBlockedVideoUrl("https://george.xtremestream.xyz/player/assets/jwplayer-8.34.0/provider.hlsjs"),
+  true,
+);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/hls/720p/000012.mp4?token=abc"), true);
 assert.equal(
   filters.isBlockedVideoUrl(
-    "https://rr3---sn.example.googlevideo.com/videoplayback?expire=1799999999&itag=137&mime=video%2Fmp4&range=0-1000"
+    "https://rr3---sn.example.googlevideo.com/videoplayback?expire=1799999999&itag=137&mime=video%2Fmp4&range=0-1000",
   ),
-  true
+  true,
 );
 assert.equal(filters.isBlockedVideoUrl("https://www.youtube.com/manifest.webmanifest"), true);
 assert.equal(filters.isBlockedVideoUrl("https://www.youtube.com/manifest.json", "application/manifest+json"), true);
@@ -67,11 +70,11 @@ assert.equal(filters.isYouTubeVideoPageUrl("https://youtu.be/dQw4w9WgXcQ?t=10"),
 assert.equal(filters.isYouTubeVideoPageUrl("https://www.youtube.com/results?search_query=ai"), false);
 assert.equal(
   filters.normalizeYouTubeVideoPageUrl("https://youtu.be/dQw4w9WgXcQ?t=10"),
-  "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+  "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
 );
 assert.equal(
   filters.normalizeYouTubeVideoPageUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ?feature=share"),
-  "https://www.youtube.com/shorts/dQw4w9WgXcQ"
+  "https://www.youtube.com/shorts/dQw4w9WgXcQ",
 );
 assert.equal(filters.classifyVideoUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ", ""), "YOUTUBE");
 assert.equal(filters.displayVideoFormat({ format: "YOUTUBE" }), "MP4");
@@ -82,18 +85,18 @@ assert.equal(
   filters.isLikelyVideoRequest(
     "https://george.xtremestream.xyz/player/assets/jwplayer-8.34.0/provider.hlsjs",
     "media",
-    "application/javascript"
+    "application/javascript",
   ),
-  false
+  false,
 );
 assert.equal(filters.isLikelyVideoRequest("https://cdn.example.com/hls/720p/000012.mp4?token=abc", "media", ""), false);
 assert.equal(
   filters.isLikelyVideoRequest(
     "https://rr3---sn.example.googlevideo.com/videoplayback?expire=1799999999&itag=137&mime=video%2Fmp4&range=0-1000",
     "media",
-    "video/mp4"
+    "video/mp4",
   ),
-  false
+  false,
 );
 assert.equal(filters.isLikelyVideoRequest("https://www.youtube.com/manifest.webmanifest", "media", ""), false);
 assert.equal(filters.isDownloadableUrl("https://www.youtube.com/manifest.webmanifest", ""), false);
@@ -108,12 +111,15 @@ assert.equal(filters.displayVideoFormat({ format: "ISM" }), "MP4");
 assert.equal(filters.displayVideoFormat({ format: "WEBM" }), "WEBM");
 assert.equal(filters.displayVideoSize({ sizeBytes: 98_000_000 }), "93.5 MB");
 assert.equal(filters.displayVideoSize({ size: "1.4 GB" }), "1.4 GB");
-assert.equal(filters.displayVideoSize({ format: "M3U8", url: "https://cdn.example.com/master.m3u8", sizeBytes: 4000 }), "");
+assert.equal(
+  filters.displayVideoSize({ format: "M3U8", url: "https://cdn.example.com/master.m3u8", sizeBytes: 4000 }),
+  "",
+);
 assert.equal(
   filters.displayVideoSize({
     variants: [{ sizeBytes: 12_000_000 }, { sizeBytes: 98_000_000 }],
   }),
-  "93.5 MB"
+  "93.5 MB",
 );
 
 assert.equal(
@@ -122,7 +128,7 @@ assert.equal(
     title: "Sample Movie",
     duration: 420,
   }),
-  true
+  true,
 );
 
 assert.equal(
@@ -131,7 +137,7 @@ assert.equal(
     title: "Sample Movie preview",
     duration: 420,
   }),
-  false
+  false,
 );
 
 assert.equal(
@@ -139,7 +145,7 @@ assert.equal(
     url: "https://www.youtube.com/manifest.webmanifest",
     title: "YouTube Video",
   }),
-  false
+  false,
 );
 
 assert.equal(
@@ -148,7 +154,7 @@ assert.equal(
     title: "Sample Movie",
     duration: 12,
   }),
-  false
+  false,
 );
 
 assert.equal(
@@ -158,7 +164,7 @@ assert.equal(
     duration: 420,
     downloadable: false,
   }),
-  false
+  false,
 );
 
 assert.equal(
@@ -167,7 +173,7 @@ assert.equal(
     title: "Sample Movie",
     sizeBytes: 31,
   }),
-  false
+  false,
 );
 
 assert.equal(
@@ -177,7 +183,7 @@ assert.equal(
     format: "M3U8",
     sizeBytes: 31,
   }),
-  true
+  true,
 );
 
 assert.equal(
@@ -187,7 +193,7 @@ assert.equal(
     contentType: "video/mp4",
     duration: 420,
   }),
-  false
+  false,
 );
 
 assert.equal(
@@ -198,7 +204,7 @@ assert.equal(
     source: "youtube-page",
     duration: 12,
   }),
-  true
+  true,
 );
 assert.equal(filters.displayVideoFormat({ format: "PAGE" }), "MP4");
 for (const url of [
@@ -216,7 +222,7 @@ for (const url of [
       duration: 8,
     }),
     true,
-    `manual extractor page should be accepted: ${url}`
+    `manual extractor page should be accepted: ${url}`,
   );
 }
 
@@ -384,7 +390,7 @@ assert.equal(
     muted: false,
     autoplay: false,
   }),
-  true
+  true,
 );
 
 assert.equal(
@@ -396,7 +402,7 @@ assert.equal(
     muted: true,
     autoplay: true,
   }),
-  false
+  false,
 );
 
 assert.equal(
@@ -409,7 +415,7 @@ assert.equal(
     muted: false,
     autoplay: false,
   }),
-  true
+  true,
 );
 
 assert.equal(
@@ -422,7 +428,7 @@ assert.equal(
     muted: true,
     autoplay: true,
   }),
-  false
+  false,
 );
 
 assert.equal(
@@ -435,7 +441,7 @@ assert.equal(
     muted: true,
     autoplay: true,
   }),
-  false
+  false,
 );
 
 console.log("video filter tests passed");
