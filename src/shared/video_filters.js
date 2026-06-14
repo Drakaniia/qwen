@@ -26,6 +26,8 @@
     /\b(?:144|240|360|480|540|576|720|900|1080|1440|2160|4320)p\b|\b(?:8k|4k|uhd|qhd|fhd|hd|sd|low|medium|high|best|source|copy)\b/gi;
   const FORMAT_WORD_RE = /\b(?:mp4|m4v|webm|m3u8|mpd|hls|dash)\b/gi;
   const GENERIC_STEM_RE = /^(?:|video|videos|media|movie|file|download|master|playlist|index|manifest|stream)$/i;
+  const GENERIC_TITLE_RE =
+    /^(?:video|video player|media player|html5 video|player|none|undefined|null|advertisement|ad|movie)$/i;
   const MIN_FULL_LENGTH_SECONDS = 30;
   const MIN_DIRECT_MEDIA_BYTES = 1024;
 
@@ -168,13 +170,18 @@
     }
 
     const youtubePage = isYouTubeVideoPageUrl(details.url || "");
+    const isDomSource = details.source === "dom-video" || details.source === "dom-source";
 
-    if (!youtubePage && hasShortOrIncompleteSignal(details)) {
+    if (!youtubePage && !isDomSource && hasShortOrIncompleteSignal(details)) {
       return false;
     }
 
     const duration = finiteNumber(details.duration);
     if (!youtubePage && duration > 0 && duration < MIN_FULL_LENGTH_SECONDS) {
+      return false;
+    }
+
+    if (details.source === "performance" && duration === 0) {
       return false;
     }
 
@@ -285,6 +292,25 @@
     return GENERIC_STEM_RE.test(stem || "");
   }
 
+  function isGenericTitle(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+      return true;
+    }
+    if (GENERIC_TITLE_RE.test(text)) {
+      return true;
+    }
+    const normalized = normalizeIdentityText(text);
+    if (!normalized || GENERIC_STEM_RE.test(normalized)) {
+      return true;
+    }
+    // If it's just a resolution (e.g. "720p")
+    if (/^\d{3,4}p$/i.test(text)) {
+      return true;
+    }
+    return false;
+  }
+
   function videoIdentityParts(video) {
     const stemKey = normalizeVideoStem(video.url || "");
     return {
@@ -380,11 +406,17 @@
 
   function formatPriority(format) {
     const value = String(format || "").toUpperCase();
+    if (value === "YOUTUBE") {
+      return 10;
+    }
+    if (value === "M3U8" || value === "MPD" || value === "ISM") {
+      return 8;
+    }
+    if (value === "PAGE") {
+      return 6;
+    }
     if (value === "MP4") {
       return 4;
-    }
-    if (value === "M3U8" || value === "MPD") {
-      return 3;
     }
     if (value === "WEBM") {
       return 2;
@@ -393,11 +425,21 @@
   }
 
   function fullVideoPriority(video) {
-    if (isPlaylistLike(video)) {
-      return 1;
+    if (!video) {
+      return 0;
     }
-    const variants = Array.isArray(video && video.variants) ? video.variants : [];
-    return variants.some(isPlaylistLike) ? 1 : 0;
+    const format = String(video.format || "").toUpperCase();
+    const priority = formatPriority(format);
+    if (priority >= 6) {
+      return priority;
+    }
+
+    const variants = Array.isArray(video.variants) ? video.variants : [];
+    let best = 0;
+    for (const variant of variants) {
+      best = Math.max(best, formatPriority(variant.format));
+    }
+    return best >= 6 ? best : 0;
   }
 
   function variantSortKey(video) {
@@ -440,6 +482,7 @@
       numericVideoSize(video),
       finiteNumber(video.height),
       finiteNumber(video.tbr || video.bitrate),
+      formatPriority(video.format),
       finiteNumber(video.duration),
       finiteNumber(video.lastSeen),
     ];
@@ -509,6 +552,16 @@
     return groups.map(buildGroupedVideo).sort(compareGroupedVideos);
   }
 
+  function sourceLabel(video) {
+    if (video && video.source === "manual-url") {
+      return "manual link";
+    }
+    if (["M3U8", "MPD", "YOUTUBE", "PAGE"].includes(String((video && video.format) || "").toUpperCase())) {
+      return "full video";
+    }
+    return (video && video.source) || "detected";
+  }
+
   return {
     classifyVideoUrl,
     displayVideoFormat,
@@ -517,6 +570,7 @@
     humanSize,
     isBlockedVideoUrl,
     isDownloadableUrl,
+    isGenericTitle,
     isLikelyFullLengthVideoCandidate,
     isLikelyRealVideoBox,
     isLikelyRealVideoElement,
@@ -524,5 +578,6 @@
     isSameFullVideo,
     isYouTubeVideoPageUrl,
     normalizeYouTubeVideoPageUrl,
+    sourceLabel,
   };
 });
