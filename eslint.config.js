@@ -8,13 +8,23 @@ module.exports = [
       sourceType: "script",
       globals: {
         ...globals.browser,
+        ...globals.serviceworker,
         chrome: "readonly",
         browser: "readonly",
         globalThis: "readonly",
+        module: "readonly",
+        require: "readonly",
       },
     },
     rules: {
-      "no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          vars: "local",
+        },
+      ],
       "no-undef": "error",
       "no-var": "error",
       "prefer-const": "error",
@@ -30,7 +40,13 @@ module.exports = [
       },
     },
     rules: {
-      "no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
     },
   },
 ];
