@@ -1,3 +1,5 @@
+@import url("../shared/qwin_overlay.css");
+
 :root {
   color-scheme: light;
   --bg: #f7f8fa;
@@ -590,73 +592,18 @@ footer {
   letter-spacing: 0;
 }
 
-.quality-list {
-  display: grid;
-  gap: 7px;
-  overflow-x: auto;
-}
-
-.quality-table {
-  display: grid;
-  gap: 6px;
-  min-width: 520px;
-}
-
-.quality-row {
-  display: grid;
-  grid-template-columns: 1fr 0.78fr 0.68fr 0.82fr 1.18fr;
-  gap: 7px;
-  align-items: center;
-}
-
-.quality-header {
-  padding: 0 8px;
+.quality-dialog .quality-header {
   color: var(--muted);
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
-.quality-option {
-  width: 100%;
-  min-height: 36px;
-  padding: 7px 8px;
-  text-align: left;
-}
-
-.quality-cell {
-  overflow-wrap: anywhere;
-  min-width: 0;
-  font-size: 11px;
-  line-height: 1.25;
-}
-
-.quality-cell.primary-cell {
+.quality-dialog .quality-cell.primary-cell {
   color: var(--text);
-  font-weight: 800;
 }
 
-.quality-note {
+.quality-dialog .quality-note {
   color: var(--danger);
-  font-size: 11px;
-  overflow-wrap: anywhere;
 }
 
-.quality-loading {
-  min-height: 48px;
-  display: grid;
-  place-items: center;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #eef7f5;
+.quality-dialog .quality-loading {
   color: var(--accent-strong);
-  font-size: 12px;
-  font-weight: 750;
-}
-
-.quality-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 10px;
 }

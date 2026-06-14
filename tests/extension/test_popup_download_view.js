@@ -7,6 +7,7 @@ const popupDir = path.join(__dirname, "../../src/popup");
 const html = fs.readFileSync(path.join(popupDir, "popup.html"), "utf8");
 const js = fs.readFileSync(path.join(popupDir, "popup.js"), "utf8");
 const css = fs.readFileSync(path.join(popupDir, "popup.css"), "utf8");
+const overlayCss = fs.readFileSync(path.join(__dirname, "../../src/shared/qwin_overlay.css"), "utf8");
 const qualityDialogJs = fs.readFileSync(path.join(__dirname, "../../src/shared/quality_dialog.js"), "utf8");
 
 function popupLabelHelpers() {
@@ -507,18 +508,24 @@ assert.match(
 
 assert.match(
   css,
+  /@import url\("\.\.\/shared\/qwin_overlay\.css"\);/,
+  "popup must import shared overlay styles"
+);
+
+assert.match(
+  overlayCss,
   /\.quality-table/,
   "quality dialog must use a comparison table layout"
 );
 
 assert.match(
-  css,
+  overlayCss,
   /\.quality-header/,
   "quality dialog must label comparison columns"
 );
 
 assert.match(
-  css,
+  overlayCss,
   /\.quality-loading/,
   "quality dialog must style the immediate loading state"
 );
