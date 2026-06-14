@@ -9,6 +9,7 @@ const qualityDialog = require(path.join(__dirname, "../../src/shared/quality_dia
 
 const POPUP_ELEMENT_IDS = [
   "helperStatus",
+  "downloadIndicator",
   "settingsToggle",
   "settingsPanel",
   "settingsStatus",
@@ -236,6 +237,7 @@ function createHarness({
       setTimeout(callback) {
         return { callback };
       },
+      clearTimeout() {},
     },
     QwinQualityFormat: {
       formatQualityValue() {
