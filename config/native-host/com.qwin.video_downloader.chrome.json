@@ -1,9 +1,7 @@
 {
-    "name":  "com.qwin.video_downloader",
-    "description":  "Qwin Video Downloader native host",
-    "path":  "C:\\Users\\Qwenzy\\Desktop\\qwin\\src\\native-host\\qwin_video_host.bat",
-    "type":  "stdio",
-    "allowed_origins":  [
-                            "chrome-extension://dbjddokdmkodnkiaccmbjagfalmmmkmi/"
-                        ]
+  "name": "com.qwin.video_downloader",
+  "description": "Qwin Video Downloader native host",
+  "path": "C:\\Users\\Qwenzy\\Desktop\\qwin\\src\\native-host\\qwin_video_host.bat",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://dbjddokdmkodnkiaccmbjagfalmmmkmi/"]
 }
