@@ -26,4 +26,3 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
 - [Usage, supported detection, and speed behavior](docs/usage.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Project structure and tests](docs/project-structure.md)
- 
