@@ -143,7 +143,7 @@ function createChooser(options = {}) {
 
     assert.equal(root.style.display, "grid");
     assert.equal(title.textContent, "Compare versions: Sample video");
-    assert.equal(back.style.display, "block");
+    assert.equal(back.hidden, false);
 
     const table = list.children[0];
     const option = table.children[1];
@@ -160,7 +160,7 @@ function createChooser(options = {}) {
       backend: "yt-dlp",
     });
     assert.equal(root.style.display, "grid", "content chooser must remain visible while the download is queued");
-    assert.equal(back.style.display, "none");
+    assert.equal(back.hidden, true);
   }
 
   {
@@ -183,8 +183,23 @@ function createChooser(options = {}) {
   );
   assert.match(
     contentSource,
-    /item\.onclick\s*=\s*\(\)\s*=>\s*handleVideoSelection\(video\)/,
-    "clicking a video in the overlay must transition to quality selection for that video"
+    /videoPicker\.renderList\(/,
+    "content overlay must render available videos through the shared video picker"
+  );
+  assert.match(
+    contentSource,
+    /style:\s*"classes"/,
+    "content quality chooser must use the shared class-based styling"
+  );
+  assert.match(
+    contentSource,
+    /root\.id\s*=\s*"qwin-video-overlay"/,
+    "content overlay must use the shared overlay shell id"
+  );
+  assert.doesNotMatch(
+    contentSource,
+    /item\.onclick\s*=\s*\(\)\s*=>\s*handleVideoSelection/,
+    "content overlay must not keep a bespoke inline-styled video list renderer"
   );
   assert.match(
     contentSource,
@@ -192,19 +207,21 @@ function createChooser(options = {}) {
     "quality selection must start a download with the selected format"
   );
 
-  const contentScripts = manifest.content_scripts[0].js;
+  const contentScripts = manifest.content_scripts[0];
   assert.deepEqual(
-    contentScripts.slice(contentScripts.indexOf("src/shared/media_candidates.js")),
+    contentScripts.js.slice(contentScripts.js.indexOf("src/shared/media_candidates.js")),
     [
       "src/shared/media_candidates.js",
       "src/shared/video_filters.js",
       "src/shared/quality_format.js",
       "src/shared/quality_dialog.js",
+      "src/shared/video_picker.js",
       "src/content/page_detection.js",
       "src/content/content.js",
     ],
     "content script must load shared quality dialog dependencies before content.js"
   );
+  assert.deepEqual(contentScripts.css, ["src/shared/qwin_overlay.css"], "content script must inject shared overlay styles");
 
   console.log("content quality dialog tests passed");
 })().catch((error) => {

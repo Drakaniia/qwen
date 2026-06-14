@@ -4,6 +4,7 @@ const extensionApi = typeof browser !== "undefined" ? browser : chrome;
 const videoFilters = globalThis.QwinVideoFilters;
 const qualityFormat = globalThis.QwinQualityFormat;
 const qualityDialog = globalThis.QwinQualityDialog;
+const videoPicker = globalThis.QwinVideoPicker;
 const seenUrls = new Map();
 const pageDetection = globalThis.QwinPageDetection.create({
   document,
@@ -168,72 +169,32 @@ function ensureOverlay() {
   }
 
   const root = document.createElement("div");
+  root.id = "qwin-video-overlay";
+  root.hidden = true;
+
   const card = document.createElement("div");
+  card.className = "qwin-overlay-card";
+
   const header = document.createElement("div");
+  header.className = "qwin-overlay-header";
+
   const back = document.createElement("button");
-  const title = document.createElement("div");
-  const list = document.createElement("div");
-  const cancel = document.createElement("button");
-
-  root.style.position = "fixed";
-  root.style.inset = "0";
-  root.style.zIndex = "2147483647";
-  root.style.display = "none";
-  root.style.placeItems = "center";
-  root.style.background = "rgba(0, 0, 0, 0.48)";
-
-  card.style.width = "min(640px, calc(100vw - 28px))";
-  card.style.maxHeight = "min(520px, calc(100vh - 28px))";
-  card.style.display = "flex";
-  card.style.flexDirection = "column";
-  card.style.padding = "16px";
-  card.style.border = "1px solid rgba(255, 255, 255, 0.24)";
-  card.style.borderRadius = "12px";
-  card.style.background = "#ffffff";
-  card.style.boxShadow = "0 18px 48px rgba(0, 0, 0, 0.35)";
-  card.style.font = "14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-  card.style.color = "#171b22";
-
-  header.style.display = "flex";
-  header.style.alignItems = "center";
-  header.style.gap = "12px";
-  header.style.marginBottom = "14px";
-
   back.type = "button";
+  back.className = "qwin-overlay-back";
   back.textContent = "Back";
-  back.style.display = "none";
-  back.style.padding = "4px 10px";
-  back.style.border = "1px solid #dce1e8";
-  back.style.borderRadius = "6px";
-  back.style.background = "#fff";
-  back.style.color = "#171b22";
-  back.style.font = "600 12px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-  back.style.cursor = "pointer";
+  back.hidden = true;
 
-  title.style.fontWeight = "800";
-  title.style.fontSize = "16px";
-  title.style.flex = "1";
-  title.style.whiteSpace = "nowrap";
-  title.style.overflow = "hidden";
-  title.style.textOverflow = "ellipsis";
+  const title = document.createElement("h2");
+  title.className = "qwin-overlay-title";
 
-  list.style.flex = "1";
-  list.style.display = "grid";
-  list.style.gap = "10px";
-  list.style.overflow = "auto";
-  list.style.paddingRight = "4px";
+  const list = document.createElement("div");
+  list.className = "qwin-overlay-list";
 
+  const cancel = document.createElement("button");
   cancel.type = "button";
+  cancel.className = "qwin-overlay-cancel";
   cancel.textContent = "Cancel";
-  cancel.style.marginTop = "14px";
-  cancel.style.minHeight = "36px";
-  cancel.style.padding = "8px 12px";
-  cancel.style.border = "1px solid #dce1e8";
-  cancel.style.borderRadius = "8px";
-  cancel.style.background = "#fff";
-  cancel.style.color = "#171b22";
-  cancel.style.font = "600 14px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-  cancel.style.cursor = "pointer";
+  cancel.addEventListener("click", () => hideOverlay());
 
   header.append(back, title);
   card.append(header, list, cancel);
@@ -254,9 +215,9 @@ function hideOverlay() {
     return;
   }
 
-  overlayDialog.root.style.display = "none";
+  overlayDialog.root.hidden = true;
   overlayDialog.list.textContent = "";
-  overlayDialog.back.style.display = "none";
+  overlayDialog.back.hidden = true;
   overlayDialog.cancel.disabled = false;
   overlayDialog.cancel.textContent = "Cancel";
 }
@@ -280,14 +241,14 @@ function ensureQualityChooser() {
     qualityFormat,
     videoFilters,
     loadingStatusId: "qwin-quality-loading-status",
-    style: "inline",
+    style: "classes",
     hideOnSelect: false,
     hideOnBack: false,
     showRoot(root) {
-      root.style.display = "grid";
+      root.hidden = false;
     },
     hideRoot(root) {
-      root.style.display = "none";
+      root.hidden = true;
     },
   });
   return overlayQualityChooser;
@@ -361,88 +322,23 @@ function showAvailableVideosOverlay() {
   const dialog = ensureOverlay();
   dialog.title.textContent = "Available Videos";
   dialog.list.textContent = "";
-  dialog.back.style.display = "none";
-  dialog.root.style.display = "grid";
+  dialog.back.hidden = true;
+  dialog.root.hidden = false;
 
   void (async () => {
     const response = await sendMessageWithResponse({ type: "getVideos" });
     const videos = response && response.ok ? response.videos : lastDetectedVideos;
 
-    if (!videos || !videos.length) {
+    if (!videoPicker || typeof videoPicker.renderList !== "function") {
       dialog.list.textContent = "No downloadable video detected yet.";
       return;
     }
 
-    dialog.list.textContent = "";
-    for (const video of videos) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.style.display = "flex";
-      item.style.alignItems = "center";
-      item.style.gap = "12px";
-      item.style.padding = "10px";
-      item.style.border = "1px solid #dce1e8";
-      item.style.borderRadius = "8px";
-      item.style.background = "#fff";
-      item.style.textAlign = "left";
-      item.style.cursor = "pointer";
-      item.style.transition = "background 0.2s";
-
-      item.onmouseover = () => { item.style.background = "#f8fafc"; };
-      item.onmouseout = () => { item.style.background = "#fff"; };
-
-      const thumbContainer = document.createElement("div");
-      thumbContainer.style.width = "80px";
-      thumbContainer.style.height = "45px";
-      thumbContainer.style.background = "#f1f5f9";
-      thumbContainer.style.borderRadius = "4px";
-      thumbContainer.style.overflow = "hidden";
-      thumbContainer.style.flexShrink = "0";
-
-      if (video.thumbnailUrl) {
-        const thumb = document.createElement("img");
-        thumb.src = video.thumbnailUrl;
-        thumb.style.width = "100%";
-        thumb.style.height = "100%";
-        thumb.style.objectFit = "cover";
-        thumbContainer.append(thumb);
-      }
-
-      const info = document.createElement("div");
-      info.style.flex = "1";
-      info.style.minWidth = "0";
-
-      const title = document.createElement("div");
-      title.textContent = video.title || "Video";
-      title.style.fontWeight = "700";
-      title.style.fontSize = "13px";
-      title.style.whiteSpace = "nowrap";
-      title.style.overflow = "hidden";
-      title.style.textOverflow = "ellipsis";
-
-      const meta = document.createElement("div");
-      meta.style.fontSize = "11px";
-      meta.style.color = "#64748b";
-      meta.style.marginTop = "2px";
-
-      const badge = document.createElement("span");
-      badge.textContent = video.format || "VIDEO";
-      badge.style.background = "#e2e8f0";
-      badge.style.padding = "1px 4px";
-      badge.style.borderRadius = "3px";
-      badge.style.marginRight = "6px";
-      badge.style.fontWeight = "800";
-
-      const variants = document.createElement("span");
-      variants.textContent = video.variantCount > 1 ? `${video.variantCount} versions` : "Single version";
-
-      meta.append(badge, variants);
-      info.append(title, meta);
-      item.append(thumbContainer, info);
-
-      item.onclick = () => handleVideoSelection(video);
-      dialog.list.append(item);
-    }
+    videoPicker.renderList(dialog.list, videos, {
+      videoFilters,
+      emptyText: "No downloadable video detected yet.",
+      onSelect: handleVideoSelection,
+    });
   })();
 }
 

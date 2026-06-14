@@ -11,9 +11,14 @@
   const DEFAULT_CHOICES = [{ id: "best", label: "Best available MP4" }];
 
   function setVisible(element, visible, displayValue = "block") {
-    if (element) {
-      element.style.display = visible ? displayValue : "none";
+    if (!element) {
+      return;
     }
+    if ("hidden" in element) {
+      element.hidden = !visible;
+      return;
+    }
+    element.style.display = visible ? displayValue : "none";
   }
 
   function showRoot(root, options) {
