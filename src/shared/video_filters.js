@@ -70,6 +70,9 @@
     const format = lower(
       typeof videoOrFormat === "object" && videoOrFormat !== null ? videoOrFormat.format || "" : videoOrFormat,
     );
+    if (format === "audio") {
+      return "AUDIO";
+    }
     if (format === "m3u8" || format === "mpd" || format === "ism") {
       return "MP4";
     }
@@ -419,11 +422,11 @@
     if (value === "PAGE") {
       return 6;
     }
-    if (value === "MP4") {
+    if (value === "MP4" || value === "WEBM") {
       return 4;
     }
-    if (value === "WEBM") {
-      return 2;
+    if (value === "AUDIO") {
+      return 3;
     }
     return 1;
   }
@@ -559,6 +562,9 @@
   function sourceLabel(video) {
     if (video && video.source === "manual-url") {
       return "manual link";
+    }
+    if (video && video.source === "music-page") {
+      return "music";
     }
     if (["M3U8", "MPD", "YOUTUBE", "PAGE"].includes(String((video && video.format) || "").toUpperCase())) {
       return "full video";

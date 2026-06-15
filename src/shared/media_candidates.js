@@ -8,12 +8,15 @@
   "use strict";
 
   const VIDEO_EXTENSION_RE = /(?:\.(?:mp4|m4v|webm|m3u8|mpd)(?:$|[?#])|\.ism(?:\/Manifest)?(?:$|[?#]))/i;
+  const AUDIO_EXTENSION_RE = /\.(?:mp3|m4a|aac|ogg|opus|flac|wav)(?:$|[?#])/i;
   const HLS_RE = /\.m3u8(?:$|[?#])/i;
   const DASH_RE = /\.mpd(?:$|[?#])/i;
   const ISM_RE = /\.ism(?:\/Manifest)?(?:$|[?#])/i;
   const GIF_RE = /\.(gif|gifv)(?:$|[?#])/i;
   const WEB_APP_MANIFEST_RE = /(?:\.webmanifest|(?:^|[/?#._-])manifest\.json)(?:$|[?#])/i;
   const STATIC_PLAYER_ASSET_RE = /\.(?:hlsjs|js|mjs|cjs|css|map)(?:$|[?#])/i;
+  const MUSIC_CDN_RE = /(?:spotifycdn|audio-ak|audio-fa|audio-[\w-]+\.spotify|cadenas\.|audio-pa\.spotifycdn)/i;
+  const AUDIO_ONLY_HOST_RE = /(?:audio[-.])/i;
   const GIF_VIDEO_RE =
     /(?:^|[/?#._-])(?:gif|gifs|gifv|animated-gif|giphy|tenor|gifpreview|gif-preview|loop-preview)(?:[/?#._-]|$)/i;
   const SEGMENT_EXTENSION_RE = /\.(ts|m4s|cmfv|cmfa)(?:$|[?#])/i;
@@ -23,6 +26,10 @@
   const NUMBERED_MEDIA_FRAGMENT_RE = /\/(?:\d{3,}|[a-f0-9]{12,})(?:\.(?:mp4|m4v|webm)|(?:$|[?#]))/i;
   const AD_RE =
     /(?:doubleclick|googlesyndication|googleads|imasdk|adservice|adserver|\/ads?\/|[._-]ads?[._-]|vast|vpaid|prebid|preroll|midroll|postroll|companionad|moatads|scorecardresearch|outbrain|taboola)/i;
+  // Streaming sites whose page URLs (no video extension) are not valid yt-dlp sources.
+  // They use HLS/DASH streams loaded dynamically — the page URL itself is never
+  // the actual download URL. Actual stream URLs from their CDNs still pass through.
+  const STREAMING_PAGE_HOST_RE = /(?:^|[/.])vidfast\.pro(?:$|[/?#])/i;
   const EMBED_PLAYER_HOST_RE = /(?:^|[/.])player\.hanime\.tv(?:$|[/?#])/i;
   const CDN_HINT_RE =
     /(videoplayback|video[-_/]?cdn|\/video\/|\/videos\/|hls|dash|manifest|playlist|master\.m3u8|akamaihd|akamaized|cloudfront|mux\.com|jwplatform|brightcove|kaltura|fastly|edgekey)/i;
@@ -39,6 +46,21 @@
     } catch (_error) {
       return false;
     }
+  }
+
+  function isLikelyAudioUrl(url, contentType = "") {
+    const text = lower(url);
+    const type = lower(contentType);
+    if (AUDIO_EXTENSION_RE.test(text)) {
+      return true;
+    }
+    if (type.startsWith("audio/")) {
+      return true;
+    }
+    if (MUSIC_CDN_RE.test(text) || (AUDIO_ONLY_HOST_RE.test(text) && !VIDEO_EXTENSION_RE.test(text))) {
+      return true;
+    }
+    return false;
   }
 
   function isEphemeralMediaUrl(url) {
@@ -149,6 +171,12 @@
     if (EMBED_PLAYER_HOST_RE.test(text)) {
       return true;
     }
+    // Block page URLs from streaming sites that aren't real download sources.
+    // These sites embed HLS/DASH streams — the page URL is not a direct video URL.
+    // Stream URLs from their CDNs (with actual video extensions) are still allowed.
+    if (STREAMING_PAGE_HOST_RE.test(text) && !VIDEO_EXTENSION_RE.test(text) && !SEGMENT_EXTENSION_RE.test(text)) {
+      return true;
+    }
     return AD_RE.test(text);
   }
 
@@ -172,6 +200,9 @@
     }
     if (/\.(mp4|m4v)(?:$|[?#])/i.test(text) || type.includes("video/mp4")) {
       return "MP4";
+    }
+    if (isLikelyAudioUrl(url, contentType)) {
+      return "AUDIO";
     }
     if (type.startsWith("video/")) {
       return type.replace("video/", "").toUpperCase();
@@ -228,6 +259,7 @@
     isDownloadableMediaUrl,
     isEphemeralMediaUrl,
     isHttpUrl,
+    isLikelyAudioUrl,
     isLikelyVideoRequest,
     isPlaylistLike,
     isYouTubeVideoPageUrl,
