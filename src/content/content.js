@@ -525,12 +525,61 @@ function scanVisiblePlayerFrames() {
   return candidates;
 }
 
+function scanMusicSources() {
+  const candidates = [];
+  const hostname = location.hostname.toLowerCase();
+  const pathname = location.pathname;
+
+  // Detect known music streaming platforms.
+  // For yt-dlp-supported sites (SoundCloud, Deezer, Tidal, Bandcamp, Apple Music)
+  // the page URL is sent directly.
+  // For DRM-protected sites (Spotify), the native host falls back to a YouTube
+  // search + metadata pipeline.
+  const MUSIC_PLATFORMS = [
+    { host: /(^|\.)open\.spotify\.com$/, path: /^\/(track|album|playlist|episode|show)\//i },
+    { host: /(^|\.)music\.apple\.com$/, path: /^\/([a-z]{2}\/)?(album|song|playlist)\//i },
+    { host: /(^|\.)soundcloud\.com$/, path: /^\/(?!search|upload|signin|discover)/i },
+    { host: /(^|\.)tidal\.com$/, path: /\/(track|album|playlist|video)\//i },
+    { host: /(^|\.)deezer\.com$/, path: /\/(track|album|playlist|podcast)\//i },
+    { host: /(^|\.)music\.youtube\.com$/, path: /\//i },
+    { host: /(^|\.)bandcamp\.com$/, path: /\/(track|album)\//i },
+  ];
+
+  const matched = MUSIC_PLATFORMS.find((p) => p.host.test(hostname) && p.path.test(pathname));
+  if (!matched) {
+    return candidates;
+  }
+
+  // Use the page URL itself as the download source.
+  // For DRM platforms like Spotify the native host resolves via YouTube fallback.
+  const pageUrl = location.href;
+  const title = pageDetection.cleanMusicTitle(cleanText(document.title)) || titleFromUrl(pageUrl) || "Music";
+
+  addBuiltCandidate(candidates, {
+    url: pageUrl,
+    format: "AUDIO",
+    source: "music-page",
+    contentType: "",
+    pageUrl,
+    frameUrl: location.href,
+    title,
+    thumbnailUrl: pageThumbnailUrl(),
+    downloadable: true,
+    width: 0,
+    height: 0,
+    duration: 0,
+  });
+
+  return candidates;
+}
+
 function publishScan() {
   const videos = [
     ...scanVideoElements(),
     ...scanPerformanceEntries(),
     ...scanInlinePlayerScripts(),
     ...scanVisiblePlayerFrames(),
+    ...scanMusicSources(),
   ];
   lastDetectedVideos = videos;
   if (videos.length > 0) {

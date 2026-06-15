@@ -10,6 +10,9 @@
   const MEDIA_URL_TEXT_RE =
     /(?:(?:https?:)?\\?\/\\?\/|\/)[^"'`<>\s]+(?:\.(?:mp4|m4v|webm|m3u8|mpd)(?:[?#][^"'`<>\s]*)?|\.ism(?:\\?\/Manifest)?(?:[?#][^"'`<>\s]*)?)/gi;
 
+  const MUSIC_PLATFORM_SUFFIX_RE =
+    /\s*[·•–—|]\s*(?:Spotify|Apple Music|YouTube Music|SoundCloud|Tidal|Deezer|Amazon Music|Pandora|Bandcamp)\s*$/i;
+
   function create(options) {
     const document = options.document;
     const location = options.location;
@@ -68,6 +71,10 @@
       }
     }
 
+    function cleanMusicTitle(value) {
+      return cleanText(value).replace(MUSIC_PLATFORM_SUFFIX_RE, "").trim();
+    }
+
     function titleForVideo(video, url) {
       const labelledBy = video.getAttribute("aria-labelledby");
       const labelledByText = labelledBy
@@ -79,15 +86,35 @@
           )
         : "";
 
-      const candidates = [
-        cleanText(document.querySelector('meta[property="og:title"]')?.content),
-        cleanText(document.querySelector('meta[name="twitter:title"]')?.content),
-        cleanText(document.title),
-        labelledByText,
-        cleanText(video.getAttribute("aria-label")),
-        cleanText(video.getAttribute("title")),
-        titleFromUrl(url),
-      ];
+      const ogTitle = cleanText(document.querySelector('meta[property="og:title"]')?.content);
+      const twitterTitle = cleanText(document.querySelector('meta[name="twitter:title"]')?.content);
+      const docTitle = cleanMusicTitle(document.title);
+
+      // For music/audio sources, prefer document.title over og:title
+      // because music platforms set document.title to "Track · Artist · Platform"
+      // while og:title might be "Spotify – Web Player" (generic).
+      const isMusicSource =
+        videoFilters && videoFilters.isLikelyAudioUrl ? videoFilters.isLikelyAudioUrl(url, "") : false;
+
+      const candidates = isMusicSource
+        ? [
+            docTitle,
+            cleanText(document.querySelector('meta[property="og:title"]')?.content),
+            cleanText(document.querySelector('meta[name="twitter:title"]')?.content),
+            labelledByText,
+            cleanText(video.getAttribute("aria-label")),
+            cleanText(video.getAttribute("title")),
+            titleFromUrl(url),
+          ]
+        : [
+            ogTitle,
+            twitterTitle,
+            docTitle,
+            labelledByText,
+            cleanText(video.getAttribute("aria-label")),
+            cleanText(video.getAttribute("title")),
+            titleFromUrl(url),
+          ];
 
       for (const candidate of candidates) {
         if (candidate && !videoFilters.isGenericTitle(candidate)) {
@@ -149,7 +176,7 @@
         frameUrl: location.href,
         title: video
           ? titleForVideo(video, absoluteUrl)
-          : cleanText(document.title) || titleFromUrl(absoluteUrl) || "Video",
+          : cleanMusicTitle(cleanText(document.title)) || titleFromUrl(absoluteUrl) || "Video",
         thumbnailUrl: thumbnailForVideo(video),
       };
 
@@ -304,6 +331,7 @@
       addCandidate,
       buildCandidate,
       candidateMetadataSignature,
+      cleanMusicTitle,
       cleanText,
       currentYouTubeVideoPageUrl,
       decodeUrlText,
