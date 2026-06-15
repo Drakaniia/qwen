@@ -120,8 +120,9 @@ def build_yt_dlp_command(
                 audio_ext,
                 "--audio-quality",
                 str(quality),
-                "--embed-thumbnail",
                 "--embed-metadata",
+                "--no-post-overwrites",
+                "--keep-video",
                 "--print",
                 f"after_move:{FILEPATH_MARKER}%(filepath)s",
                 "-o",
@@ -436,3 +437,107 @@ def summarize_audio_formats(info):
         "webpageUrl": webpage_url,
         "formats": choices,
     }
+
+
+def build_yt_dlp_fallback_variants(**build_kwargs):
+    """Generate alternative yt-dlp command strategies for fallback attempts.
+
+    Each variant applies a different flag combination to handle various
+    failure modes (region locks, SSL issues, transient errors, etc.).
+
+    Returns a list of dicts::
+        [{"command": […], "label": "…"}, …]
+
+    The ``build_kwargs`` are the same keyword arguments accepted by
+    ``build_yt_dlp_command()`` — except ``aria2c_location`` is always
+    set to ``None`` for these variants (standard mode avoids extra
+    points of failure).
+    """
+    if "aria2c_location" in build_kwargs:
+        build_kwargs["aria2c_location"] = None
+
+    variants = []
+
+    # 1 — No SSL certificate verification (server-side SSL issues)
+    variants.append(
+        {
+            "command": build_yt_dlp_command(**{**build_kwargs, "nocheckcertificate": True}),
+            "label": "yt-dlp (no SSL check)",
+        }
+    )
+
+    # 2 — Geo-bypass (region-locked content)
+    geo_cmd = build_yt_dlp_command(**build_kwargs)
+    geo_cmd.insert(geo_cmd.index("--ignore-config") + 1, "--geo-bypass")
+    variants.append(
+        {
+            "command": geo_cmd,
+            "label": "yt-dlp (geo bypass)",
+        }
+    )
+
+    # 3 — No impersonate (generic extractor fallback)
+    no_imp_cmd = build_yt_dlp_command(**build_kwargs)
+    # Remove the --extractor-args generic:impersonate flag
+    try:
+        eargs_idx = next(
+            i
+            for i, a in enumerate(no_imp_cmd)
+            if a == "--extractor-args" and i + 1 < len(no_imp_cmd) and "impersonate" in no_imp_cmd[i + 1]
+        )
+        del no_imp_cmd[eargs_idx : eargs_idx + 2]
+    except StopIteration:
+        pass
+    # Remove --remote-components for YouTube
+    try:
+        rc_idx = next(i for i, a in enumerate(no_imp_cmd) if a == "--remote-components")
+        del no_imp_cmd[rc_idx : rc_idx + 2]
+    except StopIteration:
+        pass
+    if no_imp_cmd != variants[0]["command"] and no_imp_cmd != geo_cmd:
+        variants.append(
+            {
+                "command": no_imp_cmd,
+                "label": "yt-dlp (no impersonate)",
+            }
+        )
+
+    # 4 — Maximum retries for transient failures
+    retry_cmd = build_yt_dlp_command(**build_kwargs)
+    retry_cmd.extend(
+        [
+            "--retries",
+            "infinite",
+            "--fragment-retries",
+            "infinite",
+            "--extractor-retries",
+            "10",
+        ]
+    )
+    variants.append(
+        {
+            "command": retry_cmd,
+            "label": "yt-dlp (max retries)",
+        }
+    )
+
+    # 5 — Single-threaded fragments (servers blocking concurrent downloads)
+    single_cmd = build_yt_dlp_command(**{**build_kwargs, "concurrent_fragments": 1})
+    variants.append(
+        {
+            "command": single_cmd,
+            "label": "yt-dlp (single fragment)",
+        }
+    )
+
+    # 6 — Force generic extractor (when the site-specific extractor misbehaves)
+    generic_cmd = build_yt_dlp_command(**build_kwargs)
+    generic_cmd.insert(generic_cmd.index("--ignore-config") + 1, "--force-generic-extractor")
+    variants.append(
+        {
+            "command": generic_cmd,
+            "label": "yt-dlp (generic extractor)",
+        }
+    )
+
+    return variants
