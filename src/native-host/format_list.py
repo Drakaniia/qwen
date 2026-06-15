@@ -1,6 +1,9 @@
 import json
 import subprocess
 
+from fallback_engines import list_formats_gallery_dl
+from spotify_resolver import is_spotify_url, resolve_spotify_formats
+
 from browser_context import remove_temp_files, write_cookie_file_from_headers
 from native_paths import validate_download_url
 from native_protocol import HostError, send_native_message
@@ -61,6 +64,41 @@ def run_format_list(
 
     if completed.returncode != 0:
         details = (completed.stderr or completed.stdout or "").strip()
+
+        # -- Spotify DRM fallback --------------------------------------------------
+        # yt-dlp hard-blocks Spotify with [DRM]. Use the Spotify resolver to fetch
+        # metadata from Spotify's embed page, search YouTube, and return YouTube audio
+        # formats instead.
+        if is_spotify_url(url) and "DRM" in details:
+            try:
+                result = resolve_spotify_formats(
+                    url,
+                    yt_dlp_command=yt_dlp_command_resolver(),
+                    ffmpeg_location=ffmpeg_location_resolver(),
+                )
+                send({"type": "formats", "id": request_id, **result})
+                return
+            except HostError:
+                # Propagate the resolver's error message (e.g. "only tracks
+                # supported") instead of the raw yt-dlp DRM error — it is more
+                # actionable for the user.
+                raise
+
+        # -- gallery-dl fallback ----------------------------------------------------
+        # For image/gallery sites that yt-dlp doesn't handle, try gallery-dl
+        gallery_formats = list_formats_gallery_dl(url)
+        if gallery_formats:
+            send(
+                {
+                    "type": "formats",
+                    "id": request_id,
+                    "title": "Media",
+                    "webpageUrl": url,
+                    "formats": gallery_formats,
+                }
+            )
+            return
+
         raise HostError(details or f"yt-dlp exited with status {completed.returncode}.")
 
     try:
