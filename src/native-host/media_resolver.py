@@ -8,14 +8,36 @@ from media_candidates import classify_media_url, is_reusable_media_url
 from native_paths import validate_download_url
 from native_protocol import HostError, send_native_message
 
-
 MAX_RESOLVER_BYTES = 1_500_000
 RESOLVER_TIMEOUT_SECONDS = 12
 MEDIA_URL_RE = re.compile(
     r"(?:(?:https?:)?(?:\\?/\\?/)|/)[^\"'`<>\s]+(?:\.(?:mp4|m4v|webm|m3u8|mpd)(?:[?#][^\"'`<>\s]*)?|\.ism(?:\\?/Manifest)?(?:[?#][^\"'`<>\s]*)?)",
     re.IGNORECASE,
 )
+# Broader pattern to catch .m3u8/.mpd URLs that may appear in unusual contexts —
+# e.g., partial URLs in JS strings, config blobs, or escaped JSON where the
+# strict MEDIA_URL_RE yields a partial match that gets dropped by is_reusable_media_url.
+BROAD_M3U8_RE = re.compile(
+    r"https?://[^\"'`<>\s]*?\.m3u8[^\"'`<>\s]*",
+    re.IGNORECASE,
+)
+BROAD_MPD_RE = re.compile(
+    r"https?://[^\"'`<>\s]*?\.mpd[^\"'`<>\s]*",
+    re.IGNORECASE,
+)
+# Data-attribute patterns common for HLS config (e.g., data-hls, data-video-url, data-file).
+DATA_ATTR_M3U8_RE = re.compile(
+    r'data-(?:hls[-_]?src|video[-_]?url|file[-_]?src|stream[-_]?url|manifest[-_]?url|source[-_]?url)\s*=\s*["\']([^"\']*?\.m3u8[^"\']*)["\']',
+    re.IGNORECASE,
+)
+# JSON-like value patterns in script configs: "file":"...", "url":"...", "src":"..."
+JSON_VALUE_M3U8_RE = re.compile(
+    r'["\'](?:file|url|src|source|manifest|playlist|hls|stream)["\']\s*:\s*["\']([^"\']*?\.m3u8[^"\']*)["\']',
+    re.IGNORECASE,
+)
 JS_STRING_RE = r"[`'\"]([^`'\"]+)[`'\"]"
+
+
 def decode_candidate_url(value):
     text = str(value or "").strip().replace("\\/", "/")
     text = html.unescape(text).replace("\\u0026", "&")
@@ -40,6 +62,8 @@ def extract_media_candidates_from_text(text, base_url, source="page-scan"):
     candidates = []
     seen = set()
     decoded_text = decode_candidate_url(text)
+
+    # 1. Strict URL matching (existing)
     for match in MEDIA_URL_RE.finditer(decoded_text):
         url = absolute_candidate_url(match.group(0), base_url)
         if not is_reusable_media_url(url) or url in seen:
@@ -53,6 +77,56 @@ def extract_media_candidates_from_text(text, base_url, source="page-scan"):
                 "confidence": 90 if classify_media_url(url) in {"M3U8", "MPD", "ISM"} else 80,
             }
         )
+
+    # 2. Broader m3u8/mpd URL matching — catches URLs the strict regex might fragment
+    for broad_re in (BROAD_M3U8_RE, BROAD_MPD_RE):
+        for match in broad_re.finditer(decoded_text):
+            url = absolute_candidate_url(match.group(0), base_url)
+            if not is_reusable_media_url(url) or url in seen:
+                continue
+            seen.add(url)
+            candidates.append(
+                {
+                    "url": url,
+                    "format": classify_media_url(url),
+                    "source": source,
+                    "confidence": 85,
+                }
+            )
+
+    # 3. Data-attribute HLS references (e.g., data-hls-src="https://...")
+    for match in DATA_ATTR_M3U8_RE.finditer(decoded_text):
+        raw_url = decode_candidate_url(match.group(1))
+        url = absolute_candidate_url(raw_url, base_url)
+        if not is_reusable_media_url(url) or url in seen:
+            continue
+        seen.add(url)
+        candidates.append(
+            {
+                "url": url,
+                "format": "M3U8",
+                "source": "data-attribute",
+                "confidence": 92,
+            }
+        )
+
+    # 4. JSON config value matching ("file":"...m3u8", "url":"...m3u8")
+    for match in JSON_VALUE_M3U8_RE.finditer(decoded_text):
+        raw_url = decode_candidate_url(match.group(1))
+        url = absolute_candidate_url(raw_url, base_url)
+        if not is_reusable_media_url(url) or url in seen:
+            continue
+        seen.add(url)
+        candidates.append(
+            {
+                "url": url,
+                "format": "M3U8",
+                "source": "json-config",
+                "confidence": 88,
+            }
+        )
+
+    # 5. Dynamic loader / video ID reconstruction (existing)
     candidates.extend(extract_dynamic_loader_candidates(decoded_text, base_url, seen))
     return candidates
 
@@ -85,7 +159,9 @@ def extract_dynamic_loader_candidates(text, base_url, seen=None):
     for loader in loaders:
         loader_url = absolute_candidate_url(loader, base_url)
         for video_id in ids:
-            url = urljoin(loader_url, video_id) if not loader_url.endswith(("=", "/", "?")) else f"{loader_url}{video_id}"
+            url = (
+                urljoin(loader_url, video_id) if not loader_url.endswith(("=", "/", "?")) else f"{loader_url}{video_id}"
+            )
             if url in seen_urls:
                 continue
             try:
@@ -126,7 +202,15 @@ def request_headers_for_resolver(message):
     headers = {}
     for header in clean_request_headers(message.get("requestHeaders")):
         name = header["name"]
-        if name.lower() in {"accept", "accept-language", "cookie", "origin", "referer", "user-agent", "x-requested-with"}:
+        if name.lower() in {
+            "accept",
+            "accept-language",
+            "cookie",
+            "origin",
+            "referer",
+            "user-agent",
+            "x-requested-with",
+        }:
             headers[name] = header["value"]
 
     user_agent = str(message.get("userAgent") or "").strip()
@@ -145,8 +229,7 @@ def fetch_resolver_text(url, message, urlopen_fn=urlopen):
     with urlopen_fn(request, timeout=RESOLVER_TIMEOUT_SECONDS) as response:
         content_type = content_type_from_response(response)
         if content_type and not any(
-            token in content_type
-            for token in ["text/", "html", "javascript", "json", "xml", "mpegurl", "dash+xml"]
+            token in content_type for token in ["text/", "html", "javascript", "json", "xml", "mpegurl", "dash+xml"]
         ):
             return ""
         return decode_response_body(response)
