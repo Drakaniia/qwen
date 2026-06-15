@@ -1,7 +1,7 @@
-import subprocess
-import shutil
-import threading
 import errno
+import shutil
+import subprocess
+import threading
 from collections import deque
 from pathlib import Path
 
@@ -9,8 +9,7 @@ from artifacts import unique_delete_targets
 from browser_context import remove_temp_files
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags, terminate_process_tree
-from progress_parser import is_aria2_access_refusal, iter_process_output_lines, parse_yt_dlp_line
-from stream_backends import is_retryable_backend_error
+from progress_parser import iter_process_output_lines, parse_yt_dlp_line
 
 
 class DownloadTask:
@@ -273,28 +272,29 @@ class DownloadTask:
 
     def run(self):
         try:
-            attempt = 0
             attempts = self.fallback_attempts()
             attempt_index = 0
-            while True:
+            attempt_num = 0
+
+            while attempt_index < len(attempts):
                 if self.cancel_requested.is_set():
                     self.send_canceled()
                     return
 
-                attempt += 1
+                attempt_num += 1
+                active_meta = attempts[attempt_index]
+                self.active_command_meta = active_meta
                 self.send_message(
                     {
                         "type": "started",
                         "status": "running",
                         "message": (
                             f"Saving to {self.download_dir}"
-                            if attempt == 1
+                            if attempt_num == 1
                             else "Resuming download from partial files..."
                         ),
                     }
                 )
-                active_meta = attempts[attempt_index]
-                self.active_command_meta = active_meta
                 exit_code = self.run_process_once(active_meta["command"])
 
                 if self.cancel_requested.is_set():
@@ -307,62 +307,69 @@ class DownloadTask:
                         return
                     continue
 
-                if exit_code != 0:
-                    details = "\n".join(item for item in self.recent_lines if item).strip()
-                    if not details:
-                        details = f"yt-dlp exited with status {exit_code}."
-                    next_index = None
-                    next_meta = None
-                    can_retry_aria2 = False
-                    for candidate_index in range(attempt_index + 1, len(attempts)):
-                        candidate = attempts[candidate_index]
-                        if candidate.get("aria2_fallback"):
-                            if is_aria2_access_refusal(details):
-                                next_index = candidate_index
-                                next_meta = candidate
-                                can_retry_aria2 = True
-                                break
-                            continue
-                        if is_retryable_backend_error(details):
-                            next_index = candidate_index
-                            next_meta = candidate
-                            break
-                    if next_meta is not None:
-                        attempt_index = next_index
-                        self.recent_lines.clear()
-                        label = str(next_meta.get("label") or "another downloader")
-                        line = (
-                            "Fast downloader was refused by the server; retrying in standard mode."
-                            if can_retry_aria2
-                            else f"yt-dlp could not use this source; retrying with {label}."
-                        )
+                if exit_code == 0:
+                    final_path = active_meta.get("final_path")
+                    artifact_root = active_meta.get("artifact_root")
+                    if final_path and not self.final_path:
+                        self.final_path = final_path
+                    if artifact_root and not self.artifact_root:
+                        self.artifact_root = artifact_root
+                    self.set_state("done")
+                    self.send_message(
+                        {
+                            "type": "done",
+                            "status": "done",
+                            "filepath": self.final_path,
+                            "artifactRoot": (
+                                self.artifact_root or (str(Path(self.final_path).parent) if self.final_path else "")
+                            ),
+                            "message": "Download complete.",
+                        }
+                    )
+                    return
+
+                # exit_code != 0 — gather error details
+                details = "\n".join(item for item in self.recent_lines if item).strip()
+                if not details:
+                    details = f"yt-dlp exited with status {exit_code}."
+
+                # Check if audio post-processing failed but the original file exists
+                # (--no-post-overwrites / --keep-video keeps the original download)
+                if any(
+                    keyword in details.lower()
+                    for keyword in ["audio conversion failed", "postprocess", "conversion failed"]
+                ):
+                    original_path = self.current_path or self.final_path or ""
+                    if original_path and Path(original_path).exists():
+                        self.set_state("done")
                         self.send_message(
                             {
-                                "type": "progress",
-                                "stage": "log",
-                                "line": line,
+                                "type": "done",
+                                "status": "done",
+                                "filepath": str(original_path),
+                                "artifactRoot": str(Path(original_path).parent),
+                                "message": "Download complete (audio conversion skipped, original format kept).",
                             }
                         )
-                        continue
-                    raise HostError(details)
+                        return
 
-                final_path = active_meta.get("final_path")
-                artifact_root = active_meta.get("artifact_root")
-                if final_path and not self.final_path:
-                    self.final_path = final_path
-                if artifact_root and not self.artifact_root:
-                    self.artifact_root = artifact_root
-                self.set_state("done")
-                self.send_message(
-                    {
-                        "type": "done",
-                        "status": "done",
-                        "filepath": self.final_path,
-                        "artifactRoot": self.artifact_root or (str(Path(self.final_path).parent) if self.final_path else ""),
-                        "message": "Download complete.",
-                    }
-                )
-                return
+                # Try the next fallback command unconditionally
+                attempt_index += 1
+                if attempt_index < len(attempts):
+                    self.recent_lines.clear()
+                    next_meta = attempts[attempt_index]
+                    label = str(next_meta.get("label") or "another downloader")
+                    self.send_message(
+                        {
+                            "type": "progress",
+                            "stage": "log",
+                            "line": f"yt-dlp could not use this source; retrying with {label}.",
+                        }
+                    )
+                    continue
+
+                # All fallback attempts exhausted
+                raise HostError(details)
         except HostError as exc:
             if self.cancel_requested.is_set():
                 self.send_canceled()
