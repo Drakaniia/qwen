@@ -27,7 +27,7 @@ assert.match(
 );
 assert.match(
   source,
-  /downloadFolder:\s*job\.downloadFolder\s*\|\|\s*settings\.downloadFolder\s*\|\|\s*""/,
+  /downloadFolder:\s*job\.downloadFolder\s*\|\|\s*tabState\.getSettings\(\)\.downloadFolder\s*\|\|\s*""/,
   "background must send the original or current download folder when deleting artifacts",
 );
 
@@ -42,7 +42,11 @@ for (const runtimeType of [
   "clearDownloads",
   "openPopup",
 ]) {
-  assert.match(source, new RegExp(`message\\.type === "${runtimeType}"`), `background must handle ${runtimeType}`);
+  assert.match(
+    source,
+    new RegExp(`messageRouter\\.handle\\("${runtimeType}"`),
+    `background must handle ${runtimeType}`,
+  );
 }
 
 assert.match(
