@@ -58,7 +58,7 @@ const BLOCKING_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "
 
 let videosByTab = {};
 let downloadsById = {};
-let settings = { downloadFolder: "" };
+let settings = { downloadFolder: "", musicMode: false, audioFormat: "mp3" };
 let stateLoaded = false;
 let stateLoadPromise = null;
 const downloadPortsById = {};
@@ -1051,6 +1051,9 @@ function sourceText(video) {
   if (video.source === "manual-url" || String(video.format || "").toUpperCase() === "PAGE") {
     return "Manual link";
   }
+  if (video.source === "music-page") {
+    return [sourceHost(video.url), "music"].filter(Boolean).join(" / ");
+  }
   return [video.source || "detected", sourceHost(video.url)].filter(Boolean).join(" / ");
 }
 
@@ -1155,6 +1158,7 @@ async function requestNativeFormats(video) {
     userAgent: navigator.userAgent || "",
     requestHeaders: await nativeRequestHeadersForVideo(video.url, video.pageUrl || ""),
     musicMode: settings.musicMode || false,
+    audioFormat: settings.audioFormat || "mp3",
   });
 }
 

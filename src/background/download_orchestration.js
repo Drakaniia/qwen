@@ -287,6 +287,7 @@
         formatId: formatId || "best",
         backend,
         musicMode: settings().musicMode || false,
+        audioFormat: settings().audioFormat || "mp3",
       });
 
       deps.updateDownload(jobId, {
