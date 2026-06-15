@@ -13,6 +13,7 @@ let currentDownloads = [];
 let viewMode = "videos";
 let videoLayoutMode = "list";
 let qualityRequestSerial = 0;
+let musicMode = false;
 const ACTIVE_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
 const RESCAN_IDLE_LABEL = "Rescan";
 const RESCAN_BUSY_LABEL = "Refreshing";
@@ -78,6 +79,7 @@ const elements = {
   footerActions: document.getElementById("footerActions"),
   showVideos: document.getElementById("showVideos"),
   showDownloads: document.getElementById("showDownloads"),
+  musicToggle: document.getElementById("musicToggle"),
   manualUrl: document.getElementById("manualUrl"),
   downloadManualUrl: document.getElementById("downloadManualUrl"),
   downloadFolder: document.getElementById("downloadFolder"),
@@ -278,6 +280,30 @@ function setVideoLayoutMode(mode) {
   elements.showBoxLayout.classList.toggle("active", boxes);
   elements.showListLayout.setAttribute("aria-pressed", String(!boxes));
   elements.showBoxLayout.setAttribute("aria-pressed", String(boxes));
+}
+
+function setMusicMode(enabled) {
+  musicMode = Boolean(enabled);
+  elements.musicToggle.classList.toggle("active", musicMode);
+  elements.musicToggle.setAttribute("aria-pressed", String(musicMode));
+  elements.musicToggle.title = musicMode
+    ? "Music mode active - download audio"
+    : "Music mode - download audio instead of video";
+}
+
+async function toggleMusicMode() {
+  const nextMode = !musicMode;
+  setMusicMode(nextMode);
+
+  // Persist to storage via background
+  const response = await runtimeMessage({
+    type: "saveSettings",
+    settings: { musicMode: nextMode },
+  });
+  if (!response || !response.ok) {
+    // Revert on failure
+    setMusicMode(!nextMode);
+  }
 }
 
 function jobForVideo(videoId) {
@@ -802,6 +828,7 @@ async function refresh(options = {}) {
   currentVideos = response.videos || [];
   currentDownloads = response.downloads || [];
   elements.downloadFolder.value = (response.settings && response.settings.downloadFolder) || "";
+  setMusicMode(response.settings && response.settings.musicMode ? true : false);
   render();
   return true;
 }
@@ -1045,6 +1072,10 @@ elements.showListLayout.addEventListener("click", () => {
 
 elements.showBoxLayout.addEventListener("click", () => {
   setVideoLayoutMode("boxes");
+});
+
+elements.musicToggle.addEventListener("click", () => {
+  toggleMusicMode();
 });
 
 elements.saveSettings.addEventListener("click", async () => {
