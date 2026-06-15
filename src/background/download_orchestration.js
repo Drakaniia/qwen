@@ -286,6 +286,7 @@
         downloadFolder: settings().downloadFolder || "",
         formatId: formatId || "best",
         backend,
+        musicMode: settings().musicMode || false,
       });
 
       deps.updateDownload(jobId, {

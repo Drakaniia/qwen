@@ -1154,6 +1154,7 @@ async function requestNativeFormats(video) {
     pageUrl: video.pageUrl || "",
     userAgent: navigator.userAgent || "",
     requestHeaders: await nativeRequestHeadersForVideo(video.url, video.pageUrl || ""),
+    musicMode: settings.musicMode || false,
   });
 }
 
