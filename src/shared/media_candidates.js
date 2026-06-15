@@ -265,5 +265,13 @@
     isYouTubeVideoPageUrl,
     normalizeYouTubeVideoPageUrl,
     youtubeVideoIdFromPageUrl,
+    // Exported regex constants for use by other modules (background.js, tests)
+    // to avoid duplicating pattern definitions.
+    VIDEO_EXTENSION_RE,
+    HLS_RE,
+    DASH_RE,
+    CDN_HINT_RE,
+    SEGMENT_EXTENSION_RE,
+    DIRECT_VIDEO_EXTENSION_RE: /\.(mp4|m4v|webm)(?:$|[?#])/i,
   };
 });
