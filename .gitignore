@@ -5,3 +5,5 @@ node_modules/
 tools/
 dist/
 .opencode/plugins/emdash-notifications.js
+.qwen/settings.json
+.gemini/settings.json
