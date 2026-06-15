@@ -5,7 +5,18 @@ from browser_context import append_browser_context_options
 from native_paths import sanitize_filename
 from progress_parser import FILEPATH_MARKER
 
+AUDIO_FORMAT_MAP = {
+    "mp3": ("mp3", "mp3", 0),
+    "m4a": ("aac", "m4a", 0),
+    "flac": ("flac", "flac", 0),
+    "opus": ("opus", "opus", 0),
+    "wav": ("wav", "wav", 0),
+    "aac": ("aac", "aac", 0),
+    "ogg": ("vorbis", "ogg", 0),
+}
+
 DEFAULT_FORMAT_SELECTOR = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b"
+AUDIO_FORMAT_SELECTOR = "ba[ext=m4a]/ba[ext=mp3]/ba/best"
 YOUTUBE_REMOTE_COMPONENTS = "ejs:github"
 GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
 MAX_FAST_CONNECTIONS = 32
@@ -40,8 +51,16 @@ def append_generic_impersonation_options(command):
     command.extend(["--extractor-args", GENERIC_EXTRACTOR_ARGS])
 
 
-def format_selector_for_choice(selected_format):
+def format_selector_for_choice(selected_format, extract_audio=False):
     selected = str(selected_format or "").strip()
+    if extract_audio:
+        if not selected or selected == "best":
+            return AUDIO_FORMAT_SELECTOR
+        if any(separator in selected for separator in ["+", "/", ","]):
+            return selected
+        if selected.startswith("ba"):
+            return selected
+        return f"{selected}/ba"
     if not selected or selected == "best":
         return DEFAULT_FORMAT_SELECTOR
     if any(separator in selected for separator in ["+", "/", ","]):
@@ -63,10 +82,12 @@ def build_yt_dlp_command(
     concurrent_fragments=None,
     aria2_connections=None,
     nocheckcertificate=False,
+    extract_audio=False,
+    audio_format="mp3",
 ):
     download_root = str(Path(download_dir))
     output_template = "%(title).180B/%(title).180B [%(id)s].%(ext)s"
-    format_selector = format_selector_for_choice(selected_format)
+    format_selector = format_selector_for_choice(selected_format, extract_audio=extract_audio)
     fragment_count = bounded_int(concurrent_fragments, DEFAULT_CONCURRENT_FRAGMENTS)
     command = [
         *(yt_dlp_command or ["yt-dlp"]),
@@ -87,15 +108,39 @@ def build_yt_dlp_command(
         "--no-playlist",
         "-f",
         format_selector,
-        "--merge-output-format",
-        "mp4",
-        "--recode-video",
-        "mp4",
-        "--print",
-        f"after_move:{FILEPATH_MARKER}%(filepath)s",
-        "-o",
-        output_template,
     ]
+
+    if extract_audio:
+        audio_ext = audio_format or "mp3"
+        _codec, _container, quality = AUDIO_FORMAT_MAP.get(audio_ext, ("mp3", "mp3", 0))
+        command.extend(
+            [
+                "--extract-audio",
+                "--audio-format",
+                audio_ext,
+                "--audio-quality",
+                str(quality),
+                "--embed-thumbnail",
+                "--embed-metadata",
+                "--print",
+                f"after_move:{FILEPATH_MARKER}%(filepath)s",
+                "-o",
+                output_template,
+            ]
+        )
+    else:
+        command.extend(
+            [
+                "--merge-output-format",
+                "mp4",
+                "--recode-video",
+                "mp4",
+                "--print",
+                f"after_move:{FILEPATH_MARKER}%(filepath)s",
+                "-o",
+                output_template,
+            ]
+        )
     if nocheckcertificate:
         command.append("--no-check-certificate")
     append_youtube_ejs_options(command, url)
@@ -284,6 +329,105 @@ def summarize_formats(info):
                 "tbr": item.get("tbr"),
                 "size": human_size(item.get("filesize") or item.get("filesize_approx")),
                 "note": item.get("format_note") or "",
+            }
+        )
+
+    return {
+        "title": title,
+        "webpageUrl": webpage_url,
+        "formats": choices,
+    }
+
+
+def is_audio_only_format(item):
+    """Check if a format is audio-only (no video codec, has audio codec)."""
+    vcodec = str(item.get("vcodec") or "none").lower()
+    acodec = str(item.get("acodec") or "none").lower()
+    return vcodec == "none" and acodec != "none"
+
+
+def audio_format_label(item):
+    """Label audio formats by bitrate and codec."""
+    tbr = item.get("tbr") or item.get("abr") or 0
+    abr = item.get("abr") or tbr
+    ext = str(item.get("ext") or "").upper()
+    codec = str(item.get("acodec") or "").lower()
+
+    if abr:
+        label = f"{int(float(abr))} kbps"
+    else:
+        label = str(item.get("format_id") or "audio")
+
+    if ext and ext not in {"NONE", ""}:
+        label = f"{label} {ext}"
+    if codec and codec not in {"none", ""}:
+        short_codec = codec.replace("mp4a", "AAC").replace("libopus", "Opus").upper()
+        if len(short_codec) > 8:
+            short_codec = codec.upper()[:8]
+        label = f"{label} {short_codec}"
+    return label
+
+
+def audio_format_sort_key(item):
+    """Sort audio formats by bitrate (highest first), then by quality."""
+    return (
+        float(item.get("tbr") or item.get("abr") or 0),
+        float(item.get("asr") or 0),
+    )
+
+
+def summarize_audio_formats(info):
+    """Summarize formats for music mode - shows audio-only streams."""
+    title = sanitize_filename(info.get("title") or info.get("fulltitle") or "Audio")
+    webpage_url = info.get("webpage_url") or info.get("original_url") or ""
+    raw_formats = info.get("formats") or []
+    seen_ids = set()
+    choices = []
+
+    audio_formats = []
+    for item in raw_formats:
+        format_id = str(item.get("format_id") or "").strip()
+        if not format_id or format_id in seen_ids:
+            continue
+        if not is_audio_only_format(item):
+            continue
+        if is_segmented_stream_format(item):
+            continue
+        seen_ids.add(format_id)
+        audio_formats.append(item)
+
+    # Always include the "best" option in music mode; format selector
+    # `ba/best` will pick best audio or fall back to video+audio for extraction.
+    choices.append(
+        {
+            "id": "best",
+            "label": "Best available audio",
+            "ext": "mp3",
+            "height": None,
+            "tbr": None,
+            "size": "",
+            "note": "Recommended",
+            "acodec": "",
+        }
+    )
+
+    for item in sorted(audio_formats, key=audio_format_sort_key, reverse=True)[:25]:
+        tbr = float(item.get("tbr") or item.get("abr") or 0)
+        choices.append(
+            {
+                "id": str(item.get("format_id")),
+                "label": audio_format_label(item),
+                "ext": item.get("ext") or "m4a",
+                "height": None,
+                "width": None,
+                "tbr": tbr if tbr > 0 else None,
+                "abr": item.get("abr"),
+                "asr": item.get("asr"),
+                "acodec": item.get("acodec") or "",
+                "vcodec": "none",
+                "size": human_size(item.get("filesize") or item.get("filesize_approx")),
+                "note": item.get("format_note") or "",
+                "source": "audio-stream",
             }
         )
 

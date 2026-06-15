@@ -19,7 +19,6 @@ from yt_dlp_dependencies import (
     resolve_yt_dlp_command,
 )
 
-
 ACTIVE_DOWNLOADS = {}
 ACTIVE_DOWNLOADS_LOCK = None
 
@@ -73,21 +72,11 @@ def run_download(
     request_headers = message.get("requestHeaders")
     cookies_file = write_cookie_file_from_headers(url, request_headers)
     temp_files = [cookies_file] if cookies_file else []
-    command = build_yt_dlp_command(
-        url=url,
-        download_dir=download_dir,
-        referer=message.get("pageUrl"),
-        user_agent=message.get("userAgent"),
-        request_headers=request_headers,
-        cookies_file=cookies_file,
-        yt_dlp_command=yt_dlp_command,
-        ffmpeg_location=ffmpeg_location,
-        aria2c_location=aria2c_location,
-        selected_format=message.get("formatId"),
-    )
-    fallback_command = None
-    if aria2c_location:
-        fallback_command = build_yt_dlp_command(
+    extract_audio = bool(message.get("musicMode") or message.get("extractAudio") or False)
+    audio_format = str(message.get("audioFormat") or "mp3").strip().lower() if extract_audio else None
+
+    def build_command_kwargs(extra=None):
+        kwargs = dict(
             url=url,
             download_dir=download_dir,
             referer=message.get("pageUrl"),
@@ -96,33 +85,36 @@ def run_download(
             cookies_file=cookies_file,
             yt_dlp_command=yt_dlp_command,
             ffmpeg_location=ffmpeg_location,
-            aria2c_location=None,
             selected_format=message.get("formatId"),
+            extract_audio=extract_audio,
+            audio_format=audio_format,
         )
+        if extra:
+            kwargs.update(extra)
+        return kwargs
+
+    command = build_yt_dlp_command(**build_command_kwargs({"aria2c_location": aria2c_location}))
+    fallback_command = None
+    if aria2c_location:
+        fallback_command = build_yt_dlp_command(**build_command_kwargs({"aria2c_location": None}))
 
     fallback_commands = []
     # Add an SSL fallback that disables certificate verification if the primary attempts fail.
     fallback_commands.append(
         {
             "command": build_yt_dlp_command(
-                url=url,
-                download_dir=download_dir,
-                referer=message.get("pageUrl"),
-                user_agent=message.get("userAgent"),
-                request_headers=request_headers,
-                cookies_file=cookies_file,
-                yt_dlp_command=yt_dlp_command,
-                ffmpeg_location=ffmpeg_location,
-                aria2c_location=None,
-                selected_format=message.get("formatId"),
-                nocheckcertificate=True,
+                **build_command_kwargs({"aria2c_location": None, "nocheckcertificate": True})
             ),
             "label": "yt-dlp (no SSL check)",
         }
     )
 
     requested_backend = str(message.get("backend") or "auto").lower()
-    if requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"} and n_m3u8dl_re_location and is_stream_manifest_url(url, message.get("format")):
+    if (
+        requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"}
+        and n_m3u8dl_re_location
+        and is_stream_manifest_url(url, message.get("format"))
+    ):
         final_path = stream_output_path(download_dir, message.get("title") or "Video")
         fallback_commands.append(
             {
@@ -139,7 +131,11 @@ def run_download(
             }
         )
 
-    if requested_backend in {"auto", "streamlink"} and streamlink_command and is_stream_manifest_url(url, message.get("format")):
+    if (
+        requested_backend in {"auto", "streamlink"}
+        and streamlink_command
+        and is_stream_manifest_url(url, message.get("format"))
+    ):
         final_path = stream_output_path(download_dir, message.get("title") or "Video")
         fallback_commands.append(
             {

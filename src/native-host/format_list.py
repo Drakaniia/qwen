@@ -5,7 +5,7 @@ from browser_context import remove_temp_files, write_cookie_file_from_headers
 from native_paths import validate_download_url
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
-from yt_dlp_command import build_formats_command, summarize_formats
+from yt_dlp_command import build_formats_command, summarize_audio_formats, summarize_formats
 from yt_dlp_dependencies import resolve_ffmpeg_location, resolve_yt_dlp_command
 
 
@@ -68,4 +68,8 @@ def run_format_list(
     except json.JSONDecodeError as exc:
         raise HostError("yt-dlp returned invalid format metadata.") from exc
 
-    send({"type": "formats", "id": request_id, **summarize_formats(info)})
+    music_mode = bool(message.get("musicMode") or message.get("music_mode") or False)
+    if music_mode:
+        send({"type": "formats", "id": request_id, **summarize_audio_formats(info)})
+    else:
+        send({"type": "formats", "id": request_id, **summarize_formats(info)})
