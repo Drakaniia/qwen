@@ -174,6 +174,97 @@ h1 {
   background: #eef7f5;
 }
 
+.settings-select {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.settings-select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.music-link-section {
+  display: grid;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, #fef2f2 0%, #fff 50%, #f0fdf4 100%);
+}
+
+.music-link-section[hidden] {
+  display: none !important;
+}
+
+.music-link-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.music-link-input-row input {
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+}
+
+.music-link-input-row input:focus {
+  outline: 2px solid #b91c1c;
+  outline-offset: -1px;
+  border-color: #b91c1c;
+}
+
+.music-link-input-row button {
+  min-height: 34px;
+  white-space: nowrap;
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #fff;
+}
+
+.music-link-input-row button:hover {
+  background: #991b1b;
+}
+
+.music-link-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.platform-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.more-platforms {
+  color: #9ca3af;
+  font-style: italic;
+  font-size: 10px;
+}
+
 .settings-panel[hidden] {
   display: none !important;
 }

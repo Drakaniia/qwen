@@ -58,10 +58,21 @@
         id="manualUrl"
         type="url"
         spellcheck="false"
-        placeholder="Paste YouTube, Instagram, TikTok, X, Threads, or other video URL"
+        placeholder="Paste YouTube, Spotify, Instagram, TikTok, or other video/music URL"
       />
       <button id="downloadManualUrl" class="primary settings-button" type="button">Download link</button>
       <p class="hint">Uses yt-dlp and stream fallbacks. Cannot bypass DRM or blocked private access.</p>
+
+      <label for="audioFormat">Audio format (when Music mode is on)</label>
+      <select id="audioFormat" class="settings-select">
+        <option value="mp3">MP3</option>
+        <option value="m4a">M4A (AAC)</option>
+        <option value="flac">FLAC (Lossless)</option>
+        <option value="opus">Opus</option>
+        <option value="wav">WAV</option>
+        <option value="aac">AAC</option>
+        <option value="ogg">OGG (Vorbis)</option>
+      </select>
 
       <label for="downloadFolder">Download folder</label>
       <div class="folder-picker">
@@ -76,13 +87,43 @@
     <nav id="viewToggle" class="view-toggle" aria-label="Popup view">
       <button id="showVideos" class="active" type="button" aria-pressed="true">Videos</button>
       <button id="showDownloads" type="button" aria-pressed="false">Downloads</button>
-      <button id="musicToggle" class="music-toggle" type="button" aria-pressed="false" title="Music mode - download audio instead of video">
+      <button
+        id="musicToggle"
+        class="music-toggle"
+        type="button"
+        aria-pressed="false"
+        title="Music mode - download audio instead of video"
+      >
         <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16">
-          <path fill="currentColor" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+          <path
+            fill="currentColor"
+            d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"
+          />
         </svg>
         Music
       </button>
     </nav>
+
+    <section id="musicLinkSection" class="music-link-section">
+      <div class="music-link-input-row">
+        <input
+          id="musicLinkUrl"
+          type="url"
+          spellcheck="false"
+          placeholder="Paste Spotify, YouTube Music, SoundCloud, Deezer link..."
+          aria-label="Music link URL"
+        />
+        <button id="downloadMusicLink" class="primary" type="button">Download Music</button>
+      </div>
+      <div class="music-link-hint">
+        <span class="platform-badge">Spotify</span>
+        <span class="platform-badge">YouTube Music</span>
+        <span class="platform-badge">SoundCloud</span>
+        <span class="platform-badge">Deezer</span>
+        <span class="platform-badge">Bandcamp</span>
+        <span class="more-platforms">+ more</span>
+      </div>
+    </section>
 
     <main id="contentView">
       <div id="message" class="message">Scanning for videos...</div>

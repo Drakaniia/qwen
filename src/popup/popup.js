@@ -97,6 +97,10 @@ const elements = {
   cancelQuality: document.getElementById("cancelQuality"),
   rescan: document.getElementById("rescan"),
   clear: document.getElementById("clear"),
+  musicLinkSection: document.getElementById("musicLinkSection"),
+  musicLinkUrl: document.getElementById("musicLinkUrl"),
+  downloadMusicLink: document.getElementById("downloadMusicLink"),
+  audioFormat: document.getElementById("audioFormat"),
 };
 
 const qualityChooser = qualityDialog.create({
@@ -174,7 +178,11 @@ function shortenUrl(url) {
 }
 
 function videoTitle(video) {
-  return video.title || shortenUrl(video.url) || "Video";
+  if (video.title) {
+    return video.title;
+  }
+  const isAudio = String(video.format || "").toUpperCase() === "AUDIO";
+  return shortenUrl(video.url) || (isAudio ? "Music" : "Video");
 }
 
 function displayFormat(video) {
@@ -264,6 +272,7 @@ function setSettingsOpen(open) {
   elements.viewToggle.hidden = open;
   elements.contentView.hidden = open;
   elements.footerActions.hidden = open;
+  elements.musicLinkSection.hidden = open;
   elements.settingsToggle.classList.toggle("active", open);
   elements.settingsToggle.setAttribute("aria-expanded", String(open));
 
@@ -599,11 +608,24 @@ function renderVideos() {
   elements.videoList.textContent = "";
 
   if (!currentVideos.length) {
-    setMessage("No downloadable video URL detected yet.");
+    setMessage("No downloadable video or music detected yet.");
     return;
   }
 
-  setMessage(`${currentVideos.length} full video${currentVideos.length === 1 ? "" : "s"} detected.`);
+  const audioCount = currentVideos.filter((v) => String(v.format || "").toUpperCase() === "AUDIO").length;
+  const videoCount = currentVideos.length - audioCount;
+  const messageParts = [];
+  if (videoCount > 0) {
+    messageParts.push(`${videoCount} video${videoCount === 1 ? "" : "s"}`);
+  }
+  if (audioCount > 0) {
+    messageParts.push(`${audioCount} music track${audioCount === 1 ? "" : "s"}`);
+  }
+  setMessage(
+    messageParts.length
+      ? `${messageParts.join(" and ")} detected.`
+      : `${currentVideos.length} item${currentVideos.length === 1 ? "" : "s"} detected.`,
+  );
 
   for (const video of currentVideos) {
     const item = document.createElement("section");
@@ -626,7 +648,8 @@ function renderVideos() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "primary";
-    button.textContent = "Download";
+    const isAudioItem = String(video.format || "").toUpperCase() === "AUDIO";
+    button.textContent = isAudioItem ? "Download Music" : "Download";
     button.dataset.videoId = video.id;
 
     const runningJob = jobForVideo(video.id);
@@ -694,7 +717,8 @@ function renderDownloads() {
 
     const title = document.createElement("div");
     title.className = "download-title";
-    title.textContent = job.title || shortenUrl(job.url) || "Video";
+    const isAudio = String(job.format || "").toUpperCase() === "AUDIO" || String(job.title || "").includes(" - ");
+    title.textContent = job.title || shortenUrl(job.url) || (isAudio ? "Music" : "Video");
 
     const messageText = downloadMessageText(job);
     const message = document.createElement("div");
@@ -829,6 +853,11 @@ async function refresh(options = {}) {
   currentDownloads = response.downloads || [];
   elements.downloadFolder.value = (response.settings && response.settings.downloadFolder) || "";
   setMusicMode(response.settings && response.settings.musicMode ? true : false);
+  if (response.settings && response.settings.audioFormat) {
+    elements.audioFormat.value = response.settings.audioFormat;
+  } else {
+    elements.audioFormat.value = "mp3";
+  }
   render();
   return true;
 }
@@ -1081,7 +1110,10 @@ elements.musicToggle.addEventListener("click", () => {
 elements.saveSettings.addEventListener("click", async () => {
   const response = await runtimeMessage({
     type: "saveSettings",
-    settings: { downloadFolder: elements.downloadFolder.value.trim() },
+    settings: {
+      downloadFolder: elements.downloadFolder.value.trim(),
+      audioFormat: elements.audioFormat.value,
+    },
   });
   if (!response || !response.ok) {
     setSettingsStatus(response && response.error ? response.error : "Could not save settings.", true);
@@ -1192,6 +1224,90 @@ elements.downloadManualUrl.addEventListener("click", async () => {
   elements.downloadManualUrl.disabled = false;
   elements.downloadManualUrl.textContent = "Download link";
   await refresh();
+});
+
+elements.downloadMusicLink.addEventListener("click", async () => {
+  await updateActiveTabContext();
+
+  const musicUrl = normalizeManualUrl(elements.musicLinkUrl.value);
+  if (!musicUrl) {
+    setMessage("Enter a valid Spotify, YouTube Music, or other music service URL.", true);
+    elements.musicLinkUrl.focus();
+    return;
+  }
+
+  // Auto-enable music mode for music link downloads
+  if (!musicMode) {
+    await toggleMusicMode();
+  }
+
+  // Ensure the selected audio format is saved before downloading
+  await runtimeMessage({
+    type: "saveSettings",
+    settings: { audioFormat: elements.audioFormat.value },
+  });
+
+  const requestToken = showQualityLoading("Loading music link...");
+  const formatsResponse = await runtimeMessage({
+    type: "getFormatsForUrl",
+    tabId: activeTabId,
+    video: {
+      url: musicUrl,
+      pageUrl: musicUrl,
+      title: shortenUrl(musicUrl) || "Music link",
+      format: "PAGE",
+      source: "manual-url",
+      downloadable: true,
+    },
+  });
+
+  if (!isCurrentQualityRequest(requestToken)) {
+    return;
+  }
+
+  if (!formatsResponse || !formatsResponse.ok) {
+    hideQualityDialog();
+    setMessage(
+      formatsResponse && formatsResponse.error ? formatsResponse.error : "Could not load music formats for that link.",
+      true,
+    );
+    return;
+  }
+
+  const selectedFormat = await chooseQuality(formatsResponse);
+  if (!selectedFormat) {
+    return;
+  }
+
+  elements.downloadMusicLink.disabled = true;
+  elements.downloadMusicLink.textContent = "Queued";
+  const response = await runtimeMessage({
+    type: "downloadVideo",
+    tabId: activeTabId,
+    videoId: formatsResponse.videoId,
+    formatId: selectedFormat.formatId,
+    variantId: selectedFormat.variantId,
+    backend: selectedFormat.backend,
+  });
+
+  if (!response || !response.ok) {
+    setMessage(response && response.error ? response.error : "Download failed to start.", true);
+  } else {
+    setViewMode("downloads");
+    elements.musicLinkUrl.value = "";
+  }
+
+  elements.downloadMusicLink.disabled = false;
+  elements.downloadMusicLink.textContent = "Download Music";
+  await refresh();
+});
+
+// Allow pressing Enter in the music link input to trigger download
+elements.musicLinkUrl.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    elements.downloadMusicLink.click();
+  }
 });
 
 elements.rescan.addEventListener("click", async () => {
