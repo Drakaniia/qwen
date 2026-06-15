@@ -6,7 +6,6 @@ from pathlib import Path
 
 from native_protocol import HostError
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOCAL_ARIA2C = PROJECT_ROOT / "tools" / "aria2" / "aria2c.exe"
 LOCAL_N_M3U8DL_RE = PROJECT_ROOT / "tools" / "n_m3u8dl-re" / "N_m3u8DL-RE.exe"
@@ -108,6 +107,23 @@ def has_aria2c(local_aria2c=None):
 
 def has_n_m3u8dl_re(local_n_m3u8dl_re=None):
     return bool(resolve_n_m3u8dl_re_location(local_n_m3u8dl_re=local_n_m3u8dl_re))
+
+
+def resolve_gallery_dl_command():
+    """Locate the gallery-dl executable (binary or python -m module)."""
+    executable = shutil.which("gallery-dl")
+    if executable:
+        return [executable]
+
+    if importlib.util.find_spec("gallery_dl") is not None:
+        return [sys.executable, "-m", "gallery_dl"]
+
+    return None
+
+
+def has_gallery_dl():
+    """Check whether gallery-dl is available."""
+    return resolve_gallery_dl_command() is not None
 
 
 def has_streamlink():
