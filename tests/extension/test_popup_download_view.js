@@ -115,7 +115,7 @@ assert.match(
 
 assert.match(
   js,
-  /setMessage\("No downloadable video URL detected yet\."/,
+  /setMessage\("No downloadable video or music detected yet\."/,
   "popup empty state must say no downloadable URL was detected instead of implying scanning is still running",
 );
 

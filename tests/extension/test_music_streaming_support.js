@@ -136,12 +136,13 @@ assert.equal(
   "Spotify track URL should classify as generic VIDEO (no video extension matched)",
 );
 
-// Spotify URLs are HTTP(S) URLs not blocked by any filter — they are
-// "downloadable" from the perspective of the media-candidate contract.
+// Spotify URLs pass the URL filter (valid HTTP, not blocked). The actual
+// download is handled by the native host's Spotify→YouTube fallback pipeline
+// (spotify_resolver.py), since yt-dlp cannot extract DRM-protected Spotify content.
 assert.equal(
   mediaCandidates.isDownloadableMediaUrl("https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT"),
   true,
-  "Spotify track URL should be downloadable as a manual/pasted link (yt-dlp supports it)",
+  "Spotify track URL passes the URL filter (native host resolves via YouTube fallback)",
 );
 
 // Spotify album page.
@@ -165,6 +166,7 @@ assert.equal(
 );
 
 // Spotify as manual URL candidate (pasted in settings).
+// The native host resolves these via the Spotify→YouTube fallback pipeline.
 assert.equal(
   filters.isLikelyFullLengthVideoCandidate({
     url: "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT",
@@ -174,7 +176,7 @@ assert.equal(
     duration: 8,
   }),
   true,
-  "Spotify track as manual URL should be accepted (yt-dlp extractor)",
+  "Spotify track as manual URL should be accepted (native host resolves via YouTube)",
 );
 
 assert.equal(
@@ -186,7 +188,7 @@ assert.equal(
     duration: 8,
   }),
   true,
-  "Spotify album as manual URL should be accepted (yt-dlp extractor)",
+  "Spotify album as manual URL should be accepted (native host resolves via YouTube)",
 );
 
 // ─── YouTube.com non-watch pages (control — should NOT be detected) ─────────
