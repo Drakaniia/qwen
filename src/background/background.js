@@ -6,6 +6,9 @@ if (typeof importScripts === "function" && typeof globalThis.QwinMediaCandidates
 if (typeof importScripts === "function" && typeof globalThis.QwinVideoFilters === "undefined") {
   importScripts("../shared/video_filters.js");
 }
+if (typeof importScripts === "function" && typeof globalThis.QwinBrowserApi === "undefined") {
+  importScripts("../shared/browser_api.js");
+}
 if (typeof importScripts === "function" && typeof globalThis.QwinDownloadState === "undefined") {
   importScripts("./download_state.js");
 }
@@ -15,29 +18,37 @@ if (typeof importScripts === "function" && typeof globalThis.QwinNativeRequests 
 if (typeof importScripts === "function" && typeof globalThis.QwinDownloadFallbacks === "undefined") {
   importScripts("./download_fallbacks.js");
 }
+if (typeof importScripts === "function" && typeof globalThis.QwinTabState === "undefined") {
+  importScripts("./tab_state.js");
+}
+if (typeof importScripts === "function" && typeof globalThis.QwinMessageRouter === "undefined") {
+  importScripts("./message_router.js");
+}
 if (typeof importScripts === "function" && typeof globalThis.QwinDownloadOrchestration === "undefined") {
   importScripts("./download_orchestration.js");
 }
 
-const api = typeof browser !== "undefined" ? browser : chrome;
-const isPromiseApi = typeof browser !== "undefined";
+const browserApi = globalThis.QwinBrowserApi;
+const mediaCandidates = globalThis.QwinMediaCandidates;
 const videoFilters = globalThis.QwinVideoFilters;
 const downloadState = globalThis.QwinDownloadState;
 const nativeRequests = globalThis.QwinNativeRequests;
 const downloadFallbacks = globalThis.QwinDownloadFallbacks;
 const downloadOrchestrationModule = globalThis.QwinDownloadOrchestration;
+const tabState = globalThis.QwinTabState;
+const messageRouter = globalThis.QwinMessageRouter && globalThis.QwinMessageRouter.create();
+
+// Raw API object for native_requests.js which expects it directly.
+const api = browserApi.raw;
 
 const HOST_NAME = "com.qwin.video_downloader";
-const STORAGE_VIDEOS = "qwinVideosByTab";
-const STORAGE_SETTINGS = "qwinSettings";
-const STORAGE_DOWNLOADS = "qwinDownloadsById";
 const MAX_VIDEOS_PER_TAB = 100;
-const VIDEO_EXTENSION_RE = /\.(mp4|m4v|webm|m3u8|mpd)(?:$|[?#])/i;
-const HLS_RE = /\.m3u8(?:$|[?#])/i;
-const DASH_RE = /\.mpd(?:$|[?#])/i;
-const DIRECT_VIDEO_EXTENSION_RE = /\.(mp4|m4v|webm)(?:$|[?#])/i;
-const CDN_HINT_RE =
-  /(videoplayback|video[-_/]?cdn|\/video\/|\/videos\/|hls|dash|manifest|playlist|master\.m3u8|akamaihd|akamaized|cloudfront|mux\.com|jwplatform|brightcove|kaltura|fastly|edgekey)/i;
+// Regex patterns — use the canonical versions exported from media_candidates.js.
+const VIDEO_EXTENSION_RE = mediaCandidates.VIDEO_EXTENSION_RE;
+const HLS_RE = mediaCandidates.HLS_RE;
+const DASH_RE = mediaCandidates.DASH_RE;
+const DIRECT_VIDEO_EXTENSION_RE = mediaCandidates.DIRECT_VIDEO_EXTENSION_RE;
+const CDN_HINT_RE = mediaCandidates.CDN_HINT_RE;
 const SIZE_PROBE_TIMEOUT_MS = 8000;
 const SIZE_PROBE_LIMIT_PER_GROUP = 6;
 const MAX_CAPTURED_REQUEST_HEADERS = 250;
@@ -56,135 +67,10 @@ const NATIVE_HEADER_NAMES = new Set([
 ]);
 const BLOCKING_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
 
-let videosByTab = {};
-let downloadsById = {};
-let settings = { downloadFolder: "", musicMode: false, audioFormat: "mp3" };
-let stateLoaded = false;
-let stateLoadPromise = null;
+// State is now owned by tabState module.
 const downloadPortsById = {};
 const sizeProbePromises = {};
 const requestHeadersByUrl = {};
-
-function callStorageGet(keys) {
-  if (isPromiseApi) {
-    return api.storage.local.get(keys);
-  }
-  return new Promise((resolve) => api.storage.local.get(keys, resolve));
-}
-
-function callStorageSet(items) {
-  if (isPromiseApi) {
-    return api.storage.local.set(items);
-  }
-  return new Promise((resolve) => api.storage.local.set(items, resolve));
-}
-
-function callStorageRemove(keys) {
-  if (isPromiseApi) {
-    return api.storage.local.remove(keys);
-  }
-  return new Promise((resolve) => api.storage.local.remove(keys, resolve));
-}
-
-function callTabsQuery(queryInfo) {
-  if (isPromiseApi) {
-    return api.tabs.query(queryInfo);
-  }
-  return new Promise((resolve) => api.tabs.query(queryInfo, resolve));
-}
-
-function callCookiesGetAll(details) {
-  if (!api.cookies || !api.cookies.getAll) {
-    return Promise.resolve([]);
-  }
-  if (isPromiseApi) {
-    return api.cookies.getAll(details).catch(() => []);
-  }
-  return new Promise((resolve) => {
-    try {
-      api.cookies.getAll(details, (cookies) => {
-        void chrome.runtime.lastError;
-        resolve(cookies || []);
-      });
-    } catch (_error) {
-      resolve([]);
-    }
-  });
-}
-
-function cleanStoredVideos(storedVideosByTab) {
-  const cleaned = {};
-  for (const [tabId, videos] of Object.entries(storedVideosByTab || {})) {
-    const list = Array.isArray(videos) ? videos : [];
-    cleaned[tabId] = list.filter(
-      (video) => video && video.url && !videoFilters.isBlockedVideoUrl(video.url, video.contentType),
-    );
-  }
-  return cleaned;
-}
-
-function callTabsSendMessage(tabId, message) {
-  if (isPromiseApi) {
-    return api.tabs.sendMessage(tabId, message).catch(() => null);
-  }
-  return new Promise((resolve) => {
-    try {
-      api.tabs.sendMessage(tabId, message, (response) => {
-        void chrome.runtime.lastError;
-        resolve(response || null);
-      });
-    } catch (_error) {
-      resolve(null);
-    }
-  });
-}
-
-function callExecuteScript(details) {
-  if (!api.scripting || !api.scripting.executeScript) {
-    return Promise.resolve(null);
-  }
-  if (isPromiseApi) {
-    return api.scripting.executeScript(details).catch(() => null);
-  }
-  return new Promise((resolve) => {
-    try {
-      api.scripting.executeScript(details, (result) => {
-        void chrome.runtime.lastError;
-        resolve(result || null);
-      });
-    } catch (_error) {
-      resolve(null);
-    }
-  });
-}
-
-async function ensureStateLoaded() {
-  if (stateLoaded) {
-    return;
-  }
-  if (!stateLoadPromise) {
-    stateLoadPromise = callStorageGet([STORAGE_VIDEOS, STORAGE_SETTINGS, STORAGE_DOWNLOADS]).then((items) => {
-      videosByTab = cleanStoredVideos(items[STORAGE_VIDEOS] || {});
-      settings = { ...settings, ...(items[STORAGE_SETTINGS] || {}) };
-      downloadsById = items[STORAGE_DOWNLOADS] || {};
-      stateLoaded = true;
-      persistVideos();
-    });
-  }
-  await stateLoadPromise;
-}
-
-function persistVideos() {
-  return callStorageSet({ [STORAGE_VIDEOS]: videosByTab });
-}
-
-function persistSettings() {
-  return callStorageSet({ [STORAGE_SETTINGS]: settings });
-}
-
-function persistDownloads() {
-  return callStorageSet({ [STORAGE_DOWNLOADS]: downloadsById });
-}
 
 function normalizeUrl(url) {
   try {
@@ -289,7 +175,7 @@ async function cookieHeaderForUrl(url) {
     return "";
   }
 
-  const cookies = await callCookiesGetAll({ url });
+  const cookies = await browserApi.cookies.getAll({ url });
   return cookies
     .filter((cookie) => cookie && cookie.name)
     .sort((left, right) => String(right.path || "").length - String(left.path || "").length)
@@ -464,21 +350,14 @@ async function updateVideoSize(tabId, videoId, sizeBytes, notify = true) {
     return false;
   }
 
-  const tabKey = String(tabId);
-  let changed = false;
-  videosByTab[tabKey] = (videosByTab[tabKey] || []).map((item) => {
-    if (item.id !== videoId || item.sizeBytes) {
-      return item;
-    }
-    changed = true;
-    return { ...item, sizeBytes: size };
+  const changed = await tabState.patchVideo(tabId, (item) => item.id === videoId && !item.sizeBytes, {
+    sizeBytes: size,
   });
 
   if (!changed) {
     return false;
   }
 
-  await persistVideos();
   if (notify) {
     notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
   }
@@ -504,7 +383,7 @@ function scheduleVideoSizeProbe(tabId, video) {
 }
 
 function scheduleMissingSizeProbes(tabId) {
-  for (const video of videosByTab[String(tabId)] || []) {
+  for (const video of tabState.getVideosForTab(tabId)) {
     scheduleVideoSizeProbe(tabId, video);
   }
 }
@@ -514,7 +393,7 @@ async function addDetectedVideo(tabId, input) {
     return null;
   }
 
-  await ensureStateLoaded();
+  await tabState.load();
 
   const normalizedUrl = normalizeUrl(input.url);
   if (videoFilters.isBlockedVideoUrl(normalizedUrl, input.contentType)) {
@@ -524,8 +403,7 @@ async function addDetectedVideo(tabId, input) {
   const format = input.format || detectFormat(normalizedUrl, input.contentType);
   const id = hashId(normalizedUrl);
   const now = Date.now();
-  const tabKey = String(tabId);
-  const existing = videosByTab[tabKey] || [];
+  const existing = tabState.getVideosForTab(tabId);
   const current = existing.find((item) => item.id === id);
   const width = Number(input.width || 0);
   const height = Number(input.height || 0);
@@ -555,8 +433,10 @@ async function addDetectedVideo(tabId, input) {
   };
 
   if (!videoFilters.isLikelyFullLengthVideoCandidate(nextVideo)) {
-    videosByTab[tabKey] = existing.filter((item) => item.id !== id);
-    await persistVideos();
+    await tabState.setVideosForTab(
+      tabId,
+      existing.filter((item) => item.id !== id),
+    );
     notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
     return null;
   }
@@ -568,9 +448,11 @@ async function addDetectedVideo(tabId, input) {
     nextList = [nextVideo, ...existing];
   }
 
-  videosByTab[tabKey] = nextList.sort((left, right) => right.lastSeen - left.lastSeen).slice(0, MAX_VIDEOS_PER_TAB);
+  await tabState.setVideosForTab(
+    tabId,
+    nextList.sort((left, right) => right.lastSeen - left.lastSeen).slice(0, MAX_VIDEOS_PER_TAB),
+  );
 
-  await persistVideos();
   notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
   scheduleVideoSizeProbe(tabId, nextVideo);
   return nextVideo;
@@ -592,36 +474,28 @@ function titleFromUrl(url) {
 }
 
 function notifyPopup(message) {
-  try {
-    const result = api.runtime.sendMessage(message);
-    if (result && typeof result.catch === "function") {
-      result.catch(() => {});
-    }
-  } catch (_error) {
-    // The popup is not open.
-  }
+  browserApi.runtime.sendMessage(message).catch(() => {});
 }
 
 async function clearTab(tabId) {
-  await ensureStateLoaded();
-  delete videosByTab[String(tabId)];
-  await persistVideos();
+  await tabState.load();
+  await tabState.removeTab(tabId);
   notifyPopup({ type: "videoListUpdated", tabId, videos: [] });
 }
 
 function getVisibleVideosForTab(tabId) {
-  return videoFilters.groupUniqueFullVideos(videosByTab[String(tabId)] || []);
+  return videoFilters.groupUniqueFullVideos(tabState.getVideosForTab(tabId));
 }
 
 async function getTabVideos(tabId) {
-  await ensureStateLoaded();
+  await tabState.load();
   scheduleMissingSizeProbes(tabId);
   return getVisibleVideosForTab(tabId);
 }
 
 async function getTabDownloads(_tabId) {
-  await ensureStateLoaded();
-  return Object.values(downloadsById).sort((left, right) => right.updatedAt - left.updatedAt);
+  await tabState.load();
+  return Object.values(tabState.getAllDownloads()).sort((left, right) => right.updatedAt - left.updatedAt);
 }
 
 function handleBeforeRequest(details) {
@@ -680,10 +554,10 @@ function handleHeadersReceived(details) {
 }
 
 function updateDownload(jobId, patch) {
-  const existing = downloadsById[jobId] || { id: jobId };
-  downloadsById[jobId] = { ...existing, ...patch, updatedAt: Date.now() };
-  persistDownloads();
-  notifyPopup({ type: "downloadUpdated", job: downloadsById[jobId] });
+  // Delegate to tabState which handles persistence.
+  tabState.updateDownload(jobId, patch);
+  const job = tabState.getDownload(jobId);
+  notifyPopup({ type: "downloadUpdated", job });
 }
 
 function clampDownloadPercent(percent) {
@@ -697,7 +571,7 @@ function isSegmentedDownloadJob(job) {
 }
 
 function normalizeDownloadProgress(jobId, percent) {
-  const job = downloadsById[jobId] || {};
+  const job = tabState.getDownload(jobId) || {};
   return downloadState.visibleDownloadProgressPercent(job.percent, percent, isSegmentedDownloadJob(job));
 }
 
@@ -746,30 +620,20 @@ function exhaustedSourcesError(error, attemptedUrls) {
 }
 
 async function markVideoUrlUnavailable(tabId, url, error) {
-  const tabKey = String(tabId);
   const targetUrl = normalizeUrl(url);
-  let changed = false;
-
-  videosByTab[tabKey] = (videosByTab[tabKey] || []).map((item) => {
-    if (normalizeUrl(item.url || "") !== targetUrl || item.downloadable === false) {
-      return item;
-    }
-    changed = true;
-    return {
-      ...item,
+  const changed = await tabState.patchVideo(
+    tabId,
+    (item) => normalizeUrl(item.url || "") === targetUrl && item.downloadable !== false,
+    {
       downloadable: false,
       blockedReason: String(error || "The server refused this source.").slice(0, 500),
       lastSeen: Date.now(),
-    };
-  });
-
-  if (!changed) {
-    return false;
+    },
+  );
+  if (changed) {
+    notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
   }
-
-  await persistVideos();
-  notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
-  return true;
+  return changed;
 }
 
 function artifactPatchFromMessage(message) {
@@ -813,7 +677,7 @@ async function cleanupDownloadArtifacts(jobId, job) {
         path: job.filepath || "",
         artifactRoot: job.artifactRoot || "",
         artifactPaths: job.artifactPaths || [],
-        downloadFolder: job.downloadFolder || settings.downloadFolder || "",
+        downloadFolder: job.downloadFolder || tabState.getSettings().downloadFolder || "",
       },
       30000,
     );
@@ -899,19 +763,19 @@ function downloadOrchestrationDeps() {
     api,
     artifactPatchFromMessage,
     blockingDownloadStatuses: BLOCKING_DOWNLOAD_STATUSES,
-    callTabsQuery,
+    callTabsQuery: browserApi.tabs.query,
     cleanupDownloadArtifacts,
     cleanupPatchFromMessage,
     clearedArtifactPatch,
     detectFormat,
     downloadPortsById,
     downloadProgressMessage,
-    ensureStateLoaded,
+    ensureStateLoaded: tabState.load,
     exhaustedSourcesError,
     fallbackVideoForDownload,
     findVariant,
-    getDownloadsById: () => downloadsById,
-    getSettings: () => settings,
+    getDownloadsById: () => tabState.getAllDownloads(),
+    getSettings: () => tabState.getSettings(),
     getTabVideos,
     hashId,
     hostName: HOST_NAME,
@@ -924,15 +788,15 @@ function downloadOrchestrationDeps() {
     normalizeUrl,
     notifyPopup,
     pageFallbackVideoForSource,
-    persistDownloads,
-    persistSettings,
+    persistDownloads: tabState.persistDownloads,
+    persistSettings: tabState.persistSettings,
     progressDetailPatchFromMessage,
     resetDownloadProgressDetails,
     setDownloadsById(nextDownloadsById) {
-      downloadsById = nextDownloadsById;
+      tabState.setAllDownloads(nextDownloadsById);
     },
     setSettings(nextSettings) {
-      settings = nextSettings;
+      tabState.setSettings(nextSettings);
     },
     titleFromUrl,
     updateDownload,
@@ -1108,11 +972,9 @@ async function updateGroupedTitle(tabId, video, title) {
   }
 
   const variantIds = new Set(variantsForVideo(video).map((variant) => variant.id));
-  const tabKey = String(tabId);
-  videosByTab[tabKey] = (videosByTab[tabKey] || []).map((item) =>
-    variantIds.has(item.id) ? { ...item, title } : item,
-  );
-  await persistVideos();
+  await tabState.mutateVideos(tabId, function (list) {
+    return list.map((item) => (variantIds.has(item.id) ? Object.assign({}, item, { title: title }) : item));
+  });
   notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
 }
 
@@ -1140,7 +1002,7 @@ async function ensureComparisonSizes(tabId, video) {
   }
 
   if (changed) {
-    await persistVideos();
+    await tabState.persistVideos();
     notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
     return findGroupedVideoForVariant(tabId, variantsForVideo(video)[0]) || video;
   }
@@ -1150,6 +1012,7 @@ async function ensureComparisonSizes(tabId, video) {
 
 async function requestNativeFormats(video) {
   const requestId = `formats_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const currentSettings = tabState.getSettings();
   return nativeRequest({
     type: "formats",
     id: requestId,
@@ -1157,18 +1020,18 @@ async function requestNativeFormats(video) {
     pageUrl: video.pageUrl || "",
     userAgent: navigator.userAgent || "",
     requestHeaders: await nativeRequestHeadersForVideo(video.url, video.pageUrl || ""),
-    musicMode: settings.musicMode || false,
-    audioFormat: settings.audioFormat || "mp3",
+    musicMode: currentSettings.musicMode || false,
+    audioFormat: currentSettings.audioFormat || "mp3",
   });
 }
 
 async function notifyContentStatus(tabId, text) {
   if (!tabId) return;
-  await callTabsSendMessage(tabId, { type: "updateLoadingStatus", text });
+  await browserApi.tabs.sendMessage(tabId, { type: "updateLoadingStatus", text });
 }
 
 async function getNativeFormatsForVideo(tabId, video) {
-  await ensureStateLoaded();
+  await tabState.load();
 
   // Start size probing in background but don't block the main yt-dlp call immediately.
   // We only wait for it if we truly have nothing else to show.
@@ -1326,7 +1189,7 @@ function pingNativeHost() {
     };
 
     try {
-      port = api.runtime.connectNative(HOST_NAME);
+      port = browserApi.runtime.connectNative(HOST_NAME);
     } catch (error) {
       finish({ ok: false, error: `Native messaging is not connected: ${error.message || error}` });
       return;
@@ -1357,207 +1220,215 @@ function pingNativeHost() {
 }
 
 function registerBeforeSendHeadersListener() {
-  try {
-    api.webRequest.onBeforeSendHeaders.addListener(handleBeforeSendHeaders, { urls: ["<all_urls>"] }, [
-      "requestHeaders",
-      "extraHeaders",
-    ]);
-  } catch (_error) {
-    api.webRequest.onBeforeSendHeaders.addListener(handleBeforeSendHeaders, { urls: ["<all_urls>"] }, [
-      "requestHeaders",
-    ]);
-  }
+  browserApi.webRequest.onBeforeSendHeaders.addListener(handleBeforeSendHeaders, { urls: ["<all_urls>"] }, [
+    "requestHeaders",
+    "extraHeaders",
+  ]);
 }
 
-api.webRequest.onBeforeRequest.addListener(handleBeforeRequest, { urls: ["<all_urls>"] });
+browserApi.webRequest.onBeforeRequest.addListener(handleBeforeRequest, { urls: ["<all_urls>"] });
 registerBeforeSendHeadersListener();
-api.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { urls: ["<all_urls>"] }, ["responseHeaders"]);
+browserApi.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { urls: ["<all_urls>"] }, [
+  "responseHeaders",
+]);
 
-api.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const run = async () => {
-    await ensureStateLoaded();
-    const tabId = message.tabId || (sender.tab && sender.tab.id);
+// --- Message handlers (registered with MessageRouter) ---
 
-    if (message.type === "contentDetectedVideos") {
-      const videos = Array.isArray(message.videos) ? message.videos : [];
-      for (const video of videos) {
-        await addDetectedVideo(tabId, {
-          ...video,
-          source: video.source || "dom",
-          pageUrl: video.pageUrl || (sender.tab && sender.tab.url) || "",
-          frameUrl: video.frameUrl || sender.url || "",
-        });
-      }
-      return { ok: true };
-    }
+function senderTabId(message, sender) {
+  return message.tabId || (sender.tab && sender.tab.id);
+}
 
-    if (message.type === "getVideos") {
-      return {
-        ok: true,
-        videos: await getTabVideos(tabId),
-        downloads: await getTabDownloads(tabId),
-        settings,
-      };
-    }
+messageRouter.handle("contentDetectedVideos", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  const videos = Array.isArray(message.videos) ? message.videos : [];
+  for (const video of videos) {
+    await addDetectedVideo(tabId, {
+      ...video,
+      source: video.source || "dom",
+      pageUrl: video.pageUrl || (sender.tab && sender.tab.url) || "",
+      frameUrl: video.frameUrl || sender.url || "",
+    });
+  }
+  return { ok: true };
+});
 
-    if (message.type === "downloadVideo") {
-      return {
-        ok: true,
-        ...(await startNativeDownload(
-          tabId,
-          message.videoId,
-          message.formatId || "best",
-          message.variantId || "",
-          message.backend || "auto",
-        )),
-      };
-    }
-
-    if (message.type === "pauseDownload") {
-      return { ok: true, ...controlActiveDownload(message.jobId, "pause") };
-    }
-
-    if (message.type === "resumeDownload") {
-      return { ok: true, ...(await resumeDownload(tabId, message.jobId)) };
-    }
-
-    if (message.type === "cancelDownload") {
-      return { ok: true, ...(await cancelDownload(tabId, message.jobId)) };
-    }
-
-    if (message.type === "retryDownload") {
-      return { ok: true, ...(await retryDownload(tabId, message.jobId)) };
-    }
-
-    if (message.type === "openDownloadedFile") {
-      return { ok: true, ...(await openDownloadedPath(message.jobId, "openFile")) };
-    }
-
-    if (message.type === "showDownloadedFile") {
-      return { ok: true, ...(await openDownloadedPath(message.jobId, "showFile")) };
-    }
-
-    if (message.type === "removeDownload") {
-      return { ok: true, ...(await removeDownload(message.jobId)) };
-    }
-
-    if (message.type === "clearDownloads") {
-      return { ok: true, ...(await clearDownloads()) };
-    }
-
-    if (message.type === "getVideoFormats") {
-      const videos = await getTabVideos(tabId);
-      const video = videos.find(
-        (item) =>
-          item.id === message.videoId || variantsForVideo(item).some((variant) => variant.id === message.videoId),
-      );
-      if (!video) {
-        throw new Error("That video URL is no longer in the detected list.");
-      }
-      return { ok: true, ...(await getNativeFormatsForVideo(tabId, video)) };
-    }
-
-    if (message.type === "downloadUrl") {
-      return {
-        ok: true,
-        ...(await startNativeDownloadForUrl(tabId, {
-          ...(message.video || {}),
-          pageUrl: (message.video && message.video.pageUrl) || (sender.tab && sender.tab.url) || "",
-          frameUrl: sender.url || "",
-          formatId: message.formatId || "best",
-          variantId: message.variantId || "",
-        })),
-      };
-    }
-
-    if (message.type === "downloadBestVideo") {
-      return {
-        ok: true,
-        ...(await startBestNativeDownload(tabId, message.formatId || "best", message.variantId || "")),
-      };
-    }
-
-    if (message.type === "getFormatsForUrl") {
-      const video = await addDetectedVideo(tabId, {
-        ...(message.video || {}),
-        pageUrl: (message.video && message.video.pageUrl) || (sender.tab && sender.tab.url) || "",
-        frameUrl: sender.url || "",
-        source: (message.video && message.video.source) || "overlay",
-      });
-      if (!video) {
-        throw new Error("That media was filtered as an ad, GIF-style clip, or unsupported URL.");
-      }
-      const groupedVideo = findGroupedVideoForVariant(tabId, video) || video;
-      return { ok: true, videoId: groupedVideo.id, ...(await getNativeFormatsForVideo(tabId, groupedVideo)) };
-    }
-
-    if (message.type === "getBestVideoFormats") {
-      const video = await getBestDownloadableVideo(tabId);
-      return { ok: true, videoId: video.id, ...(await getNativeFormatsForVideo(tabId, video)) };
-    }
-
-    if (message.type === "saveSettings") {
-      settings = { ...settings, ...(message.settings || {}) };
-      await persistSettings();
-      return { ok: true, settings };
-    }
-
-    if (
-      ["chooseDownloadFolder", "chooseFolder", "selectDownloadFolder", "browseDownloadFolder"].includes(message.type)
-    ) {
-      return { ok: true, ...(await chooseDownloadFolder()) };
-    }
-
-    if (message.type === "getSettings") {
-      return { ok: true, settings };
-    }
-
-    if (message.type === "openPopup") {
-      if (api.action && typeof api.action.openPopup === "function") {
-        await api.action.openPopup();
-      } else if (api.browserAction && typeof api.browserAction.openPopup === "function") {
-        await api.browserAction.openPopup();
-      }
-      return { ok: true };
-    }
-
-    if (message.type === "pingNativeHost") {
-      return pingNativeHost();
-    }
-
-    if (message.type === "rescanTab") {
-      await clearTab(tabId);
-      await callTabsSendMessage(tabId, { type: "scanNow" });
-      await callExecuteScript({
-        target: { tabId, allFrames: true },
-        func: () => window.dispatchEvent(new CustomEvent("qwin-video-scan-now")),
-      });
-      return { ok: true };
-    }
-
-    if (message.type === "clearVideos") {
-      await clearTab(tabId);
-      return { ok: true };
-    }
-
-    return { ok: false, error: "Unknown message type." };
+messageRouter.handle("getVideos", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  return {
+    ok: true,
+    videos: await getTabVideos(tabId),
+    downloads: await getTabDownloads(tabId),
+    settings: tabState.getSettings(),
   };
-
-  run()
-    .then((response) => sendResponse(response))
-    .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
-  return true;
 });
 
-api.tabs.onRemoved.addListener((tabId) => {
-  delete videosByTab[String(tabId)];
-  persistVideos();
+messageRouter.handle("downloadVideo", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  return {
+    ok: true,
+    ...(await startNativeDownload(
+      tabId,
+      message.videoId,
+      message.formatId || "best",
+      message.variantId || "",
+      message.backend || "auto",
+    )),
+  };
 });
 
-api.tabs.onUpdated.addListener((tabId, changeInfo) => {
+messageRouter.handle("pauseDownload", async (message) => {
+  return { ok: true, ...controlActiveDownload(message.jobId, "pause") };
+});
+
+messageRouter.handle("resumeDownload", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  return { ok: true, ...(await resumeDownload(tabId, message.jobId)) };
+});
+
+messageRouter.handle("cancelDownload", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  return { ok: true, ...(await cancelDownload(tabId, message.jobId)) };
+});
+
+messageRouter.handle("retryDownload", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  return { ok: true, ...(await retryDownload(tabId, message.jobId)) };
+});
+
+messageRouter.handle("openDownloadedFile", async (message) => {
+  return { ok: true, ...(await openDownloadedPath(message.jobId, "openFile")) };
+});
+
+messageRouter.handle("showDownloadedFile", async (message) => {
+  return { ok: true, ...(await openDownloadedPath(message.jobId, "showFile")) };
+});
+
+messageRouter.handle("removeDownload", async (message) => {
+  return { ok: true, ...(await removeDownload(message.jobId)) };
+});
+
+messageRouter.handle("clearDownloads", async () => {
+  return { ok: true, ...(await clearDownloads()) };
+});
+
+messageRouter.handle("getVideoFormats", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  const videos = await getTabVideos(tabId);
+  const video = videos.find(
+    (item) => item.id === message.videoId || variantsForVideo(item).some((variant) => variant.id === message.videoId),
+  );
+  if (!video) {
+    throw new Error("That video URL is no longer in the detected list.");
+  }
+  return { ok: true, ...(await getNativeFormatsForVideo(tabId, video)) };
+});
+
+messageRouter.handle("downloadUrl", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  return {
+    ok: true,
+    ...(await startNativeDownloadForUrl(tabId, {
+      ...(message.video || {}),
+      pageUrl: (message.video && message.video.pageUrl) || (sender.tab && sender.tab.url) || "",
+      frameUrl: sender.url || "",
+      formatId: message.formatId || "best",
+      variantId: message.variantId || "",
+    })),
+  };
+});
+
+messageRouter.handle("downloadBestVideo", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  return {
+    ok: true,
+    ...(await startBestNativeDownload(tabId, message.formatId || "best", message.variantId || "")),
+  };
+});
+
+messageRouter.handle("getFormatsForUrl", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  const video = await addDetectedVideo(tabId, {
+    ...(message.video || {}),
+    pageUrl: (message.video && message.video.pageUrl) || (sender.tab && sender.tab.url) || "",
+    frameUrl: sender.url || "",
+    source: (message.video && message.video.source) || "overlay",
+  });
+  if (!video) {
+    throw new Error("That media was filtered as an ad, GIF-style clip, or unsupported URL.");
+  }
+  const groupedVideo = findGroupedVideoForVariant(tabId, video) || video;
+  return { ok: true, videoId: groupedVideo.id, ...(await getNativeFormatsForVideo(tabId, groupedVideo)) };
+});
+
+messageRouter.handle("getBestVideoFormats", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  const video = await getBestDownloadableVideo(tabId);
+  return { ok: true, videoId: video.id, ...(await getNativeFormatsForVideo(tabId, video)) };
+});
+
+messageRouter.handle("saveSettings", async (message) => {
+  await tabState.updateSettings(message.settings || {});
+  return { ok: true, settings: tabState.getSettings() };
+});
+
+// Folder picker — multiple message type aliases.
+messageRouter.handle("chooseDownloadFolder", async () => {
+  return { ok: true, ...(await chooseDownloadFolder()) };
+});
+messageRouter.handle("chooseFolder", async () => {
+  return { ok: true, ...(await chooseDownloadFolder()) };
+});
+messageRouter.handle("selectDownloadFolder", async () => {
+  return { ok: true, ...(await chooseDownloadFolder()) };
+});
+messageRouter.handle("browseDownloadFolder", async () => {
+  return { ok: true, ...(await chooseDownloadFolder()) };
+});
+
+messageRouter.handle("getSettings", async () => {
+  return { ok: true, settings: tabState.getSettings() };
+});
+
+messageRouter.handle("openPopup", async () => {
+  await browserApi.action.openPopup();
+  return { ok: true };
+});
+
+messageRouter.handle("pingNativeHost", async () => {
+  return pingNativeHost();
+});
+
+messageRouter.handle("rescanTab", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  await clearTab(tabId);
+  await browserApi.tabs.sendMessage(tabId, { type: "scanNow" });
+  await browserApi.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    func: () => window.dispatchEvent(new CustomEvent("qwin-video-scan-now")),
+  });
+  return { ok: true };
+});
+
+messageRouter.handle("clearVideos", async (message, sender) => {
+  const tabId = senderTabId(message, sender);
+  await clearTab(tabId);
+  return { ok: true };
+});
+
+// Wire the message router to the runtime.onMessage listener.
+browserApi.onMessage((message, sender, sendResponse) => {
+  messageRouter.dispatch(message, sender, sendResponse);
+});
+
+// Tab lifecycle — delegated to tabState
+browserApi.onTabRemoved((tabId) => {
+  tabState.removeTab(tabId);
+});
+
+browserApi.onTabUpdated((tabId, changeInfo) => {
   if (changeInfo.status === "loading") {
     clearTab(tabId);
   }
 });
 
-ensureStateLoaded();
+tabState.load();
