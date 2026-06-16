@@ -7,6 +7,33 @@ const popupSource = fs.readFileSync(path.join(__dirname, "../../src/popup/popup.
 const popupCss = fs.readFileSync(path.join(__dirname, "../../src/popup/popup.css"), "utf8");
 const qualityDialog = require(path.join(__dirname, "../../src/shared/quality_dialog.js"));
 
+// Mutable browser mock — must exist before popup_api.js is required so the
+// module can capture `api` and `isPromiseApi` at load time.  Each harness
+// reassigns the methods below to inject test-specific behaviour.
+const browserMock = {
+  tabs: {
+    async query() {
+      return [];
+    },
+  },
+  runtime: {
+    async sendMessage() {
+      return { ok: true };
+    },
+    onMessage: {
+      addListener() {},
+    },
+  },
+};
+globalThis.browser = browserMock;
+
+const popupState = require(path.join(__dirname, "../../src/shared/popup_state.js"));
+const popupApi = require(path.join(__dirname, "../../src/shared/popup_api.js"));
+const downloadList = require(path.join(__dirname, "../../src/popup/download_list.js"));
+const mediaCandidates = require(path.join(__dirname, "../../src/shared/media_candidates.js"));
+const videoFilters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
+const videoPicker = require(path.join(__dirname, "../../src/shared/video_picker.js"));
+
 const POPUP_ELEMENT_IDS = [
   "helperStatus",
   "downloadIndicator",
@@ -17,6 +44,7 @@ const POPUP_ELEMENT_IDS = [
   "contentView",
   "footerActions",
   "showVideos",
+  "showMusic",
   "showDownloads",
   "manualUrl",
   "downloadManualUrl",
@@ -35,6 +63,10 @@ const POPUP_ELEMENT_IDS = [
   "cancelQuality",
   "rescan",
   "clear",
+  "musicLinkSection",
+  "musicLinkUrl",
+  "downloadMusicLink",
+  "audioFormat",
 ];
 
 class ClassList {
@@ -71,6 +103,7 @@ class TestElement {
     this.value = "";
     this.title = "";
     this.onclick = null;
+    this.ownerDocument = null;
     this._textContent = "";
   }
 
@@ -125,22 +158,29 @@ class TestElement {
 
 function createDocument() {
   const elements = new Map();
-  for (const id of POPUP_ELEMENT_IDS) {
-    elements.set(id, new TestElement("div", id));
-  }
-  elements.get("downloadFolder").value = "";
 
-  return {
+  const document = {
     getElementById(id) {
       return elements.get(id) || null;
     },
     createElement(tagName) {
-      return new TestElement(tagName);
+      const el = new TestElement(tagName);
+      el.ownerDocument = document;
+      return el;
     },
     element(id) {
       return elements.get(id);
     },
   };
+
+  for (const id of POPUP_ELEMENT_IDS) {
+    const el = new TestElement("div", id);
+    el.ownerDocument = document;
+    elements.set(id, el);
+  }
+  elements.get("downloadFolder").value = "";
+
+  return document;
 }
 
 async function flushPromises() {
@@ -173,64 +213,58 @@ function createHarness({
   let holdNextUserRescan = false;
   let pendingUserRescan = null;
 
-  const browser = {
-    tabs: {
-      async query() {
-        const tab = activeTabs[Math.min(tabsQueryCount, activeTabs.length - 1)];
-        tabsQueryCount += 1;
-        return tab ? [tab] : [];
-      },
-    },
-    runtime: {
-      async sendMessage(message) {
-        messages.push(message);
-        if (message.type === "getVideos") {
-          return {
-            ok: true,
-            videos: videosCleared ? [] : rescanCount >= 2 ? refreshedVideos : initialVideos,
-            downloads: downloadsCleared ? [] : initialDownloads,
-            settings: { downloadFolder: "" },
-          };
-        }
-        if (message.type === "rescanTab") {
-          rescanCount += 1;
-          if (holdNextUserRescan && rescanCount >= 2) {
-            pendingUserRescan = createDeferred();
-            holdNextUserRescan = false;
-            return pendingUserRescan.promise;
-          }
-          return { ok: true };
-        }
-        if (message.type === "clearVideos") {
-          if (clearResponse.ok) {
-            videosCleared = true;
-          }
-          return clearResponse;
-        }
-        if (message.type === "clearDownloads") {
-          if (clearResponse.ok) {
-            downloadsCleared = true;
-          }
-          return clearResponse;
-        }
-        if (message.type === "pingNativeHost") {
-          return {
-            ok: true,
-            version: "test",
-            dependencies: { ytDlp: true, ffmpeg: true, aria2c: false },
-          };
-        }
-        return { ok: true };
-      },
-      onMessage: {
-        addListener() {},
-      },
-    },
+  // Configure the shared browserMock so popup_api.js (which captured it at
+  // require time) dispatches to this harness's logic.
+  browserMock.tabs.query = async function () {
+    const tab = activeTabs[Math.min(tabsQueryCount, activeTabs.length - 1)];
+    tabsQueryCount += 1;
+    return tab ? [tab] : [];
+  };
+
+  browserMock.runtime.sendMessage = async function (message) {
+    messages.push(message);
+    if (message.type === "getVideos") {
+      return {
+        ok: true,
+        videos: videosCleared ? [] : rescanCount >= 1 ? refreshedVideos : initialVideos,
+        downloads: downloadsCleared ? [] : initialDownloads,
+        settings: { downloadFolder: "" },
+      };
+    }
+    if (message.type === "rescanTab") {
+      rescanCount += 1;
+      if (holdNextUserRescan && rescanCount >= 2) {
+        pendingUserRescan = createDeferred();
+        holdNextUserRescan = false;
+        return pendingUserRescan.promise;
+      }
+      return { ok: true };
+    }
+    if (message.type === "clearVideos") {
+      if (clearResponse.ok) {
+        videosCleared = true;
+      }
+      return clearResponse;
+    }
+    if (message.type === "clearDownloads") {
+      if (clearResponse.ok) {
+        downloadsCleared = true;
+      }
+      return clearResponse;
+    }
+    if (message.type === "pingNativeHost") {
+      return {
+        ok: true,
+        version: "test",
+        dependencies: { ytDlp: true, ffmpeg: true, aria2c: false },
+      };
+    }
+    return { ok: true };
   };
 
   const sandbox = {
     URL,
-    browser,
+    browser: browserMock,
     document,
     console,
     window: {
@@ -257,6 +291,12 @@ function createHarness({
       },
     },
     QwinQualityDialog: qualityDialog,
+    QwinPopupState: popupState,
+    QwinPopupApi: popupApi,
+    QwinDownloadList: downloadList,
+    QwinVideoFilters: videoFilters,
+    QwinVideoPicker: videoPicker,
+    QwinMediaCandidates: mediaCandidates,
   };
 
   vm.runInNewContext(popupSource, sandbox);

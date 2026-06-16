@@ -58,7 +58,7 @@ videoPicker.renderList(
     {
       title: "Sample clip",
       url: "https://example.com/watch?v=abc123456789",
-      format: "youtube",
+      format: "mp4",
       variantCount: 2,
       sizeBytes: 98_000_000,
     },
