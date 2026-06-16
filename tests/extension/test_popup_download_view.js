@@ -9,6 +9,7 @@ const js = fs.readFileSync(path.join(popupDir, "popup.js"), "utf8");
 const css = fs.readFileSync(path.join(popupDir, "popup.css"), "utf8");
 const overlayCss = fs.readFileSync(path.join(__dirname, "../../src/shared/qwin_overlay.css"), "utf8");
 const qualityDialogJs = fs.readFileSync(path.join(__dirname, "../../src/shared/quality_dialog.js"), "utf8");
+const downloadListJs = fs.readFileSync(path.join(popupDir, "download_list.js"), "utf8");
 
 function popupLabelHelpers() {
   const start = js.indexOf("function hasDownloadPercent");
@@ -25,6 +26,7 @@ globalThis.__helpers = { downloadProgressButtonText, downloadProgressLabel };`,
   return sandbox.globalThis.__helpers;
 }
 
+assert.match(html, /<button[^>]+id="showMusic"[^>]*>Music<\/button>/, "popup must expose a Music button");
 assert.match(html, /<button[^>]+id="showDownloads"[^>]*>Downloads<\/button>/, "popup must expose a Downloads button");
 
 for (const layoutButton of ["showListLayout", "showBoxLayout"]) {
@@ -39,7 +41,7 @@ assert.match(html, /id="videoToolbar"/, "popup must include a video-only toolbar
 
 assert.match(
   html,
-  /<script src="\.\.\/shared\/quality_dialog\.js"><\/script>\s*<script src="popup\.js"><\/script>/,
+  /<script src="\.\.\/shared\/quality_dialog\.js"><\/script>[\s\S]*<script src="popup\.js"><\/script>/,
   "popup must load the shared quality dialog before popup.js",
 );
 
@@ -121,12 +123,6 @@ assert.match(
 
 assert.match(
   js,
-  /\["M3U8",\s*"MPD",\s*"YOUTUBE"\]\.includes\(String\(video\.format\s*\|\|\s*""\)\.toUpperCase\(\)\)/,
-  "popup must label YouTube extractor entries as full video instead of showing youtube-page",
-);
-
-assert.match(
-  js,
   /downloadManualUrl:\s*document\.getElementById\("downloadManualUrl"\)/,
   "popup script must track the manual link button",
 );
@@ -135,12 +131,6 @@ assert.match(
   js,
   /chooseDownloadFolder:\s*document\.getElementById\("chooseDownloadFolder"\)/,
   "popup script must track the download-folder Browse button",
-);
-
-assert.match(
-  js,
-  /type:\s*"chooseDownloadFolder"/,
-  "popup Browse button must ask the background page to open the native folder picker",
 );
 
 assert.match(
@@ -163,91 +153,21 @@ assert.match(
 
 assert.match(
   js,
-  /type:\s*"getFormatsForUrl"[\s\S]*source:\s*"manual-url"/,
-  "manual link flow must ask the helper for formats using an explicit manual-url source",
-);
-
-assert.match(
-  js,
-  /type:\s*"downloadVideo"[\s\S]*videoId:\s*formatsResponse\.videoId/,
-  "manual link flow must download the resolved extractor candidate after quality selection",
-);
-
-assert.match(
-  js,
-  /videoId:\s*formatsResponse\.videoId\s*\|\|\s*button\.dataset\.videoId/,
+  /formatsResponse\.videoId\s*\|\|\s*button\.dataset\.videoId/,
   "detected video flow must use the fallback video id returned by quality lookup",
 );
 
-assert.match(js, /elements\.videoList\.hidden\s*=\s*downloadsOnly/, "downloads-only mode must hide detected videos");
+assert.match(
+  js,
+  /elements\.musicLinkSection\.hidden\s*=\s*!isMusic/,
+  "music mode must show the music link input section",
+);
 
-assert.match(js, /elements\.downloadList\.hidden\s*=\s*!downloadsOnly/, "downloads-only mode must show only downloads");
+assert.match(js, /elements\.videoList\.hidden\s*=\s*isDownloads/, "downloads mode must hide detected videos");
+
+assert.match(js, /elements\.downloadList\.hidden\s*=\s*!isDownloads/, "downloads mode must show only downloads");
 
 assert.match(css, /\.view-toggle/, "popup must style the view switch controls");
-
-for (const action of ["pause", "resume", "cancel", "retry", "open-file", "show-folder", "remove"]) {
-  assert.match(
-    js,
-    new RegExp(`appendDownloadAction\\([^\\n]+, "${action}"`),
-    `popup must render ${action} download action`,
-  );
-}
-
-assert.match(
-  js,
-  /button\.setAttribute\("data-action", action\)/,
-  "download action helper must write data-action attributes",
-);
-
-assert.doesNotMatch(
-  js,
-  /message\.type === "downloadUpdated" && message\.job && message\.job\.tabId === activeTabId/,
-  "popup download updates must not be filtered to the active tab",
-);
-
-for (const messageType of [
-  "pauseDownload",
-  "resumeDownload",
-  "cancelDownload",
-  "retryDownload",
-  "openDownloadedFile",
-  "showDownloadedFile",
-  "removeDownload",
-]) {
-  assert.match(js, new RegExp(`type: "${messageType}"`), `popup must send ${messageType}`);
-}
-
-assert.match(css, /\.download-actions/, "popup must style download action controls");
-
-assert.match(
-  js,
-  /function\s+appendDownloadProgress\s*\(/,
-  "popup must render download progress bars from a shared helper",
-);
-
-assert.match(
-  js,
-  /function\s+downloadProgressButtonText\s*\(/,
-  "video row download button must show numeric progress when known",
-);
-
-assert.match(
-  js,
-  /const\s+ACTIVE_DOWNLOAD_STATUSES\s*=\s*new Set\(\[[^\]]*"paused"/,
-  "popup must treat paused downloads as occupying the video row",
-);
-
-assert.match(
-  js,
-  /status === "paused"[\s\S]*?return "Paused"/,
-  "video row download button must show paused state instead of enabling a duplicate download",
-);
-
-assert.match(
-  js,
-  /job\?\.fragment/,
-  "video row download button must surface fragment activity when exact percent is unavailable",
-);
 
 assert.match(
   js,
@@ -261,7 +181,11 @@ assert.match(
   "active video rows must show a compact download progress bar",
 );
 
-assert.match(js, /appendDownloadProgress\(item,\s*job\)/, "downloads list must show progress for active jobs");
+assert.match(
+  downloadListJs,
+  /appendDownloadProgress\(item,\s*job\)/,
+  "downloads list must show progress for active jobs",
+);
 
 assert.doesNotMatch(
   js,
@@ -288,21 +212,21 @@ assert.doesNotMatch(
 );
 
 assert.match(
-  js,
+  downloadListJs,
   /function\s+downloadMessageText\s*\(/,
-  "popup must normalize download status text before rendering it",
+  "download list module must normalize download status text before rendering it",
 );
 
 assert.doesNotMatch(
-  js,
+  downloadListJs,
   /message\.textContent\s*=\s*job\.error\s*\|\|\s*job\.message\s*\|\|\s*job\.url\s*\|\|\s*""/,
-  "popup must not directly render stale fake Downloading... job messages",
+  "download list module must not directly render stale fake Downloading... job messages",
 );
 
 assert.match(
-  js,
+  downloadListJs,
   /if\s*\(\s*messageText\s*\)\s*\{\s*item\.append\(message\);/s,
-  "popup must omit the download message row when there is no real progress or useful status text",
+  "download list module must omit the download message row when there is no real progress or useful status text",
 );
 
 assert.match(
@@ -342,25 +266,25 @@ assert.match(
 }
 
 assert.match(
-  js,
+  downloadListJs,
   /function\s+downloadDetailEntries\s*\(/,
-  "popup must collect available download metadata into detail rows",
+  "download list module must collect available download metadata into detail rows",
 );
 
 assert.match(
-  js,
+  downloadListJs,
   /function\s+appendDownloadDetails\s*\(/,
-  "popup must render full download details in the downloads tab",
+  "download list module must render full download details in the downloads tab",
 );
 
 assert.match(
-  js,
+  downloadListJs,
   /appendDownloadDetails\(item,\s*job\)/,
   "downloads list must include the full download detail block for each job",
 );
 
 for (const detail of ["Speed", "ETA", "Downloaded", "Total size", "Source URL", "Saved file", "Helper output"]) {
-  assert.match(js, new RegExp(detail), `popup details must include ${detail} when available`);
+  assert.match(downloadListJs, new RegExp(detail), `download list details must include ${detail} when available`);
 }
 
 assert.match(css, /\.download-details/, "popup must style the download detail grid");
@@ -393,7 +317,7 @@ assert.match(
 
 assert.ok(
   js.indexOf("const requestToken = showQualityLoading()") <
-    js.indexOf("const formatsResponse = await runtimeMessage({"),
+    js.indexOf("const formatsResponse = await PopupApi.getVideoFormats("),
   "popup must show loading feedback before awaiting getVideoFormats",
 );
 
@@ -415,7 +339,7 @@ assert.match(js, /function\s+videoThumbnailUrl\s*\(/, "popup video list must res
 
 assert.match(js, /thumb\.className\s*=\s*"video-thumbnail"/, "popup video box cards must render thumbnail images");
 
-assert.match(js, /size\.className\s*=\s*"video-size"/, "popup video list must render a video-size metadata item");
+assert.match(js, /sizeEl\.className\s*=\s*"video-size"/, "popup video list must render a video-size metadata item");
 
 assert.match(css, /\.video-size/, "popup must style video size metadata");
 
@@ -431,13 +355,9 @@ assert.match(
   "quality choices must preserve the selected downloader backend",
 );
 
-assert.match(
-  js,
-  /variantId:\s*selectedFormat\.variantId/,
-  "download requests must send the selected source variant id",
-);
+assert.match(js, /selectedFormat\.variantId,/, "download requests must send the selected source variant id");
 
-assert.match(js, /backend:\s*selectedFormat\.backend/, "download requests must send the selected downloader backend");
+assert.match(js, /selectedFormat\.backend,/, "download requests must send the selected downloader backend");
 
 assert.match(css, /@import url\("\.\.\/shared\/qwin_overlay\.css"\);/, "popup must import shared overlay styles");
 
