@@ -25,9 +25,47 @@
   const QUALITY_WORD_RE =
     /\b(?:144|240|360|480|540|576|720|900|1080|1440|2160|4320)p\b|\b(?:8k|4k|uhd|qhd|fhd|hd|sd|low|medium|high|best|source|copy)\b/gi;
   const FORMAT_WORD_RE = /\b(?:mp4|m4v|webm|m3u8|mpd|hls|dash)\b/gi;
-  const GENERIC_STEM_RE = /^(?:|video|videos|media|movie|file|download|master|playlist|index|manifest|stream)$/i;
-  const GENERIC_TITLE_RE =
-    /^(?:video|video player|media player|html5 video|player|none|undefined|null|advertisement|ad|movie)$/i;
+  const GENERIC_WORDS = [
+    "video",
+    "videos",
+    "media",
+    "movie",
+    "file",
+    "download",
+    "master",
+    "playlist",
+    "index",
+    "manifest",
+    "stream",
+    "site",
+    "player",
+    "page",
+    "home",
+    "tab",
+    "window",
+    "link",
+    "none",
+    "undefined",
+    "null",
+    "advertisement",
+    "ad",
+    "content",
+    "container",
+    "wrapper",
+    "box",
+    "watch",
+    "online",
+    "view",
+    "play",
+    "playing",
+    "browsing",
+    "searching",
+  ];
+  const GENERIC_STEM_RE = new RegExp(`^(?:${GENERIC_WORDS.join("|")})(?:\\s+(?:${GENERIC_WORDS.join("|")}))*$`, "i");
+  const GENERIC_TITLE_RE = new RegExp(
+    `^(?:video|video player|media player|html5 video|player|none|undefined|null|advertisement|ad|movie|${GENERIC_WORDS.join("|")})$`,
+    "i",
+  );
   const MIN_FULL_LENGTH_SECONDS = 30;
   const MIN_DIRECT_MEDIA_BYTES = 1024;
 
