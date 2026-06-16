@@ -47,8 +47,8 @@ const elements = {
   contentView: document.getElementById("contentView"),
   footerActions: document.getElementById("footerActions"),
   showVideos: document.getElementById("showVideos"),
+  showMusic: document.getElementById("showMusic"),
   showDownloads: document.getElementById("showDownloads"),
-  musicToggle: document.getElementById("musicToggle"),
   manualUrl: document.getElementById("manualUrl"),
   downloadManualUrl: document.getElementById("downloadManualUrl"),
   downloadFolder: document.getElementById("downloadFolder"),
@@ -116,6 +116,156 @@ function updateIndicatorFromVideos(videos) {
   setDownloadIndicator(hasDownloadable ? INDICATOR_STATES.AVAILABLE : INDICATOR_STATES.UNAVAILABLE);
 }
 
+// ─── Download progress helpers ──────────────────────────────────────────────
+
+function hasDownloadPercent(job) {
+  return typeof job?.percent === "number" && Number.isFinite(job.percent);
+}
+
+function clampDownloadPercent(percent) {
+  return Math.max(0, Math.min(100, Number(percent)));
+}
+
+function formatDownloadPercent(percent) {
+  return `${Math.round(clampDownloadPercent(percent))}%`;
+}
+
+function isProcessingStage(job) {
+  const stage = String(job?.stage || "").trim();
+  return stage === "postprocess" || stage === "destination" || stage === "filepath";
+}
+
+function downloadProgressButtonText(job) {
+  const stage = String(job?.stage || "").trim();
+  if (stage === "postprocess") {
+    return "Merging";
+  }
+  if (stage === "destination" || stage === "filepath") {
+    return "Finalizing";
+  }
+
+  if (hasDownloadPercent(job) && !isProcessingStage(job)) {
+    return formatDownloadPercent(job.percent);
+  }
+
+  const status = job?.status || "queued";
+  if (status === "queued") {
+    return "Queued";
+  }
+  if (status === "connecting") {
+    return "Connecting";
+  }
+  if (status === "paused") {
+    return "Paused";
+  }
+  if (status === "pausing") {
+    return "Pausing";
+  }
+  if (status === "canceling") {
+    return "Canceling";
+  }
+  if (job?.fragment) {
+    return `Frag ${job.fragment}`;
+  }
+  if (job?.speed) {
+    return job.speed;
+  }
+  if (stage === "download") {
+    return "Active";
+  }
+  if (stage === "extract") {
+    return "Preparing";
+  }
+  return "Starting";
+}
+
+function downloadProgressLabel(job) {
+  const stage = String(job?.stage || "").trim();
+  if (stage === "postprocess") {
+    return "Merging downloaded segments...";
+  }
+  if (stage === "destination" || stage === "filepath") {
+    return "Finalizing output...";
+  }
+
+  if (hasDownloadPercent(job) && !isProcessingStage(job)) {
+    return `${formatDownloadPercent(job.percent)} downloaded`;
+  }
+
+  if (stage === "download") {
+    if (job?.fragment) {
+      return `Downloading video segments... (${job.fragment})`;
+    }
+    if (job?.speed) {
+      return `Downloading video segments at ${job.speed}`;
+    }
+    return "Downloading video segments...";
+  }
+  if (stage === "extract") {
+    if (job?.fragment) {
+      return `Preparing fragments ${job.fragment}`;
+    }
+    return "Preparing video...";
+  }
+
+  const status = job?.status || "queued";
+  if (status === "queued") {
+    return "Queued";
+  }
+  if (status === "connecting") {
+    return "Connecting to helper";
+  }
+  if (status === "paused") {
+    return "Paused";
+  }
+  if (status === "pausing") {
+    return "Pausing...";
+  }
+  if (status === "canceling") {
+    return "Canceling...";
+  }
+  return "Downloading...";
+}
+
+function isFakeDownloadMessage(text) {
+  return /^Downloading(?:\.\.\.| to\b)/i.test(String(text || "").trim());
+}
+
+function appendDownloadProgress(container, job, options = {}) {
+  if (!job || job.status === "error") {
+    return;
+  }
+
+  const doc = container.ownerDocument;
+  const processing = isProcessingStage(job);
+  const knownPercent = hasDownloadPercent(job) && !processing;
+  const displayPercent = knownPercent ? clampDownloadPercent(job.percent) : 0;
+
+  const progress = doc.createElement("div");
+  progress.className = `progress ${options.compact ? "compact" : ""}`.trim();
+  progress.setAttribute("role", "progressbar");
+  progress.setAttribute("aria-label", processing ? "Processing progress" : "Download progress");
+  progress.setAttribute("aria-valuemin", "0");
+  progress.setAttribute("aria-valuemax", "100");
+  progress.setAttribute("aria-valuetext", downloadProgressLabel(job));
+  if (knownPercent) {
+    progress.setAttribute("aria-valuenow", String(Math.round(displayPercent)));
+  }
+
+  const bar = doc.createElement("div");
+  bar.className = `progress-bar ${processing ? "indeterminate" : ""}`.trim();
+  const fill = doc.createElement("span");
+  fill.style.width = processing ? "" : `${displayPercent}%`;
+  bar.append(fill);
+
+  const label = doc.createElement("div");
+  label.className = "progress-label";
+  label.textContent = downloadProgressLabel(job);
+
+  progress.append(bar, label);
+  container.append(progress);
+}
+
 // ─── UI helpers ─────────────────────────────────────────────────────────────
 
 function hasActiveTab() {
@@ -157,18 +307,33 @@ function setHelperStatus(text, className) {
 }
 
 function setViewMode(mode) {
-  const nextMode = mode === "downloads" ? "downloads" : "videos";
+  const modes = ["videos", "music", "downloads"];
+  const nextMode = modes.includes(mode) ? mode : "videos";
   PopupState.set("viewMode", nextMode);
 
-  const downloadsOnly = nextMode === "downloads";
-  elements.videoList.hidden = downloadsOnly;
-  elements.downloadList.hidden = !downloadsOnly;
-  elements.message.hidden = downloadsOnly;
-  elements.videoToolbar.hidden = downloadsOnly || !PopupState.get("currentVideos").length;
-  elements.showVideos.classList.toggle("active", !downloadsOnly);
-  elements.showDownloads.classList.toggle("active", downloadsOnly);
-  elements.showVideos.setAttribute("aria-pressed", String(!downloadsOnly));
-  elements.showDownloads.setAttribute("aria-pressed", String(downloadsOnly));
+  const isVideos = nextMode === "videos";
+  const isMusic = nextMode === "music";
+  const isDownloads = nextMode === "downloads";
+
+  elements.videoList.hidden = isDownloads;
+  elements.downloadList.hidden = !isDownloads;
+  elements.message.hidden = isDownloads;
+  elements.videoToolbar.hidden = isDownloads || !PopupState.get("currentVideos").length;
+  elements.musicLinkSection.hidden = !isMusic;
+
+  elements.showVideos.classList.toggle("active", isVideos);
+  elements.showMusic.classList.toggle("active", isMusic);
+  elements.showDownloads.classList.toggle("active", isDownloads);
+
+  elements.showVideos.setAttribute("aria-pressed", String(isVideos));
+  elements.showMusic.setAttribute("aria-pressed", String(isMusic));
+  elements.showDownloads.setAttribute("aria-pressed", String(isDownloads));
+
+  if (isMusic) {
+    setMusicMode(true);
+  } else if (isVideos) {
+    setMusicMode(false);
+  }
 }
 
 function setSettingsOpen(open) {
@@ -349,7 +514,7 @@ function renderVideos(videos, downloads) {
     );
     if (!video.downloadable || runningJob) {
       button.disabled = true;
-      button.textContent = runningJob ? DownloadList.downloadProgressButtonText(runningJob) : "Unsupported";
+      button.textContent = runningJob ? downloadProgressButtonText(runningJob) : "Unsupported";
     }
 
     main.append(details, button);
@@ -378,7 +543,7 @@ function renderVideos(videos, downloads) {
       content.append(main, meta, warning);
     } else {
       content.append(main, meta);
-      DownloadList.appendDownloadProgress(content, runningJob, { compact: true });
+      appendDownloadProgress(content, runningJob, { compact: true });
     }
 
     item.append(content);
@@ -432,16 +597,6 @@ function normalizeManualUrl(value) {
     return parsed.href;
   } catch (_error) {
     return "";
-  }
-}
-
-async function toggleMusicMode() {
-  const nextMode = !PopupState.get("musicMode");
-  setMusicMode(nextMode);
-
-  const response = await PopupApi.saveSettings({ musicMode: nextMode });
-  if (!response || !response.ok) {
-    setMusicMode(!nextMode);
   }
 }
 
@@ -596,11 +751,20 @@ async function clearActiveTabVideos() {
 
 function render() {
   const state = PopupState.getState();
-  renderVideos(state.currentVideos, state.currentDownloads);
+  const mode = state.viewMode;
+
+  let filteredVideos = state.currentVideos;
+  if (mode === "videos") {
+    filteredVideos = state.currentVideos.filter((v) => String(v.format || "").toUpperCase() !== "AUDIO");
+  } else if (mode === "music") {
+    filteredVideos = state.currentVideos.filter((v) => String(v.format || "").toUpperCase() === "AUDIO");
+  }
+
+  renderVideos(filteredVideos, state.currentDownloads);
   DownloadList.renderDownloads(elements.downloadList, state.currentDownloads, { shortenUrl });
   updateIndicatorFromVideos(state.currentVideos);
   setVideoLayoutMode(state.videoLayoutMode);
-  setViewMode(state.viewMode);
+  setViewMode(mode);
 }
 
 PopupState.subscribe(render);
@@ -738,6 +902,10 @@ elements.showVideos.addEventListener("click", () => {
   setViewMode("videos");
 });
 
+elements.showMusic.addEventListener("click", () => {
+  setViewMode("music");
+});
+
 elements.showDownloads.addEventListener("click", () => {
   setViewMode("downloads");
 });
@@ -748,10 +916,6 @@ elements.showListLayout.addEventListener("click", () => {
 
 elements.showBoxLayout.addEventListener("click", () => {
   setVideoLayoutMode("boxes");
-});
-
-elements.musicToggle.addEventListener("click", () => {
-  toggleMusicMode();
 });
 
 elements.saveSettings.addEventListener("click", async () => {
@@ -876,7 +1040,8 @@ elements.downloadMusicLink.addEventListener("click", async () => {
   }
 
   if (!PopupState.get("musicMode")) {
-    await toggleMusicMode();
+    setMusicMode(true);
+    await PopupApi.saveSettings({ musicMode: true });
   }
 
   await PopupApi.saveSettings({ audioFormat: elements.audioFormat.value });

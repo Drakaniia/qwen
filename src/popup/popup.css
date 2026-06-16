@@ -290,7 +290,7 @@ h1 {
 
 .view-toggle {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--line);
@@ -308,44 +308,6 @@ h1 {
   border-color: var(--accent);
   background: #dff1ee;
   color: #075c55;
-}
-
-.music-toggle {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 4px 10px !important;
-  font-size: 12px;
-  border-radius: 999px !important;
-  transition: all 160ms ease;
-}
-
-.music-toggle.active {
-  border-color: #b91c1c !important;
-  background: #fef2f2 !important;
-  color: #991b1b !important;
-  box-shadow: 0 0 0 1px rgba(185, 28, 28, 0.2);
-}
-
-.music-toggle.active svg {
-  animation: music-note-bounce 2s ease-in-out infinite;
-}
-
-@keyframes music-note-bounce {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-2px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .music-toggle.active svg {
-    animation: none;
-  }
 }
 
 label {
