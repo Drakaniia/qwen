@@ -412,12 +412,20 @@ async function addDetectedVideo(tabId, input) {
   const isPlaylist = isPlaylistVideo({ url: normalizedUrl, format, contentType: input.contentType || "" });
   const sizeBytes = isPlaylist ? 0 : Number(input.sizeBytes || input.filesize || 0);
 
+  const inputTitle = input.title || "";
+  const currentTitle = current?.title || "";
+  const isGenericInput = videoFilters.isGenericTitle(inputTitle);
+  const isGenericCurrent = videoFilters.isGenericTitle(currentTitle);
+
+  const finalTitle =
+    (!isGenericInput && inputTitle) || (!isGenericCurrent && currentTitle) || inputTitle || titleFromUrl(normalizedUrl);
+
   const nextVideo = {
     id,
     url: normalizedUrl,
     format,
     source: input.source || "network",
-    title: input.title || current?.title || titleFromUrl(normalizedUrl),
+    title: finalTitle,
     pageUrl: input.pageUrl || input.frameUrl || "",
     frameUrl: input.frameUrl || "",
     contentType: input.contentType || "",

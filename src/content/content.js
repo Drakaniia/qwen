@@ -299,6 +299,7 @@ async function handleVideoSelection(video) {
     return;
   }
 
+  dialog.list.textContent = "";
   dialog.title.textContent = "Sending...";
   const response = await sendMessageWithResponse({
     type: "downloadVideo",
@@ -310,12 +311,12 @@ async function handleVideoSelection(video) {
 
   if (!response || !response.ok) {
     dialog.title.textContent = "Error";
-    window.setTimeout(showAvailableVideosOverlay, 2000);
+    window.setTimeout(showAvailableVideosOverlay, 1000);
     return;
   }
 
   dialog.title.textContent = "Queued";
-  window.setTimeout(hideOverlay, 1500);
+  window.setTimeout(hideOverlay, 700);
 }
 
 function showAvailableVideosOverlay() {

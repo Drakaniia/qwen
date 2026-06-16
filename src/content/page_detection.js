@@ -75,7 +75,31 @@
       return cleanText(value).replace(MUSIC_PLATFORM_SUFFIX_RE, "").trim();
     }
 
+    function titleForPage(url) {
+      const pageTitles = [
+        cleanText(document.querySelector('meta[property="og:title"]')?.content),
+        cleanText(document.querySelector('meta[name="twitter:title"]')?.content),
+        cleanText(document.querySelector('meta[property="og:video:title"]')?.content),
+        cleanText(document.querySelector('meta[itemprop="name"]')?.content),
+        cleanText(document.querySelector('meta[name="title"]')?.content),
+        cleanText(document.querySelector("h1")?.textContent),
+        cleanMusicTitle(document.title),
+      ];
+
+      for (const candidate of pageTitles) {
+        if (candidate && !videoFilters.isGenericTitle(candidate)) {
+          return candidate;
+        }
+      }
+
+      return titleFromUrl(url) || "Video";
+    }
+
     function titleForVideo(video, url) {
+      if (!video) {
+        return titleForPage(url);
+      }
+
       const labelledBy = video.getAttribute("aria-labelledby");
       const labelledByText = labelledBy
         ? cleanText(
@@ -86,9 +110,8 @@
           )
         : "";
 
-      const ogTitle = cleanText(document.querySelector('meta[property="og:title"]')?.content);
-      const twitterTitle = cleanText(document.querySelector('meta[name="twitter:title"]')?.content);
-      const docTitle = cleanMusicTitle(document.title);
+      const videoAriaLabel = cleanText(video.getAttribute("aria-label"));
+      const videoTitleAttr = cleanText(video.getAttribute("title"));
 
       // For music/audio sources, prefer document.title over og:title
       // because music platforms set document.title to "Track · Artist · Platform"
@@ -98,21 +121,29 @@
 
       const candidates = isMusicSource
         ? [
-            docTitle,
+            cleanMusicTitle(document.title),
             cleanText(document.querySelector('meta[property="og:title"]')?.content),
             cleanText(document.querySelector('meta[name="twitter:title"]')?.content),
+            cleanText(document.querySelector('meta[property="og:video:title"]')?.content),
+            cleanText(document.querySelector('meta[itemprop="name"]')?.content),
+            cleanText(document.querySelector('meta[name="title"]')?.content),
+            cleanText(document.querySelector("h1")?.textContent),
             labelledByText,
-            cleanText(video.getAttribute("aria-label")),
-            cleanText(video.getAttribute("title")),
+            videoAriaLabel,
+            videoTitleAttr,
             titleFromUrl(url),
           ]
         : [
-            ogTitle,
-            twitterTitle,
-            docTitle,
+            cleanText(document.querySelector('meta[property="og:title"]')?.content),
+            cleanText(document.querySelector('meta[name="twitter:title"]')?.content),
+            cleanText(document.querySelector('meta[property="og:video:title"]')?.content),
+            cleanText(document.querySelector('meta[itemprop="name"]')?.content),
+            cleanText(document.querySelector('meta[name="title"]')?.content),
+            cleanText(document.querySelector("h1")?.textContent),
+            cleanMusicTitle(document.title),
             labelledByText,
-            cleanText(video.getAttribute("aria-label")),
-            cleanText(video.getAttribute("title")),
+            videoAriaLabel,
+            videoTitleAttr,
             titleFromUrl(url),
           ];
 
@@ -174,9 +205,7 @@
         contentType: mimeType || "",
         pageUrl: location.href,
         frameUrl: location.href,
-        title: video
-          ? titleForVideo(video, absoluteUrl)
-          : cleanMusicTitle(cleanText(document.title)) || titleFromUrl(absoluteUrl) || "Video",
+        title: titleForVideo(video, absoluteUrl),
         thumbnailUrl: thumbnailForVideo(video),
       };
 
