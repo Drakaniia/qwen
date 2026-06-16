@@ -365,9 +365,9 @@ function setVideoLayoutMode(mode) {
 function setMusicMode(enabled) {
   const mode = Boolean(enabled);
   PopupState.set("musicMode", mode);
-  elements.musicToggle.classList.toggle("active", mode);
-  elements.musicToggle.setAttribute("aria-pressed", String(mode));
-  elements.musicToggle.title = mode
+  elements.showMusic.classList.toggle("active", mode);
+  elements.showMusic.setAttribute("aria-pressed", String(mode));
+  elements.showMusic.title = mode
     ? "Music mode active - download audio"
     : "Music mode - download audio instead of video";
 }
@@ -473,7 +473,7 @@ function renderVideos(videos, downloads) {
   const videoCount = videos.length - audioCount;
   const messageParts = [];
   if (videoCount > 0) {
-    messageParts.push(`${videoCount} video${videoCount === 1 ? "" : "s"}`);
+    messageParts.push(`${videoCount} full video${videoCount === 1 ? "" : "s"}`);
   }
   if (audioCount > 0) {
     messageParts.push(`${audioCount} music track${audioCount === 1 ? "" : "s"}`);
