@@ -3,19 +3,16 @@ import sys
 import unittest
 from pathlib import Path
 
-
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
 
-import media_resolver
 import media_candidates
+import media_resolver
 
 
 class MediaCandidateRuleTests(unittest.TestCase):
     def test_candidate_rules_match_resolver_reuse_contract(self):
-        rules = json.loads(
-            (ROOT_DIR / "tests" / "fixtures" / "media_candidate_rules.json").read_text(encoding="utf-8")
-        )
+        rules = json.loads((ROOT_DIR / "tests" / "fixtures" / "media_candidate_rules.json").read_text(encoding="utf-8"))
 
         for rule in rules:
             with self.subTest(rule=rule["name"]):

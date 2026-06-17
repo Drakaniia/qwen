@@ -1,18 +1,17 @@
 import io
-import json
-import os
 import struct
+import sys
 import tempfile
-import unittest
 import threading
+import unittest
 from pathlib import Path
 from unittest.mock import patch
-import sys
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
 
 import host
+
 import native_protocol
 
 
@@ -27,8 +26,8 @@ class HostHelperTests(unittest.TestCase):
         import process_control
         import progress_parser
         import stream_backends
-        import yt_dlp_command
         import yt_dlp_adapter
+        import yt_dlp_command
 
         self.assertIs(host.HostError, native_protocol.HostError)
         self.assertIs(host.request_id, native_protocol.request_id)
@@ -150,11 +149,7 @@ class HostHelperTests(unittest.TestCase):
             yt_dlp_command=["yt-dlp"],
         )
 
-        path_values = [
-            command[index + 1]
-            for index, value in enumerate(command)
-            if value == "--paths"
-        ]
+        path_values = [command[index + 1] for index, value in enumerate(command) if value == "--paths"]
         output_template = command[command.index("-o") + 1]
 
         self.assertIn(f"home:{download_dir}", path_values)
@@ -227,11 +222,7 @@ class HostHelperTests(unittest.TestCase):
             aria2c_location=r"C:\Tools\aria2c.exe",
         )
 
-        downloader_values = [
-            command[index + 1]
-            for index, value in enumerate(command)
-            if value == "--downloader"
-        ]
+        downloader_values = [command[index + 1] for index, value in enumerate(command) if value == "--downloader"]
 
         self.assertIn(r"C:\Tools\aria2c.exe", downloader_values)
         self.assertIn("dash,m3u8:native", downloader_values)
@@ -439,7 +430,9 @@ class HostHelperTests(unittest.TestCase):
         var blob = "blob:https://player.example.com/abc";
         """
 
-        candidates = host.extract_media_candidates_from_text(text, "https://player.example.com/player/index.php?data=abc")
+        candidates = host.extract_media_candidates_from_text(
+            text, "https://player.example.com/player/index.php?data=abc"
+        )
         urls = [item["url"] for item in candidates]
         formats = {item["url"]: item["format"] for item in candidates}
 
@@ -518,8 +511,9 @@ class HostHelperTests(unittest.TestCase):
             return FakeResponse()
 
         sent = []
-        with patch.object(host, "urlopen", side_effect=fake_urlopen), patch.object(
-            host, "send_native_message", side_effect=sent.append
+        with (
+            patch.object(host, "urlopen", side_effect=fake_urlopen),
+            patch.object(host, "send_native_message", side_effect=sent.append),
         ):
             host.handle_message(
                 {
@@ -668,7 +662,9 @@ class HostHelperTests(unittest.TestCase):
             native_protocol.folder_response({"id": "folder_1"}, None),
             {"type": "folder", "id": "folder_1", "canceled": True},
         )
-        self.assertEqual(native_protocol.error_response("job_1", "failed"), {"type": "error", "id": "job_1", "error": "failed"})
+        self.assertEqual(
+            native_protocol.error_response("job_1", "failed"), {"type": "error", "id": "job_1", "error": "failed"}
+        )
         self.assertEqual(
             native_protocol.unexpected_error_response("job_1", "boom"),
             {"type": "error", "id": "job_1", "error": "Unexpected helper error: boom"},
@@ -677,10 +673,13 @@ class HostHelperTests(unittest.TestCase):
     def test_handle_choose_folder_sends_selected_path(self):
         sent = []
 
-        with patch.object(host, "choose_download_folder", return_value=Path(r"C:\Users\Viewer\Videos")), patch.object(
-            host, "send_native_message", side_effect=sent.append
+        with (
+            patch.object(host, "choose_download_folder", return_value=Path(r"C:\Users\Viewer\Videos")),
+            patch.object(host, "send_native_message", side_effect=sent.append),
         ):
-            host.handle_message({"type": "chooseFolder", "id": "folder_1", "initialFolder": r"C:\Users\Viewer\Downloads"})
+            host.handle_message(
+                {"type": "chooseFolder", "id": "folder_1", "initialFolder": r"C:\Users\Viewer\Downloads"}
+            )
 
         self.assertEqual(
             sent,
@@ -696,17 +695,20 @@ class HostHelperTests(unittest.TestCase):
     def test_handle_choose_folder_reports_cancel(self):
         sent = []
 
-        with patch.object(host, "choose_download_folder", return_value=None), patch.object(
-            host, "send_native_message", side_effect=sent.append
+        with (
+            patch.object(host, "choose_download_folder", return_value=None),
+            patch.object(host, "send_native_message", side_effect=sent.append),
         ):
             host.handle_message({"type": "chooseFolder", "id": "folder_1"})
 
         self.assertEqual(sent, [{"type": "folder", "id": "folder_1", "canceled": True}])
 
     def test_main_does_not_cancel_active_downloads_when_browser_pipe_closes(self):
-        with patch.object(host, "configure_binary_stdio"), patch.object(
-            host, "read_native_message", side_effect=EOFError
-        ), patch.object(host, "cancel_active_downloads") as cancel_active_downloads:
+        with (
+            patch.object(host, "configure_binary_stdio"),
+            patch.object(host, "read_native_message", side_effect=EOFError),
+            patch.object(host, "cancel_active_downloads") as cancel_active_downloads,
+        ):
             result = host.main()
 
         self.assertEqual(result, 0)
@@ -742,9 +744,7 @@ class HostHelperTests(unittest.TestCase):
         self.assertIn("20%", parsed["line"])
 
     def test_parse_aria2_fragment_status_without_percent_still_reports_download_activity(self):
-        parsed = host.parse_yt_dlp_line(
-            "[DL:8.2MiB][#528371 1.8MiB/0B][#d07353 1.0MiB/0B][#55c62a 1.2MiB/0B](+1)"
-        )
+        parsed = host.parse_yt_dlp_line("[DL:8.2MiB][#528371 1.8MiB/0B][#d07353 1.0MiB/0B][#55c62a 1.2MiB/0B](+1)")
 
         self.assertEqual(parsed["stage"], "download")
         self.assertNotIn("percent", parsed)
@@ -761,8 +761,7 @@ class HostHelperTests(unittest.TestCase):
 
     def test_parse_carriage_return_progress_uses_latest_status(self):
         parsed = host.parse_yt_dlp_line(
-            "\r[#123abc 4.0MiB/40MiB(10%) CN:16 DL:2.0MiB ETA:18s]"
-            "\r[#123abc 8.1MiB/40MiB(20%) CN:16 DL:2.0MiB ETA:16s]"
+            "\r[#123abc 4.0MiB/40MiB(10%) CN:16 DL:2.0MiB ETA:18s]\r[#123abc 8.1MiB/40MiB(20%) CN:16 DL:2.0MiB ETA:16s]"
         )
 
         self.assertEqual(parsed["stage"], "download")
@@ -942,9 +941,10 @@ class HostHelperTests(unittest.TestCase):
             send=lambda _message: None,
         )
 
-        with patch.object(download_task, "creation_flags", return_value=123), patch.object(
-            download_task.subprocess, "Popen", return_value=FakeProcess()
-        ) as popen:
+        with (
+            patch.object(download_task, "creation_flags", return_value=123),
+            patch.object(download_task.subprocess, "Popen", return_value=FakeProcess()) as popen,
+        ):
             task.run_process_once()
 
         self.assertEqual(popen.call_args.kwargs["creationflags"], 123)
@@ -974,10 +974,14 @@ class HostHelperTests(unittest.TestCase):
 
         task.run()
 
-        self.assertEqual(commands[0], ["yt-dlp", "--downloader", r"C:\Tools\aria2c.exe", "https://cdn.example.com/video.mp4"])
+        self.assertEqual(
+            commands[0], ["yt-dlp", "--downloader", r"C:\Tools\aria2c.exe", "https://cdn.example.com/video.mp4"]
+        )
         self.assertEqual(commands[1], ["yt-dlp", "https://cdn.example.com/video.mp4"])
         self.assertEqual(sent[-1]["type"], "done")
-        self.assertTrue(any(message.get("type") == "progress" and "standard mode" in message.get("line", "") for message in sent))
+        self.assertTrue(
+            any(message.get("type") == "progress" and "standard mode" in message.get("line", "") for message in sent)
+        )
 
     def test_download_task_retries_stream_backend_after_retryable_yt_dlp_error(self):
         commands = []
@@ -1013,7 +1017,9 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(commands[1], ["N_m3u8DL-RE", "https://cdn.example.com/hls/master.m3u8"])
         self.assertEqual(sent[-1]["type"], "done")
         self.assertEqual(sent[-1]["filepath"], final_path)
-        self.assertTrue(any(message.get("type") == "progress" and "N_m3u8DL-RE" in message.get("line", "") for message in sent))
+        self.assertTrue(
+            any(message.get("type") == "progress" and "N_m3u8DL-RE" in message.get("line", "") for message in sent)
+        )
 
     def test_download_task_retries_after_ssl_verification_error(self):
         commands = []
@@ -1045,7 +1051,12 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(commands[0], ["yt-dlp", "https://example.com/video.mp4"])
         self.assertEqual(commands[1], ["yt-dlp", "--no-check-certificate", "https://example.com/video.mp4"])
         self.assertEqual(sent[-1]["type"], "done")
-        self.assertTrue(any(message.get("type") == "progress" and "yt-dlp (no SSL check)" in message.get("line", "") for message in sent))
+        self.assertTrue(
+            any(
+                message.get("type") == "progress" and "yt-dlp (no SSL check)" in message.get("line", "")
+                for message in sent
+            )
+        )
 
     def test_build_open_path_command_reveals_file_on_windows(self):
         with patch.object(host.os, "name", "nt"):

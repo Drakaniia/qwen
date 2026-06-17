@@ -1,7 +1,6 @@
 import re
 from pathlib import Path
 
-
 FILEPATH_MARKER = "__QWIN_FILEPATH__:"
 
 
@@ -140,7 +139,9 @@ def parse_yt_dlp_line(line):
             "artifactRoot": str(Path(filepath).parent) if filepath else "",
         }
 
-    total_fragments_match = re.search(r"^\[(?:hlsnative|dashsegments|download)\]\s+Total fragments:\s+(\d+)", line, flags=re.IGNORECASE)
+    total_fragments_match = re.search(
+        r"^\[(?:hlsnative|dashsegments|download)\]\s+Total fragments:\s+(\d+)", line, flags=re.IGNORECASE
+    )
     if total_fragments_match:
         return {
             "stage": "extract",
