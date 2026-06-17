@@ -528,6 +528,7 @@ main {
   display: none;
   position: relative;
   overflow: hidden;
+  width: 100%;
   aspect-ratio: 16 / 9;
   background: #202936;
 }

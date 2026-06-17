@@ -159,11 +159,7 @@ function create(options) {
 
   function thumbnailForVideo(video) {
     const poster = video ? toAbsoluteUrl(video.getAttribute("poster") || video.poster || "") : "";
-    const thumbnail = poster || pageThumbnailUrl();
-    if (/\.(?:gif|gifv)(?:$|[?#])/i.test(thumbnail)) {
-      return "";
-    }
-    return thumbnail;
+    return poster || pageThumbnailUrl();
   }
 
   function videoElementDetails(video) {

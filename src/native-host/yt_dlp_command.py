@@ -288,6 +288,7 @@ def is_segmented_stream_format(item):
 def summarize_formats(info):
     title = sanitize_filename(info.get("title") or info.get("fulltitle") or "Video")
     webpage_url = info.get("webpage_url") or info.get("original_url") or ""
+    thumbnail_url = info.get("thumbnail") or ""
     raw_formats = info.get("formats") or []
     seen_ids = set()
     choices = []
@@ -336,6 +337,7 @@ def summarize_formats(info):
     return {
         "title": title,
         "webpageUrl": webpage_url,
+        "thumbnailUrl": thumbnail_url,
         "formats": choices,
     }
 
@@ -381,6 +383,7 @@ def summarize_audio_formats(info):
     """Summarize formats for music mode - shows audio-only streams."""
     title = sanitize_filename(info.get("title") or info.get("fulltitle") or "Audio")
     webpage_url = info.get("webpage_url") or info.get("original_url") or ""
+    thumbnail_url = info.get("thumbnail") or ""
     raw_formats = info.get("formats") or []
     seen_ids = set()
     choices = []
@@ -435,6 +438,7 @@ def summarize_audio_formats(info):
     return {
         "title": title,
         "webpageUrl": webpage_url,
+        "thumbnailUrl": thumbnail_url,
         "formats": choices,
     }
 
