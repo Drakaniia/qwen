@@ -46,6 +46,7 @@ const BLOCKING_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "
 const downloadPortsById = {};
 const sizeProbePromises = {};
 const requestHeadersByUrl = {};
+const pageTitlesByTab = {};
 
 function normalizeUrl(url) {
   try {
@@ -363,7 +364,7 @@ function scheduleMissingSizeProbes(tabId) {
   }
 }
 
-async function addDetectedVideo(tabId, input) {
+async function addDetectedVideo(tabId, input, notify = true) {
   if (!Number.isInteger(tabId) || tabId < 0 || !input || !input.url) {
     return null;
   }
@@ -392,8 +393,20 @@ async function addDetectedVideo(tabId, input) {
   const isGenericInput = videoFilters.isGenericTitle(inputTitle);
   const isGenericCurrent = videoFilters.isGenericTitle(currentTitle);
 
-  const finalTitle =
-    (!isGenericInput && inputTitle) || (!isGenericCurrent && currentTitle) || inputTitle || titleFromUrl(normalizedUrl);
+  const urlDerivedTitle = titleFromUrl(normalizedUrl);
+  const finalTitle = (function () {
+    const candidate =
+      (!isGenericInput && inputTitle) || (!isGenericCurrent && currentTitle) || inputTitle || urlDerivedTitle;
+    // If the title came from the URL and looks like a random server hash/token,
+    // fall back to the page <title> which is more descriptive (e.g. "My Video - Site").
+    if (candidate === urlDerivedTitle && looksLikeServerToken(urlDerivedTitle)) {
+      const pageTitle = pageTitlesByTab[tabId];
+      if (pageTitle && !videoFilters.isGenericTitle(pageTitle)) {
+        return pageTitle;
+      }
+    }
+    return candidate;
+  })();
 
   const nextVideo = {
     id,
@@ -420,7 +433,9 @@ async function addDetectedVideo(tabId, input) {
       tabId,
       existing.filter((item) => item.id !== id),
     );
-    notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
+    if (notify) {
+      notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
+    }
     return null;
   }
 
@@ -436,9 +451,21 @@ async function addDetectedVideo(tabId, input) {
     nextList.sort((left, right) => right.lastSeen - left.lastSeen).slice(0, MAX_VIDEOS_PER_TAB),
   );
 
-  notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
+  if (notify) {
+    notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
+  }
   scheduleVideoSizeProbe(tabId, nextVideo);
   return nextVideo;
+}
+
+function looksLikeServerToken(text) {
+  // Detect random hash/token filenames from CDN/proxy servers.
+  // Heuristic: long (>30 chars), no whitespace, mostly alphanumeric = likely a hash/UID.
+  if (!text || text.length <= 30 || /\s/.test(text)) {
+    return false;
+  }
+  const alphaNum = text.replace(/[^a-zA-Z0-9]/g, "").length;
+  return alphaNum / text.length > 0.8;
 }
 
 function titleFromUrl(url) {
@@ -461,6 +488,7 @@ function notifyPopup(message) {
 }
 
 async function clearTab(tabId) {
+  delete pageTitlesByTab[tabId];
   await tabState.load();
   await tabState.removeTab(tabId);
   notifyPopup({ type: "videoListUpdated", tabId, videos: [] });
@@ -1180,13 +1208,33 @@ function senderTabId(message, sender) {
 messageRouter.handle("contentDetectedVideos", async (message, sender) => {
   const tabId = senderTabId(message, sender);
   const videos = Array.isArray(message.videos) ? message.videos : [];
+
+  // Capture page title from content script sender (most reliable source).
+  if (sender?.tab?.title) {
+    pageTitlesByTab[tabId] = sender.tab.title;
+  }
+
+  await tabState.load();
+  let changed = false;
+
   for (const video of videos) {
-    await addDetectedVideo(tabId, {
-      ...video,
-      source: video.source || "dom",
-      pageUrl: video.pageUrl || (sender.tab && sender.tab.url) || "",
-      frameUrl: video.frameUrl || sender.url || "",
-    });
+    const added = await addDetectedVideo(
+      tabId,
+      {
+        ...video,
+        source: video.source || "dom",
+        pageUrl: video.pageUrl || (sender.tab && sender.tab.url) || "",
+        frameUrl: video.frameUrl || sender.url || "",
+      },
+      false,
+    );
+    if (added) {
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
   }
   return { ok: true };
 });
@@ -1365,8 +1413,12 @@ browserApi.onTabRemoved((tabId) => {
 });
 
 browserApi.onTabUpdated((tabId, changeInfo) => {
+  if (changeInfo.title) {
+    pageTitlesByTab[tabId] = changeInfo.title;
+  }
   if (changeInfo.status === "loading") {
     clearTab(tabId);
+    delete pageTitlesByTab[tabId];
   }
 });
 
