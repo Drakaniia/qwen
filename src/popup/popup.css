@@ -653,16 +653,18 @@ main {
 }
 
 .progress-bar.indeterminate span {
-  width: 40% !important;
-  animation: progress-indeterminate 1.4s ease-in-out infinite;
+  width: 100% !important;
+  background: linear-gradient(90deg, var(--accent) 0%, #5eead4 50%, var(--accent) 100%);
+  background-size: 200% 100%;
+  animation: progress-loop 1.5s linear infinite;
 }
 
-@keyframes progress-indeterminate {
+@keyframes progress-loop {
   0% {
-    transform: translateX(-100%);
+    background-position: 200% 0;
   }
   100% {
-    transform: translateX(350%);
+    background-position: -200% 0;
   }
 }
 
