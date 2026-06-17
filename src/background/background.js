@@ -1,45 +1,20 @@
 "use strict";
 
-if (typeof importScripts === "function" && typeof globalThis.QwinMediaCandidates === "undefined") {
-  importScripts("../shared/media_candidates.js");
-}
-if (typeof importScripts === "function" && typeof globalThis.QwinVideoFilters === "undefined") {
-  importScripts("../shared/video_filters.js");
-}
-if (typeof importScripts === "function" && typeof globalThis.QwinBrowserApi === "undefined") {
-  importScripts("../shared/browser_api.js");
-}
-if (typeof importScripts === "function" && typeof globalThis.QwinDownloadState === "undefined") {
-  importScripts("./download_state.js");
-}
-if (typeof importScripts === "function" && typeof globalThis.QwinNativeRequests === "undefined") {
-  importScripts("./native_requests.js");
-}
-if (typeof importScripts === "function" && typeof globalThis.QwinDownloadFallbacks === "undefined") {
-  importScripts("./download_fallbacks.js");
-}
-if (typeof importScripts === "function" && typeof globalThis.QwinTabState === "undefined") {
-  importScripts("./tab_state.js");
-}
-if (typeof importScripts === "function" && typeof globalThis.QwinMessageRouter === "undefined") {
-  importScripts("./message_router.js");
-}
-if (typeof importScripts === "function" && typeof globalThis.QwinDownloadOrchestration === "undefined") {
-  importScripts("./download_orchestration.js");
-}
-
-const browserApi = globalThis.QwinBrowserApi;
-const mediaCandidates = globalThis.QwinMediaCandidates;
-const videoFilters = globalThis.QwinVideoFilters;
-const downloadState = globalThis.QwinDownloadState;
-const nativeRequests = globalThis.QwinNativeRequests;
-const downloadFallbacks = globalThis.QwinDownloadFallbacks;
-const downloadOrchestrationModule = globalThis.QwinDownloadOrchestration;
-const tabState = globalThis.QwinTabState;
-const messageRouter = globalThis.QwinMessageRouter && globalThis.QwinMessageRouter.create();
+import { browserApi } from "../shared/browser_api.js";
+import * as mediaCandidates from "../shared/media_candidates.js";
+import * as videoFilters from "../shared/video_filters.js";
+import * as downloadState from "./download_state.js";
+import { nativeRequest as nativeRequestFn } from "./native_requests.js";
+import * as downloadFallbacks from "./download_fallbacks.js";
+import * as tabState from "./tab_state.js";
+import { create as createMessageRouter } from "./message_router.js";
+import { create as createDownloadOrchestration } from "./download_orchestration.js";
 
 // Raw API object for native_requests.js which expects it directly.
 const api = browserApi.raw;
+const messageRouter = createMessageRouter();
+const downloadOrchestrationModule = { create: createDownloadOrchestration };
+const nativeRequests = { nativeRequest: nativeRequestFn };
 
 const HOST_NAME = "com.qwin.video_downloader";
 const MAX_VIDEOS_PER_TAB = 100;
@@ -568,10 +543,6 @@ function updateDownload(jobId, patch) {
   notifyPopup({ type: "downloadUpdated", job });
 }
 
-function clampDownloadPercent(percent) {
-  return downloadState.clampDownloadPercent(percent);
-}
-
 function isSegmentedDownloadJob(job) {
   const format = String(job?.format || "").toUpperCase();
   const url = String(job?.url || "");
@@ -754,10 +725,6 @@ function pageFallbackVideoForSource(video, attemptedUrls = new Set()) {
   return downloadFallbacks.pageFallbackVideoForSource(video, attemptedUrls, downloadFallbackDeps());
 }
 
-function resolverUrlsForSource(sourceVideo) {
-  return downloadFallbacks.resolverUrlsForSource(sourceVideo, downloadFallbackDeps());
-}
-
 async function resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls = new Set()) {
   return downloadFallbacks.resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls, downloadFallbackDeps());
 }
@@ -822,20 +789,8 @@ function getDownloadOrchestration() {
   return downloadOrchestration;
 }
 
-function isBlockingDownloadStatus(status) {
-  return getDownloadOrchestration().isBlockingDownloadStatus(status);
-}
-
-function findBlockingDownloadJobForVideo(video, selectedVideo) {
-  return getDownloadOrchestration().findBlockingDownloadJobForVideo(video, selectedVideo);
-}
-
 async function startNativeDownload(tabId, videoId, formatId = "best", variantId = "", backend = "auto") {
   return getDownloadOrchestration().startNativeDownload(tabId, videoId, formatId, variantId, backend);
-}
-
-async function startNativeDownloadFromVideo(tabId, video, formatId = "best", options = {}) {
-  return getDownloadOrchestration().startNativeDownloadFromVideo(tabId, video, formatId, options);
 }
 
 async function startNativeDownloadForUrl(tabId, input) {
@@ -848,14 +803,6 @@ async function getBestDownloadableVideo(tabId) {
 
 async function startBestNativeDownload(tabId, formatId = "best", variantId = "") {
   return getDownloadOrchestration().startBestNativeDownload(tabId, formatId, variantId);
-}
-
-function getDownloadJob(jobId) {
-  return getDownloadOrchestration().getDownloadJob(jobId);
-}
-
-function videoFromDownloadJob(job) {
-  return getDownloadOrchestration().videoFromDownloadJob(job);
 }
 
 function controlActiveDownload(jobId, nativeType) {
@@ -891,21 +838,6 @@ async function clearDownloads() {
 }
 function nativeRequest(payload, timeoutMs = 60000) {
   return nativeRequests.nativeRequest(api, HOST_NAME, payload, timeoutMs);
-}
-
-function humanSize(numBytes) {
-  const size = Number(numBytes || 0);
-  if (!Number.isFinite(size) || size <= 0) {
-    return "";
-  }
-  let value = size;
-  for (const unit of ["B", "KB", "MB", "GB"]) {
-    if (value < 1024 || unit === "GB") {
-      return unit === "B" ? `${Math.round(value)} B` : `${value.toFixed(1)} ${unit}`;
-    }
-    value /= 1024;
-  }
-  return "";
 }
 
 function sourceHost(url) {

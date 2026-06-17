@@ -1,68 +1,58 @@
-(function attachQwinNativeRequests(root, factory) {
-  const nativeRequests = factory();
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = nativeRequests;
-  }
-  root.QwinNativeRequests = nativeRequests;
-})(typeof globalThis !== "undefined" ? globalThis : this, function createQwinNativeRequests() {
-  "use strict";
+"use strict";
 
-  function nativeRequest(api, hostName, payload, timeoutMs = 60000) {
-    return new Promise((resolve, reject) => {
-      let port;
-      let settled = false;
-      const finish = (error, response) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timeout);
-        try {
-          if (port) {
-            port.disconnect();
-          }
-        } catch (_error) {}
-        if (error) {
-          reject(error);
-        } else {
-          resolve(response);
-        }
-      };
-
-      try {
-        port = api.runtime.connectNative(hostName);
-      } catch (error) {
-        reject(new Error(`Native messaging is not connected: ${error.message || error}`));
+function nativeRequest(api, hostName, payload, timeoutMs = 60000) {
+  return new Promise((resolve, reject) => {
+    let port;
+    let settled = false;
+    const finish = (error, response) => {
+      if (settled) {
         return;
       }
-
-      const timeout = setTimeout(() => {
-        finish(new Error("Native helper did not respond in time."));
-      }, timeoutMs);
-
-      port.onMessage.addListener((message) => {
-        if (!message || message.id !== payload.id) {
-          return;
+      settled = true;
+      clearTimeout(timeout);
+      try {
+        if (port) {
+          port.disconnect();
         }
-        if (message.type === "error") {
-          finish(new Error(message.error || "Native helper returned an error."));
-          return;
-        }
-        finish(null, message);
-      });
+      } catch (_error) {}
+      if (error) {
+        reject(error);
+      } else {
+        resolve(response);
+      }
+    };
 
-      port.onDisconnect.addListener(() => {
-        const runtimeError = api.runtime.lastError ? api.runtime.lastError.message : "";
-        if (!settled) {
-          finish(new Error(runtimeError || "Native helper disconnected."));
-        }
-      });
+    try {
+      port = api.runtime.connectNative(hostName);
+    } catch (error) {
+      reject(new Error(`Native messaging is not connected: ${error.message || error}`));
+      return;
+    }
 
-      port.postMessage(payload);
+    const timeout = setTimeout(() => {
+      finish(new Error("Native helper did not respond in time."));
+    }, timeoutMs);
+
+    port.onMessage.addListener((message) => {
+      if (!message || message.id !== payload.id) {
+        return;
+      }
+      if (message.type === "error") {
+        finish(new Error(message.error || "Native helper returned an error."));
+        return;
+      }
+      finish(null, message);
     });
-  }
 
-  return {
-    nativeRequest,
-  };
-});
+    port.onDisconnect.addListener(() => {
+      const runtimeError = api.runtime.lastError ? api.runtime.lastError.message : "";
+      if (!settled) {
+        finish(new Error(runtimeError || "Native helper disconnected."));
+      }
+    });
+
+    port.postMessage(payload);
+  });
+}
+
+export { nativeRequest };
