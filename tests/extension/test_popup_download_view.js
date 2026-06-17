@@ -221,7 +221,7 @@ assert.match(
 
 assert.match(
   css,
-  /@keyframes\s+progress-indeterminate/,
+  /@keyframes\s+progress-loop/,
   "popup must animate indeterminate progress for post-download processing",
 );
 

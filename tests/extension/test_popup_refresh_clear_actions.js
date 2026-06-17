@@ -226,7 +226,7 @@ function createHarness({
     }
     if (message.type === "rescanTab") {
       rescanCount += 1;
-      if (holdNextUserRescan && rescanCount >= 2) {
+      if (holdNextUserRescan) {
         pendingUserRescan = createDeferred();
         holdNextUserRescan = false;
         return pendingUserRescan.promise;
