@@ -4,7 +4,7 @@
 const state = {
   activeTabId: null,
   activeTabUrl: "",
-  currentVideos: [],
+  currentVideos: null,
   currentDownloads: [],
   viewMode: "videos",
   videoLayoutMode: "list",

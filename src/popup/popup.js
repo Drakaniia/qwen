@@ -312,6 +312,10 @@ function createVideoPreview(video) {
 }
 
 function renderVideos(videos, downloads) {
+  if (videos === null) {
+    return;
+  }
+
   elements.videoList.textContent = "";
 
   if (!videos.length) {
@@ -518,7 +522,6 @@ async function checkNativeHost() {
 }
 
 async function init() {
-  setDownloadIndicator(INDICATOR_STATES.CHECKING, { immediate: true });
   await updateActiveTabContext();
 
   if (!hasActiveTab()) {
@@ -528,21 +531,22 @@ async function init() {
   }
 
   await refresh({ syncActiveTab: false });
-  await PopupApi.rescanTab(PopupState.get("activeTabId"));
   await checkNativeHost();
 }
 
 async function rescanActiveTab() {
+  setDownloadIndicator(INDICATOR_STATES.CHECKING, { immediate: true });
+  setRescanRefreshing(true);
+
   await updateActiveTabContext();
 
   if (!hasActiveTab()) {
+    setRescanRefreshing(false);
     setMessage("No active tab found.", true);
     elements.message.hidden = false;
     return;
   }
 
-  setDownloadIndicator(INDICATOR_STATES.CHECKING, { immediate: true });
-  setRescanRefreshing(true);
   try {
     const response = await PopupApi.rescanTab(PopupState.get("activeTabId"));
     if (!response || !response.ok) {
@@ -605,6 +609,11 @@ function render() {
   const mode = state.viewMode;
 
   let filteredVideos = state.currentVideos;
+  if (filteredVideos === null) {
+    // Initial loading - skip rendering to avoid jump
+    return;
+  }
+
   if (mode === "videos") {
     filteredVideos = state.currentVideos.filter((v) => String(v.format || "").toUpperCase() !== "AUDIO");
   } else if (mode === "music") {
