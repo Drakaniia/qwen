@@ -1114,7 +1114,8 @@ function pingNativeHost() {
   return new Promise((resolve) => {
     const id = `ping_${Date.now()}`;
     let settled = false;
-    let port;
+    const port = browserApi.runtime.connectNative(HOST_NAME);
+
     const finish = (result) => {
       if (settled) {
         return;
@@ -1128,10 +1129,8 @@ function pingNativeHost() {
       } catch (_error) {}
     };
 
-    try {
-      port = browserApi.runtime.connectNative(HOST_NAME);
-    } catch (error) {
-      finish({ ok: false, error: `Native messaging is not connected: ${error.message || error}` });
+    if (!port) {
+      finish({ ok: false, error: "Native messaging is not available in this browser." });
       return;
     }
 
@@ -1357,7 +1356,7 @@ messageRouter.handle("clearVideos", async (message, sender) => {
 
 // Wire the message router to the runtime.onMessage listener.
 browserApi.onMessage((message, sender, sendResponse) => {
-  messageRouter.dispatch(message, sender, sendResponse);
+  return messageRouter.dispatch(message, sender, sendResponse);
 });
 
 // Tab lifecycle — delegated to tabState

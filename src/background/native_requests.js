@@ -24,6 +24,9 @@ function nativeRequest(api, hostName, payload, timeoutMs = 60000) {
 
     try {
       port = api.runtime.connectNative(hostName);
+      if (!port) {
+        throw new Error("Native messaging is not available.");
+      }
     } catch (error) {
       reject(new Error(`Native messaging is not connected: ${error.message || error}`));
       return;
