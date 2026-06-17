@@ -109,10 +109,25 @@ if %ERRORLEVEL% neq 0 (
   exit /b 1
 )
 
+reg add "HKCU\Software\Microsoft\Edge\NativeMessagingHosts\%HOST_NAME%" /ve /t REG_SZ /d "%CHROME_MANIFEST%" /f
+if %ERRORLEVEL% neq 0 (
+  echo WARNING: Could not register the Microsoft Edge native messaging host.
+)
+
+reg add "HKCU\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\%HOST_NAME%" /ve /t REG_SZ /d "%CHROME_MANIFEST%" /f
+if %ERRORLEVEL% neq 0 (
+  echo WARNING: Could not register the Brave Browser native messaging host.
+)
+
 reg add "HKCU\Software\Chromium\NativeMessagingHosts\%HOST_NAME%" /ve /t REG_SZ /d "%YANDEX_MANIFEST%" /f
 if %ERRORLEVEL% neq 0 (
-  echo ERROR: Could not register the Yandex Browser native messaging host.
+  echo ERROR: Could not register the Chromium native messaging host.
   exit /b 1
+)
+
+reg add "HKCU\Software\Yandex\YandexBrowser\NativeMessagingHosts\%HOST_NAME%" /ve /t REG_SZ /d "%YANDEX_MANIFEST%" /f
+if %ERRORLEVEL% neq 0 (
+  echo WARNING: Could not register the Yandex Browser specific native messaging host.
 )
 
 reg add "HKCU\Software\Mozilla\NativeMessagingHosts\%HOST_NAME%" /ve /t REG_SZ /d "%FIREFOX_MANIFEST%" /f
