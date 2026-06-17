@@ -1,13 +1,13 @@
 "use strict";
 
 // ─── Module references ──────────────────────────────────────────────────────
-const PopupState = globalThis.QwinPopupState;
-const PopupApi = globalThis.QwinPopupApi;
-const DownloadList = globalThis.QwinDownloadList;
-const videoFilters = globalThis.QwinVideoFilters;
-const qualityFormat = globalThis.QwinQualityFormat;
-const qualityDialog = globalThis.QwinQualityDialog;
-const VideoPicker = globalThis.QwinVideoPicker;
+import * as PopupState from "../shared/popup_state.js";
+import * as PopupApi from "../shared/popup_api.js";
+import * as DownloadList from "./download_list.js";
+import * as videoFilters from "../shared/video_filters.js";
+import * as qualityFormat from "../shared/quality_format.js";
+import * as qualityDialog from "../shared/quality_dialog.js";
+import * as VideoPicker from "../shared/video_picker.js";
 
 const api = typeof browser !== "undefined" ? browser : chrome;
 
@@ -114,156 +114,6 @@ function setDownloadIndicator(status, { immediate = false } = {}) {
 function updateIndicatorFromVideos(videos) {
   const hasDownloadable = Array.isArray(videos) && videos.some((video) => video && video.downloadable);
   setDownloadIndicator(hasDownloadable ? INDICATOR_STATES.AVAILABLE : INDICATOR_STATES.UNAVAILABLE);
-}
-
-// ─── Download progress helpers ──────────────────────────────────────────────
-
-function hasDownloadPercent(job) {
-  return typeof job?.percent === "number" && Number.isFinite(job.percent);
-}
-
-function clampDownloadPercent(percent) {
-  return Math.max(0, Math.min(100, Number(percent)));
-}
-
-function formatDownloadPercent(percent) {
-  return `${Math.round(clampDownloadPercent(percent))}%`;
-}
-
-function isProcessingStage(job) {
-  const stage = String(job?.stage || "").trim();
-  return stage === "postprocess" || stage === "destination" || stage === "filepath";
-}
-
-function downloadProgressButtonText(job) {
-  const stage = String(job?.stage || "").trim();
-  if (stage === "postprocess") {
-    return "Merging";
-  }
-  if (stage === "destination" || stage === "filepath") {
-    return "Finalizing";
-  }
-
-  if (hasDownloadPercent(job) && !isProcessingStage(job)) {
-    return formatDownloadPercent(job.percent);
-  }
-
-  const status = job?.status || "queued";
-  if (status === "queued") {
-    return "Queued";
-  }
-  if (status === "connecting") {
-    return "Connecting";
-  }
-  if (status === "paused") {
-    return "Paused";
-  }
-  if (status === "pausing") {
-    return "Pausing";
-  }
-  if (status === "canceling") {
-    return "Canceling";
-  }
-  if (job?.fragment) {
-    return `Frag ${job.fragment}`;
-  }
-  if (job?.speed) {
-    return job.speed;
-  }
-  if (stage === "download") {
-    return "Active";
-  }
-  if (stage === "extract") {
-    return "Preparing";
-  }
-  return "Starting";
-}
-
-function downloadProgressLabel(job) {
-  const stage = String(job?.stage || "").trim();
-  if (stage === "postprocess") {
-    return "Merging downloaded segments...";
-  }
-  if (stage === "destination" || stage === "filepath") {
-    return "Finalizing output...";
-  }
-
-  if (hasDownloadPercent(job) && !isProcessingStage(job)) {
-    return `${formatDownloadPercent(job.percent)} downloaded`;
-  }
-
-  if (stage === "download") {
-    if (job?.fragment) {
-      return `Downloading video segments... (${job.fragment})`;
-    }
-    if (job?.speed) {
-      return `Downloading video segments at ${job.speed}`;
-    }
-    return "Downloading video segments...";
-  }
-  if (stage === "extract") {
-    if (job?.fragment) {
-      return `Preparing fragments ${job.fragment}`;
-    }
-    return "Preparing video...";
-  }
-
-  const status = job?.status || "queued";
-  if (status === "queued") {
-    return "Queued";
-  }
-  if (status === "connecting") {
-    return "Connecting to helper";
-  }
-  if (status === "paused") {
-    return "Paused";
-  }
-  if (status === "pausing") {
-    return "Pausing...";
-  }
-  if (status === "canceling") {
-    return "Canceling...";
-  }
-  return "Downloading...";
-}
-
-function isFakeDownloadMessage(text) {
-  return /^Downloading(?:\.\.\.| to\b)/i.test(String(text || "").trim());
-}
-
-function appendDownloadProgress(container, job, options = {}) {
-  if (!job || job.status === "error") {
-    return;
-  }
-
-  const doc = container.ownerDocument;
-  const processing = isProcessingStage(job);
-  const knownPercent = hasDownloadPercent(job) && !processing;
-  const displayPercent = knownPercent ? clampDownloadPercent(job.percent) : 0;
-
-  const progress = doc.createElement("div");
-  progress.className = `progress ${options.compact ? "compact" : ""}`.trim();
-  progress.setAttribute("role", "progressbar");
-  progress.setAttribute("aria-label", processing ? "Processing progress" : "Download progress");
-  progress.setAttribute("aria-valuemin", "0");
-  progress.setAttribute("aria-valuemax", "100");
-  progress.setAttribute("aria-valuetext", downloadProgressLabel(job));
-  if (knownPercent) {
-    progress.setAttribute("aria-valuenow", String(Math.round(displayPercent)));
-  }
-
-  const bar = doc.createElement("div");
-  bar.className = `progress-bar ${processing ? "indeterminate" : ""}`.trim();
-  const fill = doc.createElement("span");
-  fill.style.width = processing ? "" : `${displayPercent}%`;
-  bar.append(fill);
-
-  const label = doc.createElement("div");
-  label.className = "progress-label";
-  label.textContent = downloadProgressLabel(job);
-
-  progress.append(bar, label);
-  container.append(progress);
 }
 
 // ─── UI helpers ─────────────────────────────────────────────────────────────
@@ -514,7 +364,7 @@ function renderVideos(videos, downloads) {
     );
     if (!video.downloadable || runningJob) {
       button.disabled = true;
-      button.textContent = runningJob ? downloadProgressButtonText(runningJob) : "Unsupported";
+      button.textContent = runningJob ? DownloadList.downloadProgressButtonText(runningJob) : "Unsupported";
     }
 
     main.append(details, button);
@@ -543,7 +393,7 @@ function renderVideos(videos, downloads) {
       content.append(main, meta, warning);
     } else {
       content.append(main, meta);
-      appendDownloadProgress(content, runningJob, { compact: true });
+      DownloadList.appendDownloadProgress(content, runningJob, { compact: true });
     }
 
     item.append(content);
@@ -650,7 +500,8 @@ async function refresh(options = {}) {
 async function checkNativeHost() {
   const response = await PopupApi.pingNativeHost();
   if (!response || !response.ok) {
-    setHelperStatus("Helper not connected. Run scripts\\install.bat.", "error");
+    const errorMsg = response && response.error ? `: ${response.error}` : "";
+    setHelperStatus(`Helper not connected${errorMsg}. Run scripts\\install.bat.`, "error");
     return;
   }
 

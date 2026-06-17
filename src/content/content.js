@@ -1,12 +1,14 @@
 "use strict";
 
+import * as videoFilters from "../shared/video_filters.js";
+import * as qualityFormat from "../shared/quality_format.js";
+import * as qualityDialog from "../shared/quality_dialog.js";
+import * as videoPicker from "../shared/video_picker.js";
+import * as pageDetectionModule from "./page_detection.js";
+
 const extensionApi = typeof browser !== "undefined" ? browser : chrome;
-const videoFilters = globalThis.QwinVideoFilters;
-const qualityFormat = globalThis.QwinQualityFormat;
-const qualityDialog = globalThis.QwinQualityDialog;
-const videoPicker = globalThis.QwinVideoPicker;
 const seenUrls = new Map();
-const pageDetection = globalThis.QwinPageDetection.create({
+const pageDetection = pageDetectionModule.create({
   document,
   location,
   videoFilters,
@@ -53,86 +55,6 @@ function sendMessageWithResponse(message) {
       resolve({ ok: false, error: error.message || String(error) });
     }
   });
-}
-
-function toAbsoluteUrl(value) {
-  return pageDetection.toAbsoluteUrl(value);
-}
-
-function detectFormat(url, mimeType = "") {
-  return pageDetection.detectFormat(url, mimeType);
-}
-
-function cleanText(value) {
-  return pageDetection.cleanText(value);
-}
-
-function decodeUrlText(value) {
-  return pageDetection.decodeUrlText(value);
-}
-
-function titleFromUrl(url) {
-  return pageDetection.titleFromUrl(url);
-}
-
-function titleForVideo(video, url) {
-  return pageDetection.titleForVideo(video, url);
-}
-
-function pageThumbnailUrl() {
-  return pageDetection.pageThumbnailUrl();
-}
-
-function thumbnailForVideo(video) {
-  return pageDetection.thumbnailForVideo(video);
-}
-
-function videoElementDetails(video) {
-  return pageDetection.videoElementDetails(video);
-}
-
-function buildCandidate(url, source, mimeType = "", video = null) {
-  return pageDetection.buildCandidate(url, source, mimeType, video);
-}
-
-function currentYouTubeVideoPageUrl() {
-  return pageDetection.currentYouTubeVideoPageUrl();
-}
-
-function youtubePageCandidateForVideo(video) {
-  return pageDetection.youtubePageCandidateForVideo(video);
-}
-
-function pageFallbackCandidateForVideo(video) {
-  return pageDetection.pageFallbackCandidateForVideo(video);
-}
-
-function candidateMetadataSignature(candidate) {
-  return pageDetection.candidateMetadataSignature(candidate);
-}
-
-function addBuiltCandidate(candidates, candidate) {
-  return pageDetection.addBuiltCandidate(candidates, candidate);
-}
-
-function addCandidate(candidates, url, source, mimeType = "", video = null) {
-  return pageDetection.addCandidate(candidates, url, source, mimeType, video);
-}
-
-function videoHasBlockedMediaSource(video) {
-  return pageDetection.videoHasBlockedMediaSource(video);
-}
-
-function videoMetrics(video, candidate) {
-  return pageDetection.videoMetrics(video, candidate);
-}
-
-function findOverlayCandidate(video, candidates) {
-  return pageDetection.findOverlayCandidate(video, candidates);
-}
-
-function isLikelyRealPlayer(video) {
-  return pageDetection.isLikelyRealPlayer(video);
 }
 
 function createOverlayButton(_video) {
@@ -420,34 +342,46 @@ function scanVideoElements() {
 
   for (const video of videos) {
     const videoCandidates = [];
-    const primary = addCandidate(candidates, video.currentSrc || video.src, "dom-video", video.type || "", video);
+    const primary = pageDetection.addCandidate(
+      candidates,
+      video.currentSrc || video.src,
+      "dom-video",
+      video.type || "",
+      video,
+    );
     if (primary) {
       videoCandidates.push(primary);
     }
 
     for (const source of Array.from(video.querySelectorAll("source"))) {
-      const candidate = addCandidate(candidates, source.src, "dom-source", source.type || "", video);
+      const candidate = pageDetection.addCandidate(candidates, source.src, "dom-source", source.type || "", video);
       if (candidate) {
         videoCandidates.push(candidate);
       }
     }
 
-    const youtubeCandidate = addBuiltCandidate(candidates, youtubePageCandidateForVideo(video));
+    const youtubeCandidate = pageDetection.addBuiltCandidate(
+      candidates,
+      pageDetection.youtubePageCandidateForVideo(video),
+    );
     if (youtubeCandidate) {
       videoCandidates.push(youtubeCandidate);
     }
 
-    const pageFallbackCandidate = pageFallbackCandidateForVideo(video);
-    const storedPageFallbackCandidate = addBuiltCandidate(candidates, pageFallbackCandidate);
+    const pageFallbackCandidate = pageDetection.pageFallbackCandidateForVideo(video);
+    const storedPageFallbackCandidate = pageDetection.addBuiltCandidate(candidates, pageFallbackCandidate);
     if (storedPageFallbackCandidate) {
       videoCandidates.push(storedPageFallbackCandidate);
     }
 
-    const overlayCandidate = findOverlayCandidate(video, videoCandidates);
+    const overlayCandidate = pageDetection.findOverlayCandidate(video, videoCandidates);
     updateOverlay(
       video,
       overlayCandidate || pageFallbackCandidate,
-      !overlayCandidate && !pageFallbackCandidate && !videoHasBlockedMediaSource(video) && isLikelyRealPlayer(video),
+      !overlayCandidate &&
+        !pageFallbackCandidate &&
+        !pageDetection.videoHasBlockedMediaSource(video) &&
+        pageDetection.isLikelyRealPlayer(video),
     );
   }
 
@@ -457,7 +391,7 @@ function scanVideoElements() {
         .toLowerCase()
         .startsWith("video/")
     ) {
-      addCandidate(candidates, source.src, "dom-source", source.type || "");
+      pageDetection.addCandidate(candidates, source.src, "dom-source", source.type || "");
     }
   }
 
@@ -471,13 +405,9 @@ function scanPerformanceEntries() {
   }
 
   for (const entry of performance.getEntriesByType("resource")) {
-    addCandidate(candidates, entry.name, "performance");
+    pageDetection.addCandidate(candidates, entry.name, "performance");
   }
   return candidates;
-}
-
-function scanTextForMediaUrls(text, source) {
-  return pageDetection.scanTextForMediaUrls(text, source);
 }
 
 function scanInlinePlayerScripts() {
@@ -486,7 +416,7 @@ function scanInlinePlayerScripts() {
     if (script.src) {
       continue;
     }
-    candidates.push(...scanTextForMediaUrls(script.textContent || "", "script-config"));
+    candidates.push(...pageDetection.scanTextForMediaUrls(script.textContent || "", "script-config"));
   }
   return candidates;
 }
@@ -494,7 +424,7 @@ function scanInlinePlayerScripts() {
 function scanVisiblePlayerFrames() {
   const candidates = [];
   for (const frame of Array.from(document.querySelectorAll("iframe[src]"))) {
-    const src = toAbsoluteUrl(frame.getAttribute("src") || frame.src || "");
+    const src = pageDetection.toAbsoluteUrl(frame.getAttribute("src") || frame.src || "");
     if (!src || !videoFilters.isDownloadableUrl(src, "")) {
       continue;
     }
@@ -502,21 +432,21 @@ function scanVisiblePlayerFrames() {
     if (rect.width < 220 || rect.height < 120) {
       continue;
     }
-    const iframeTitle = cleanText(frame.getAttribute("title"));
+    const iframeTitle = pageDetection.cleanText(frame.getAttribute("title"));
     const finalTitle =
       iframeTitle && !videoFilters.isGenericTitle(iframeTitle)
         ? iframeTitle
-        : cleanText(document.title) || titleFromUrl(src) || "Video";
+        : pageDetection.cleanText(document.title) || pageDetection.titleFromUrl(src) || "Video";
 
-    addBuiltCandidate(candidates, {
+    pageDetection.addBuiltCandidate(candidates, {
       url: src,
-      format: detectFormat(src),
+      format: pageDetection.detectFormat(src),
       source: "iframe-page",
       contentType: "",
       pageUrl: src,
       frameUrl: location.href,
       title: finalTitle,
-      thumbnailUrl: pageThumbnailUrl(),
+      thumbnailUrl: pageDetection.pageThumbnailUrl(),
       downloadable: true,
       width: rect.width,
       height: rect.height,
@@ -554,9 +484,12 @@ function scanMusicSources() {
   // Use the page URL itself as the download source.
   // For DRM platforms like Spotify the native host resolves via YouTube fallback.
   const pageUrl = location.href;
-  const title = pageDetection.cleanMusicTitle(cleanText(document.title)) || titleFromUrl(pageUrl) || "Music";
+  const title =
+    pageDetection.cleanMusicTitle(pageDetection.cleanText(document.title)) ||
+    pageDetection.titleFromUrl(pageUrl) ||
+    "Music";
 
-  addBuiltCandidate(candidates, {
+  pageDetection.addBuiltCandidate(candidates, {
     url: pageUrl,
     format: "AUDIO",
     source: "music-page",
@@ -564,7 +497,7 @@ function scanMusicSources() {
     pageUrl,
     frameUrl: location.href,
     title,
-    thumbnailUrl: pageThumbnailUrl(),
+    thumbnailUrl: pageDetection.pageThumbnailUrl(),
     downloadable: true,
     width: 0,
     height: 0,
