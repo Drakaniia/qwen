@@ -324,9 +324,8 @@ function create(options) {
 
   function videoMetrics(video, candidate) {
     return {
+      ...(candidate || {}),
       ...videoElementDetails(video),
-      url: candidate.url,
-      contentType: candidate.contentType || "",
     };
   }
 

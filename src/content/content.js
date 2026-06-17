@@ -16,6 +16,7 @@ const pageDetection = pageDetectionModule.create({
 });
 const overlayByVideo = new WeakMap();
 const overlayRecords = new Set();
+const watchedVideos = new WeakSet();
 
 let overlayDialog = null;
 let overlayQualityChooser = null;
@@ -55,6 +56,17 @@ function sendMessageWithResponse(message) {
       resolve({ ok: false, error: error.message || String(error) });
     }
   });
+}
+
+function findAllVideos(root = document) {
+  const videos = Array.from(root.querySelectorAll("video"));
+  const allElements = root.querySelectorAll("*");
+  for (const el of Array.from(allElements)) {
+    if (el.shadowRoot) {
+      videos.push(...findAllVideos(el.shadowRoot));
+    }
+  }
+  return videos;
 }
 
 function createOverlayButton(_video) {
@@ -105,6 +117,7 @@ function ensureOverlay() {
   back.className = "qwin-overlay-back";
   back.textContent = "Back";
   back.hidden = true;
+  back.addEventListener("click", () => showAvailableVideosOverlay());
 
   const title = document.createElement("h2");
   title.className = "qwin-overlay-title";
@@ -121,7 +134,7 @@ function ensureOverlay() {
   header.append(back, title);
   card.append(header, list, cancel);
   root.append(card);
-  (document.body || document.documentElement).append(root);
+  (document.fullscreenElement || document.body || document.documentElement).append(root);
   overlayDialog = { root, card, header, back, title, list, cancel };
   overlayQualityChooser = null;
   return overlayDialog;
@@ -281,8 +294,8 @@ function positionOverlay(record) {
 
   const rect = record.video.getBoundingClientRect();
   const visible =
-    rect.width >= 220 &&
-    rect.height >= 120 &&
+    rect.width >= 160 &&
+    rect.height >= 90 &&
     rect.bottom > 0 &&
     rect.right > 0 &&
     rect.top < window.innerHeight &&
@@ -291,6 +304,12 @@ function positionOverlay(record) {
   if (!visible) {
     record.button.style.display = "none";
     return;
+  }
+
+  // Ensure button is attached to the correct parent (handles fullscreen)
+  const targetParent = document.fullscreenElement || document.body || document.documentElement;
+  if (record.button.parentElement !== targetParent) {
+    targetParent.append(record.button);
   }
 
   const left = Math.max(8, Math.min(rect.right - 106, window.innerWidth - 114));
@@ -325,7 +344,7 @@ function updateOverlay(video, candidate, allowBestDetectedFallback = false) {
   let record = overlayByVideo.get(video);
   if (!record) {
     const button = createOverlayButton(video);
-    (document.body || document.documentElement).append(button);
+    (document.fullscreenElement || document.body || document.documentElement).append(button);
     record = { video, button, candidate };
     overlayByVideo.set(video, record);
     overlayRecords.add(record);
@@ -338,7 +357,7 @@ function updateOverlay(video, candidate, allowBestDetectedFallback = false) {
 
 function scanVideoElements() {
   const candidates = [];
-  const videos = Array.from(document.querySelectorAll("video"));
+  const videos = findAllVideos();
 
   for (const video of videos) {
     const videoCandidates = [];
@@ -527,13 +546,20 @@ function scheduleScan() {
 }
 
 function watchVideoElement(video) {
+  if (!video || watchedVideos.has(video)) {
+    return;
+  }
+  watchedVideos.add(video);
   for (const eventName of ["loadedmetadata", "loadeddata", "play", "playing", "canplay"]) {
     video.addEventListener(eventName, scheduleScan, { passive: true });
   }
 }
 
 function installVideoWatchers(root = document) {
-  for (const video of Array.from(root.querySelectorAll ? root.querySelectorAll("video") : [])) {
+  if (root && root.matches && root.matches("video")) {
+    watchVideoElement(root);
+  }
+  for (const video of findAllVideos(root)) {
     watchVideoElement(video);
   }
 }
@@ -549,7 +575,7 @@ const observer = new MutationObserver((mutations) => {
       if (node.nodeType !== Node.ELEMENT_NODE) {
         continue;
       }
-      if (node.matches && node.matches("video, source")) {
+      if (node.matches && (node.matches("video, source") || node.querySelector("video, source"))) {
         shouldScan = true;
       }
       installVideoWatchers(node);
