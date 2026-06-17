@@ -538,6 +538,7 @@ function publishScan() {
   if (videos.length > 0) {
     sendMessage({ type: "contentDetectedVideos", videos });
   }
+  return videos;
 }
 
 function scheduleScan() {
@@ -603,10 +604,20 @@ function start() {
 window.addEventListener("scroll", positionAllOverlays, true);
 window.addEventListener("resize", positionAllOverlays, true);
 
-extensionApi.runtime.onMessage.addListener((message) => {
+extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message && message.type === "scanNow") {
     seenUrls.clear();
-    publishScan();
+    const videos = publishScan();
+
+    // Return scan results synchronously so the background's rescanTab
+    // handler can await tabs.sendMessage and get populated data back.
+    if (typeof browser !== "undefined") {
+      return Promise.resolve({ ok: true, videos });
+    }
+    if (sendResponse) {
+      sendResponse({ ok: true, videos });
+    }
+    return true;
   } else if (message && message.type === "updateLoadingStatus") {
     updateQualityLoadingStatus(message.text);
   }

@@ -266,9 +266,6 @@ function videoThumbnailUrl(video) {
     if (!["http:", "https:", "blob:", "data:"].includes(parsed.protocol)) {
       return "";
     }
-    if (/\.(?:gif|gifv)(?:$|[?#])/i.test(parsed.href)) {
-      return "";
-    }
     return parsed.href;
   } catch (_error) {
     return "";
@@ -556,7 +553,8 @@ async function rescanActiveTab() {
     }
 
     await refresh({ syncActiveTab: false });
-    window.setTimeout(() => refresh({ syncActiveTab: false }), 350);
+    // Retry after content scan should have completed
+    window.setTimeout(() => refresh({ syncActiveTab: false }), 2000);
   } finally {
     setRescanRefreshing(false);
   }

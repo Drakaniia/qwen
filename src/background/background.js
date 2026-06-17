@@ -1117,6 +1117,15 @@ async function getNativeFormatsForVideo(tabId, video) {
   const formats = nativeFormats.length ? nativeFormats : sourceFormats;
   const pageTitle = refreshedVideo.title || lookupVideo.title || "Video";
   const serverTitle = response && response.title && !videoFilters.isGenericTitle(response.title) ? response.title : "";
+  const serverThumbnail = response && response.thumbnailUrl ? response.thumbnailUrl : "";
+
+  if (serverThumbnail) {
+    await tabState.patchVideo(
+      tabId,
+      (item) => item.id === refreshedVideo.id || variantsForVideo(item).some((v) => v.id === refreshedVideo.id),
+      { thumbnailUrl: serverThumbnail },
+    );
+  }
 
   // The user wants the "site tile" (page title) over "random metadata texts" (generic server titles).
   // If the server provides a GOOD, non-generic title, we should use it as it's most accurate for the stream.
@@ -1126,6 +1135,7 @@ async function getNativeFormatsForVideo(tabId, video) {
   return {
     videoId: refreshedVideo.id || formatLookupVideo.id || lookupVideo.id,
     title: finalTitle,
+    thumbnailUrl: serverThumbnail || refreshedVideo.thumbnailUrl || "",
     formats: formats.length
       ? formats
       : [
@@ -1388,7 +1398,30 @@ messageRouter.handle("pingNativeHost", async () => {
 messageRouter.handle("rescanTab", async (message, sender) => {
   const tabId = senderTabId(message, sender);
   await clearTab(tabId);
-  await browserApi.tabs.sendMessage(tabId, { type: "scanNow" });
+
+  // Send scanNow to content script and await the scan results via sendResponse.
+  // This ensures videos are re-detected BEFORE returning to the popup,
+  // so refresh() immediately after rescanTab gets populated data.
+  const contentResponse = await browserApi.tabs.sendMessage(tabId, { type: "scanNow" });
+
+  // Process videos returned from the content scan response.
+  if (contentResponse && contentResponse.ok && Array.isArray(contentResponse.videos)) {
+    for (const video of contentResponse.videos) {
+      await addDetectedVideo(
+        tabId,
+        {
+          ...video,
+          source: video.source || "dom",
+          pageUrl: video.pageUrl || (sender.tab && sender.tab.url) || "",
+          frameUrl: video.frameUrl || sender.url || "",
+        },
+        false,
+      );
+    }
+    notifyPopup({ type: "videoListUpdated", tabId, videos: getVisibleVideosForTab(tabId) });
+  }
+
+  // Also dispatch into sub-frames (tabs.sendMessage only reaches main frame).
   await browserApi.scripting.executeScript({
     target: { tabId, allFrames: true },
     func: () => window.dispatchEvent(new CustomEvent("qwin-video-scan-now")),
