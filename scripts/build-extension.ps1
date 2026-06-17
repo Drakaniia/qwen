@@ -10,6 +10,15 @@ $root = (Resolve-Path $RootDir).Path
 $distRoot = Join-Path $root "dist"
 $templateDir = Join-Path $root "config\extension"
 $sourceDir = Join-Path $root "src"
+$bundlesDir = Join-Path $distRoot "bundled"
+
+# Run esbuild once to produce all bundles into dist/bundled/
+Push-Location $root
+try {
+  node scripts/build-bundles.js --target all
+} finally {
+  Pop-Location
+}
 
 function Copy-ExtensionTarget {
   param(
@@ -30,7 +39,13 @@ function Copy-ExtensionTarget {
   }
 
   New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+
+  # Copy source tree (HTML, CSS, and ESM .js files for reference)
   Copy-Item -LiteralPath $sourceDir -Destination (Join-Path $targetDir "src") -Recurse
+
+  # Overlay esbuild bundles (content, background, popup)
+  Copy-Item -Path (Join-Path $bundlesDir "src\*") -Destination (Join-Path $targetDir "src") -Recurse -Force
+
   Copy-Item -LiteralPath (Join-Path $templateDir $ManifestTemplate) -Destination (Join-Path $targetDir "manifest.json")
 }
 

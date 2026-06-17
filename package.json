@@ -1,6 +1,7 @@
 {
   "name": "qwin-video-downloader",
   "private": true,
+  "type": "module",
   "scripts": {
     "setup": "scripts\\install.bat",
     "install:native": "scripts\\install.bat",
@@ -24,6 +25,7 @@
     "format:py": "python -m ruff format src/native-host/ tests/native-host/"
   },
   "devDependencies": {
+    "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
     "globals": "^17.6.0",
     "prettier": "^3.8.4"

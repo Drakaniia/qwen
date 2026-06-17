@@ -6,16 +6,7 @@
   "permissions": ["activeTab", "scripting", "downloads", "storage", "webRequest", "nativeMessaging", "tabs", "cookies"],
   "host_permissions": ["<all_urls>"],
   "background": {
-    "scripts": [
-      "src/shared/media_candidates.js",
-      "src/shared/video_filters.js",
-      "src/shared/quality_format.js",
-      "src/background/download_state.js",
-      "src/background/native_requests.js",
-      "src/background/download_fallbacks.js",
-      "src/background/download_orchestration.js",
-      "src/background/background.js"
-    ]
+    "scripts": ["src/background/background.bundle.js"]
   },
   "action": {
     "default_title": "Qwin Video Downloader",
@@ -24,15 +15,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": [
-        "src/shared/media_candidates.js",
-        "src/shared/video_filters.js",
-        "src/shared/quality_format.js",
-        "src/shared/quality_dialog.js",
-        "src/shared/video_picker.js",
-        "src/content/page_detection.js",
-        "src/content/content.js"
-      ],
+      "js": ["src/content/content.bundle.js"],
       "css": ["src/shared/qwin_overlay.css"],
       "run_at": "document_start",
       "all_frames": true,

@@ -1,19 +1,16 @@
-const globals = require("globals");
+import globals from "globals";
 
-module.exports = [
+export default [
   {
     files: ["src/**/*.js"],
     languageOptions: {
       ecmaVersion: "latest",
-      sourceType: "script",
+      sourceType: "module",
       globals: {
         ...globals.browser,
         ...globals.serviceworker,
         chrome: "readonly",
         browser: "readonly",
-        globalThis: "readonly",
-        module: "readonly",
-        require: "readonly",
       },
     },
     rules: {
@@ -34,7 +31,7 @@ module.exports = [
     files: ["tests/**/*.js"],
     languageOptions: {
       ecmaVersion: "latest",
-      sourceType: "commonjs",
+      sourceType: "module",
       globals: {
         ...globals.node,
       },
