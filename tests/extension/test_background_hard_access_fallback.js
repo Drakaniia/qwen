@@ -1,18 +1,10 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import vm from "node:vm";
 
-const source = fs.readFileSync(path.join(__dirname, "../../src/background/background.js"), "utf8");
-const browserApiSource = fs.readFileSync(path.join(__dirname, "../../src/shared/browser_api.js"), "utf8");
-const mediaCandidatesSource = fs.readFileSync(path.join(__dirname, "../../src/shared/media_candidates.js"), "utf8");
-const tabStateSource = fs.readFileSync(path.join(__dirname, "../../src/background/tab_state.js"), "utf8");
-const messageRouterSource = fs.readFileSync(path.join(__dirname, "../../src/background/message_router.js"), "utf8");
-const filters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
-const downloadState = require(path.join(__dirname, "../../src/background/download_state.js"));
-const nativeRequests = require(path.join(__dirname, "../../src/background/native_requests.js"));
-const downloadFallbacks = require(path.join(__dirname, "../../src/background/download_fallbacks.js"));
-const downloadOrchestration = require(path.join(__dirname, "../../src/background/download_orchestration.js"));
+const __dirname = import.meta.dirname;
+const backgroundBundle = fs.readFileSync(path.join(__dirname, "../../dist/test/background.bundle.js"), "utf8");
 
 const TAB_ID = 42;
 const PAGE_URL = "https://example.com/watch/movie";
@@ -166,18 +158,9 @@ function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
     setTimeout,
   };
   context.globalThis = context;
-  context.QwinVideoFilters = filters;
-  context.QwinDownloadState = downloadState;
-  context.QwinNativeRequests = nativeRequests;
-  context.QwinDownloadFallbacks = downloadFallbacks;
-  context.QwinDownloadOrchestration = downloadOrchestration;
 
   vm.createContext(context);
-  vm.runInContext(mediaCandidatesSource, context, { filename: "media_candidates.js" });
-  vm.runInContext(browserApiSource, context, { filename: "browser_api.js" });
-  vm.runInContext(tabStateSource, context, { filename: "tab_state.js" });
-  vm.runInContext(messageRouterSource, context, { filename: "message_router.js" });
-  vm.runInContext(source, context, { filename: "background.js" });
+  vm.runInContext(backgroundBundle, context, { filename: "background.bundle.js" });
 
   async function sendRuntimeMessage(message) {
     assert.equal(typeof runtimeListener, "function", "background runtime listener must be registered");

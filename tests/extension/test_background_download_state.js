@@ -1,7 +1,6 @@
-const assert = require("node:assert/strict");
-const path = require("node:path");
+import assert from "node:assert/strict";
 
-const downloadState = require(path.join(__dirname, "../../src/background/download_state.js"));
+import * as downloadState from "../../src/background/download_state.js";
 
 assert.equal(downloadState.clampDownloadPercent("12.4"), 12.4);
 assert.equal(downloadState.clampDownloadPercent("bad"), null);

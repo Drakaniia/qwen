@@ -1,8 +1,7 @@
-const assert = require("node:assert/strict");
-const path = require("node:path");
+import assert from "node:assert/strict";
 
-const filters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
-const pageDetection = require(path.join(__dirname, "../../src/content/page_detection.js"));
+import * as filters from "../../src/shared/video_filters.js";
+import * as pageDetection from "../../src/content/page_detection.js";
 
 function createPageDetection(options = {}) {
   const doc = {

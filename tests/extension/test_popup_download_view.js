@@ -1,8 +1,10 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
+import * as DownloadList from "../../src/popup/download_list.js";
+
+const __dirname = import.meta.dirname;
 const popupDir = path.join(__dirname, "../../src/popup");
 const html = fs.readFileSync(path.join(popupDir, "popup.html"), "utf8");
 const js = fs.readFileSync(path.join(popupDir, "popup.js"), "utf8");
@@ -12,18 +14,10 @@ const qualityDialogJs = fs.readFileSync(path.join(__dirname, "../../src/shared/q
 const downloadListJs = fs.readFileSync(path.join(popupDir, "download_list.js"), "utf8");
 
 function popupLabelHelpers() {
-  const start = js.indexOf("function hasDownloadPercent");
-  const end = js.indexOf("function isFakeDownloadMessage");
-  assert.notEqual(start, -1, "popup script must define download label helpers");
-  assert.notEqual(end, -1, "popup script must keep download label helpers before message helpers");
-
-  const sandbox = { globalThis: {} };
-  vm.runInNewContext(
-    `${js.slice(start, end)}
-globalThis.__helpers = { downloadProgressButtonText, downloadProgressLabel };`,
-    sandbox,
-  );
-  return sandbox.globalThis.__helpers;
+  return {
+    downloadProgressButtonText: DownloadList.downloadProgressButtonText,
+    downloadProgressLabel: DownloadList.downloadProgressLabel,
+  };
 }
 
 assert.match(html, /<button[^>]+id="showMusic"[^>]*>Music<\/button>/, "popup must expose a Music button");
@@ -39,11 +33,7 @@ for (const layoutButton of ["showListLayout", "showBoxLayout"]) {
 
 assert.match(html, /id="videoToolbar"/, "popup must include a video-only toolbar for list and box controls");
 
-assert.match(
-  html,
-  /<script src="\.\.\/shared\/quality_dialog\.js"><\/script>[\s\S]*<script src="popup\.js"><\/script>/,
-  "popup must load the shared quality dialog before popup.js",
-);
+assert.match(html, /<script src="popup\.bundle\.js"><\/script>/, "popup must load the bundled popup script");
 
 assert.match(
   html,
@@ -171,13 +161,13 @@ assert.match(css, /\.view-toggle/, "popup must style the view switch controls");
 
 assert.match(
   js,
-  /button\.textContent\s*=\s*runningJob\s*\?\s*downloadProgressButtonText\(runningJob\)\s*:\s*"Unsupported"/,
+  /button\.textContent\s*=\s*runningJob\s*\?\s*DownloadList\.downloadProgressButtonText\(runningJob\)\s*:\s*"Unsupported"/,
   "active video row button must show progress instead of only a blinking Downloading label",
 );
 
 assert.match(
   js,
-  /appendDownloadProgress\(content,\s*runningJob,\s*\{\s*compact:\s*true\s*\}\)/,
+  /DownloadList\.appendDownloadProgress\(content,\s*runningJob,\s*\{\s*compact:\s*true\s*\}\)/,
   "active video rows must show a compact download progress bar",
 );
 
@@ -200,9 +190,9 @@ assert.match(
 );
 
 assert.match(
-  js,
+  downloadListJs,
   /isProcessingStage\(job\)/,
-  "popup script must gate indeterminate progress on processing stage detection",
+  "download list module must gate indeterminate progress on processing stage detection",
 );
 
 assert.doesNotMatch(
@@ -238,15 +228,15 @@ assert.match(
 assert.match(css, /\.progress-label/, "popup must show a readable progress label next to the bar");
 
 assert.match(
-  js,
+  downloadListJs,
   /Downloading video segments/,
-  "popup progress label must show segmented download activity when fragment details are available",
+  "download list progress label must show segmented download activity when fragment details are available",
 );
 
 assert.match(
-  js,
+  downloadListJs,
   /Downloading video segments at/,
-  "popup progress label must show speed-based activity when segmented downloads lack exact percent",
+  "download list progress label must show speed-based activity when segmented downloads lack exact percent",
 );
 
 {

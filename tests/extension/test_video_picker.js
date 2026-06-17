@@ -1,8 +1,7 @@
-const assert = require("node:assert/strict");
-const path = require("node:path");
+import assert from "node:assert/strict";
 
-const videoPicker = require(path.join(__dirname, "../../src/shared/video_picker.js"));
-const videoFilters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
+import * as videoPicker from "../../src/shared/video_picker.js";
+import * as videoFilters from "../../src/shared/video_filters.js";
 
 class TestElement {
   constructor(tagName = "div") {

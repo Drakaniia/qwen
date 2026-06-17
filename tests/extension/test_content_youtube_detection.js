@@ -1,12 +1,13 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import vm from "node:vm";
 
-const filters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
-const qualityFormat = require(path.join(__dirname, "../../src/shared/quality_format.js"));
-const pageDetection = require(path.join(__dirname, "../../src/content/page_detection.js"));
-const source = fs.readFileSync(path.join(__dirname, "../../src/content/content.js"), "utf8");
+import * as videoFilters from "../../src/shared/video_filters.js";
+import * as pageDetectionModule from "../../src/content/page_detection.js";
+
+const __dirname = import.meta.dirname;
+const contentBundle = fs.readFileSync(path.join(__dirname, "../../dist/test/content.bundle.js"), "utf8");
 
 function createContentContext(locationHref) {
   const document = {
@@ -64,19 +65,43 @@ function createContentContext(locationHref) {
     console,
   };
   context.globalThis = context;
-  context.QwinVideoFilters = filters;
-  context.QwinQualityFormat = qualityFormat;
-  context.QwinPageDetection = pageDetection;
   vm.createContext(context);
-  vm.runInContext(source, context, { filename: "content.js" });
+  vm.runInContext(contentBundle, context, { filename: "content.bundle.js" });
   return context;
 }
 
-const context = createContentContext("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+createContentContext("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+
+function createDetection(locationHref) {
+  const document = {
+    baseURI: locationHref,
+    title: "Example YouTube Video - YouTube",
+    getElementById() {
+      return null;
+    },
+    querySelector(selector) {
+      if (selector === 'meta[property="og:title"]') {
+        return { content: "Example YouTube Video" };
+      }
+      if (selector === 'meta[property="og:image"]') {
+        return { content: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg" };
+      }
+      return null;
+    },
+  };
+  return pageDetectionModule.create({
+    document,
+    location: new URL(locationHref),
+    videoFilters,
+    seenUrls: new Map(),
+  });
+}
+
+const detection = createDetection("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
 assert.equal(
-  typeof context.youtubePageCandidateForVideo,
+  typeof detection.youtubePageCandidateForVideo,
   "function",
-  "content script must expose a YouTube page candidate builder for scanner tests",
+  "page detection module must expose a YouTube page candidate builder for scanner tests",
 );
 
 const video = {
@@ -102,7 +127,7 @@ const video = {
   },
 };
 
-const candidate = context.youtubePageCandidateForVideo(video);
+const candidate = detection.youtubePageCandidateForVideo(video);
 assert.equal(candidate.url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
 assert.equal(candidate.format, "YOUTUBE");
 assert.equal(candidate.source, "youtube-page");
@@ -110,7 +135,7 @@ assert.equal(candidate.downloadable, true);
 assert.equal(candidate.title, "Example YouTube Video");
 assert.equal(candidate.thumbnailUrl, "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
 
-const nonYouTubeContext = createContentContext("https://example.com/watch?v=dQw4w9WgXcQ");
-assert.equal(nonYouTubeContext.youtubePageCandidateForVideo(video), null);
+const nonYouTubeDetection = createDetection("https://example.com/watch?v=dQw4w9WgXcQ");
+assert.equal(nonYouTubeDetection.youtubePageCandidateForVideo(video), null);
 
 console.log("content YouTube detection tests passed");

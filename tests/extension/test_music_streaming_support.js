@@ -1,8 +1,7 @@
-const assert = require("node:assert/strict");
-const path = require("node:path");
+import assert from "node:assert/strict";
 
-const mediaCandidates = require(path.join(__dirname, "../../src/shared/media_candidates.js"));
-const filters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
+import * as mediaCandidates from "../../src/shared/media_candidates.js";
+import * as filters from "../../src/shared/video_filters.js";
 
 // ─── YouTube Music ─────────────────────────────────────────────────────────
 

@@ -1,7 +1,8 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
+const __dirname = import.meta.dirname;
 const root = path.join(__dirname, "../..");
 const testScriptPath = path.join(root, "scripts/test.ps1");
 const workflowPath = path.join(root, ".github/workflows/test.yml");

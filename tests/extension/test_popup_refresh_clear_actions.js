@@ -1,38 +1,31 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import vm from "node:vm";
 
-const popupSource = fs.readFileSync(path.join(__dirname, "../../src/popup/popup.js"), "utf8");
+const __dirname = import.meta.dirname;
+const popupBundle = fs.readFileSync(path.join(__dirname, "../../dist/test/popup.bundle.js"), "utf8");
 const popupCss = fs.readFileSync(path.join(__dirname, "../../src/popup/popup.css"), "utf8");
-const qualityDialog = require(path.join(__dirname, "../../src/shared/quality_dialog.js"));
 
-// Mutable browser mock — must exist before popup_api.js is required so the
-// module can capture `api` and `isPromiseApi` at load time.  Each harness
-// reassigns the methods below to inject test-specific behaviour.
-const browserMock = {
-  tabs: {
-    async query() {
-      return [];
+// Mutable browser mock — set in each VM sandbox before the bundle runs so that
+// popup_api.js (bundled inside) captures `browser` at load time.
+function createBrowserMock() {
+  return {
+    tabs: {
+      async query() {
+        return [];
+      },
     },
-  },
-  runtime: {
-    async sendMessage() {
-      return { ok: true };
+    runtime: {
+      async sendMessage() {
+        return { ok: true };
+      },
+      onMessage: {
+        addListener() {},
+      },
     },
-    onMessage: {
-      addListener() {},
-    },
-  },
-};
-globalThis.browser = browserMock;
-
-const popupState = require(path.join(__dirname, "../../src/shared/popup_state.js"));
-const popupApi = require(path.join(__dirname, "../../src/shared/popup_api.js"));
-const downloadList = require(path.join(__dirname, "../../src/popup/download_list.js"));
-const mediaCandidates = require(path.join(__dirname, "../../src/shared/media_candidates.js"));
-const videoFilters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
-const videoPicker = require(path.join(__dirname, "../../src/shared/video_picker.js"));
+  };
+}
 
 const POPUP_ELEMENT_IDS = [
   "helperStatus",
@@ -213,8 +206,8 @@ function createHarness({
   let holdNextUserRescan = false;
   let pendingUserRescan = null;
 
-  // Configure the shared browserMock so popup_api.js (which captured it at
-  // require time) dispatches to this harness's logic.
+  const browserMock = createBrowserMock();
+
   browserMock.tabs.query = async function () {
     const tab = activeTabs[Math.min(tabsQueryCount, activeTabs.length - 1)];
     tabsQueryCount += 1;
@@ -273,33 +266,10 @@ function createHarness({
       },
       clearTimeout() {},
     },
-    QwinQualityFormat: {
-      formatQualityValue() {
-        return "Best";
-      },
-      formatSizeValue() {
-        return "Unknown";
-      },
-      formatFormatValue() {
-        return "MP4";
-      },
-      formatBitrateValue() {
-        return "Unknown";
-      },
-      formatSourceValue() {
-        return "Detected";
-      },
-    },
-    QwinQualityDialog: qualityDialog,
-    QwinPopupState: popupState,
-    QwinPopupApi: popupApi,
-    QwinDownloadList: downloadList,
-    QwinVideoFilters: videoFilters,
-    QwinVideoPicker: videoPicker,
-    QwinMediaCandidates: mediaCandidates,
   };
 
-  vm.runInNewContext(popupSource, sandbox);
+  vm.createContext(sandbox);
+  vm.runInContext(popupBundle, sandbox, { filename: "popup.bundle.js" });
 
   return {
     messages,

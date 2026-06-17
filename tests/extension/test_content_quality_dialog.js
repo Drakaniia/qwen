@@ -1,10 +1,12 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
-const qualityDialog = require(path.join(__dirname, "../../src/shared/quality_dialog.js"));
-const qualityFormat = require(path.join(__dirname, "../../src/shared/quality_format.js"));
-const videoFilters = require(path.join(__dirname, "../../src/shared/video_filters.js"));
+import * as qualityDialog from "../../src/shared/quality_dialog.js";
+import * as qualityFormat from "../../src/shared/quality_format.js";
+import * as videoFilters from "../../src/shared/video_filters.js";
+
+const __dirname = import.meta.dirname;
 
 const contentSource = fs.readFileSync(path.join(__dirname, "../../src/content/content.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../manifest.json"), "utf8"));
@@ -205,17 +207,9 @@ function createChooser(options = {}) {
 
   const contentScripts = manifest.content_scripts[0];
   assert.deepEqual(
-    contentScripts.js.slice(contentScripts.js.indexOf("src/shared/media_candidates.js")),
-    [
-      "src/shared/media_candidates.js",
-      "src/shared/video_filters.js",
-      "src/shared/quality_format.js",
-      "src/shared/quality_dialog.js",
-      "src/shared/video_picker.js",
-      "src/content/page_detection.js",
-      "src/content/content.js",
-    ],
-    "content script must load shared quality dialog dependencies before content.js",
+    contentScripts.js,
+    ["src/content/content.bundle.js"],
+    "content script must use the single esbuild bundle which includes all quality dialog dependencies",
   );
   assert.deepEqual(
     contentScripts.css,

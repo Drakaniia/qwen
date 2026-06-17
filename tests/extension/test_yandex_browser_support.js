@@ -1,7 +1,8 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
+const __dirname = import.meta.dirname;
 const root = path.join(__dirname, "../..");
 const installScript = fs.readFileSync(path.join(root, "scripts/install.bat"), "utf8");
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");

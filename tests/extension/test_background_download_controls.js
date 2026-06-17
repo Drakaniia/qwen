@@ -1,6 +1,8 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+const __dirname = import.meta.dirname;
 
 const source = [
   fs.readFileSync(path.join(__dirname, "../../src/background/background.js"), "utf8"),
