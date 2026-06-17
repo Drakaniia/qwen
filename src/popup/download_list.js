@@ -328,9 +328,15 @@ function renderDownloads(container, downloads, options = {}) {
     const actions = doc.createElement("div");
     actions.className = "download-actions";
     const status = job.status || "queued";
+    const processing = isProcessingStage(job);
     const active = ["queued", "connecting", "running", "pausing", "canceling"].includes(status);
 
-    if (["queued", "connecting", "running"].includes(status)) {
+    if (processing) {
+      const btnText = job.stage === "postprocess" ? "Converting..." : "Finalizing...";
+      appendDownloadAction(actions, btnText, "none", job.id);
+      const btn = actions.lastElementChild;
+      btn.disabled = true;
+    } else if (["queued", "connecting", "running"].includes(status)) {
       appendDownloadAction(actions, "Pause", "pause", job.id);
     }
     if (status === "paused") {
