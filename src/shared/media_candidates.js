@@ -12,7 +12,7 @@ const MUSIC_CDN_RE = /(?:spotifycdn|audio-ak|audio-fa|audio-[\w-]+\.spotify|cade
 const AUDIO_ONLY_HOST_RE = /(?:audio[-.])/i;
 const GIF_VIDEO_RE =
   /(?:^|[/?#._-])(?:gif|gifs|gifv|animated-gif|giphy|tenor|gifpreview|gif-preview|loop-preview)(?:[/?#._-]|$)/i;
-const SEGMENT_EXTENSION_RE = /\.(ts|m4s|cmfv|cmfa)(?:$|[?#])/i;
+const SEGMENT_EXTENSION_RE = /\.(ts|mp2t|m4s|cmfv|cmfa)(?:$|[?#])/i;
 const SEGMENT_NAME_RE = /(?:^|[/?#._-])(?:seg(?:ment)?|frag(?:ment)?|chunk|part)[._-]?\d+(?:[/?#._-]|$)/i;
 const FRAGMENTED_STREAM_CONTEXT_RE =
   /(?:^|[/?#._-])(?:hls|dash|cmaf|fmp4|m3u8|mpd|fragments?|segments?|chunks?|parts?)(?:[/?#._-]|$)/i;
@@ -155,6 +155,7 @@ function isBlockedMediaUrl(url, contentType = "") {
     return true;
   }
   if (
+    type.includes("video/mp2t") ||
     SEGMENT_EXTENSION_RE.test(text) ||
     SEGMENT_NAME_RE.test(text) ||
     (FRAGMENTED_STREAM_CONTEXT_RE.test(text) && NUMBERED_MEDIA_FRAGMENT_RE.test(text))

@@ -55,7 +55,8 @@ const GENERIC_TITLE_RE = new RegExp(
   "i",
 );
 const MIN_FULL_LENGTH_SECONDS = 30;
-const MIN_DIRECT_MEDIA_BYTES = 1024;
+const MIN_DIRECT_MEDIA_BYTES = 2048;
+const MIN_HEADER_VIDEO_BYTES = 1024 * 1024; // 1MB for direct video from headers/network
 
 function lower(value) {
   return String(value || "").toLowerCase();
@@ -223,6 +224,15 @@ function isLikelyFullLengthVideoCandidate(details) {
     return false;
   }
 
+  // Headers/Network detections often catch ads, small clips, or snippets.
+  // Unless it's a playlist manifest (which is small), we require a minimum size for these sources.
+  const isPlaylist = isPlaylistLike(details);
+  if (!isPlaylist && (details.source === "headers" || details.source === "network")) {
+    if (directSize > 0 && directSize < MIN_HEADER_VIDEO_BYTES) {
+      return false;
+    }
+  }
+
   if (details.complete === false || details.partial === true) {
     return false;
   }
@@ -239,7 +249,7 @@ function isLikelyRealVideoBox(details) {
   const height = Number(details.height || 0);
   const duration = Number(details.duration || 0);
 
-  if ((width && width < 220) || (height && height < 120) || width * height < 26000) {
+  if ((width && width < 160) || (height && height < 90) || width * height < 14400) {
     return false;
   }
   if (Number.isFinite(duration) && duration > 0 && duration < 1.5) {

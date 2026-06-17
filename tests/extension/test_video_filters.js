@@ -43,10 +43,44 @@ for (const rule of candidateRules) {
   );
 }
 
+assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/stream-segment", "video/mp2t"), true);
+assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/segment.mp2t"), true);
 assert.equal(filters.isBlockedVideoUrl("https://ads.example.com/preroll.mp4"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/banner.gif"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/preview.mp4", "image/gif"), true);
 assert.equal(filters.isBlockedVideoUrl("https://media.example.com/tenor-preview.mp4"), true);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://cdn.example.com/small-header-clip.mp4",
+    title: "Small Clip",
+    source: "headers",
+    sizeBytes: 500_000,
+  }),
+  false,
+);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://cdn.example.com/large-header-video.mp4",
+    title: "Large Video",
+    source: "headers",
+    sizeBytes: 5_000_000,
+  }),
+  true,
+);
+
+assert.equal(
+  filters.isLikelyFullLengthVideoCandidate({
+    url: "https://cdn.example.com/small-header-manifest.m3u8",
+    title: "Manifest",
+    source: "headers",
+    format: "M3U8",
+    sizeBytes: 4000,
+  }),
+  true,
+);
+
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/giphy-loop.webm"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/hls/segment-00001.ts"), true);
 assert.equal(filters.isBlockedVideoUrl("https://cdn.example.com/dash/chunk-42.m4s"), true);
@@ -387,6 +421,18 @@ assert.equal(
   filters.isLikelyRealVideoBox({
     width: 640,
     height: 360,
+    duration: 0,
+    loop: false,
+    muted: false,
+    autoplay: false,
+  }),
+  true,
+);
+
+assert.equal(
+  filters.isLikelyRealVideoBox({
+    width: 200,
+    height: 100,
     duration: 0,
     loop: false,
     muted: false,
