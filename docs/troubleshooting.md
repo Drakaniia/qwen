@@ -38,9 +38,9 @@ If the popup says `yt-dlp only`, run `scripts\install.bat` again. Check:
 
 Downloads can still work without these tools. They only add best-effort fallbacks for accessible HLS, DASH, and Smooth Streaming manifests.
 
-## Standard Mode Instead Of Fast Mode
+## Fast Mode Not Available
 
-`standard mode` means `aria2c` was not found. Downloads can still work, but fast segmented mode is unavailable.
+If the popup does not show `fast mode`, `aria2c` was not found. All downloads require aria2c for fast segmented mode.
 
 To fix it:
 

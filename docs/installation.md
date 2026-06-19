@@ -67,9 +67,5 @@ The Firefox add-on ID is fixed in the manifest as `qwin-video-downloader@example
 After loading the extension, open the Qwin popup. The helper status should show one of these:
 
 - `Helper ready (..., fast mode, stream fallbacks).` - `yt-dlp`, `ffmpeg`, `aria2c`, and at least one stream fallback are available.
-- `Helper ready (..., standard mode, stream fallbacks).` - `yt-dlp`, `ffmpeg`, and at least one stream fallback are available, but `aria2c` is not.
 - `Helper ready (..., fast mode, yt-dlp only).` - `yt-dlp`, `ffmpeg`, and `aria2c` are available, but stream fallbacks are not.
-- `Helper ready (..., standard mode, yt-dlp only).` - `yt-dlp` and `ffmpeg` are available, but `aria2c` and stream fallbacks are not.
 - `Helper not connected.` - run `scripts\install.bat` again and restart the browser.
-
-Fast mode and stream fallbacks are optional. Standard mode can still download supported videos.

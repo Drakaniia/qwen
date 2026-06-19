@@ -1,6 +1,6 @@
 # Qwin Video Downloader
 
-Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser extension that detects playable video URLs on the current page and sends selected URLs to a local Python native messaging host. It can also detect real YouTube video pages from the visible player. The helper uses `yt-dlp`, `ffmpeg`, and optional `aria2c` fast mode to save supported videos as MP4.
+Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser extension that detects playable video URLs on the current page and sends selected URLs to a local Python native messaging host. It can also detect real YouTube video pages from the visible player. The helper uses `yt-dlp`, `ffmpeg`, and `aria2c` fast mode to save supported videos as MP4. Qwin also supports BitTorrent downloads via `aria2c` (magnet links and `.torrent` files).
 
 ## Quickstart
 
@@ -18,6 +18,7 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
    - Firefox: open `about:debugging#/runtime/this-firefox`, click Load Temporary Add-on, and select `C:\Users\Qwenzy\Desktop\qwin\dist\firefox\manifest.json`.
 4. Visit a page with a playing video, open the Qwin popup, choose a detected video/quality, and download.
 5. If a page is not detected, open settings and paste the video page link into `Download from link`.
+6. To download a magnet or .torrent file, open settings and use the `Download from magnet link` or `Download .torrent file` options.
 
 ## Full Documentation
 

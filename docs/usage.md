@@ -36,6 +36,24 @@ The extension filters obvious ad/tracker media URLs, GIF/GIFV previews, common G
 
 This fallback sends the pasted URL to `yt-dlp` first. For stream manifest URLs, the helper can also try N_m3u8DL-RE or Streamlink when those tools are installed. It does not make unsupported, private, DRM-protected, or blocked videos downloadable.
 
+## Download From A Magnet Link
+
+1. Open the Qwin settings panel.
+2. Paste a magnet link (starting with `magnet:?xt=urn:btih:...`) into `Download from magnet link`.
+3. Click `Download magnet`.
+4. Confirm in the quality dialog to start the BitTorrent download.
+
+Magnet links are BitTorrent downloads that the native helper runs directly through `aria2c`. Progress is reported in the Downloads view just like video downloads.
+
+## Download From A .torrent File
+
+1. Open the Qwin settings panel.
+2. Click `Download .torrent file`.
+3. Select a local `.torrent` file using the native Windows file picker.
+4. The download starts immediately using `aria2c`.
+
+The native helper opens a Windows file picker (PowerShell `OpenFileDialog` with `.torrent` filter, falling back to Tk) to select a local `.torrent` file. The file path is validated to ensure it exists and has a `.torrent` extension before the download begins.
+
 ## Download Management
 
 The Downloads view supports:
@@ -67,23 +85,17 @@ Leaving the folder setting blank uses the default Downloads folder.
 The native helper uses:
 
 - Concurrent HLS/DASH fragments through `yt-dlp --concurrent-fragments`.
-- Optional `aria2c` segmented external downloads when `aria2c` is available.
-- Optional N_m3u8DL-RE or Streamlink fallback downloads for accessible HLS, DASH, or Smooth Streaming manifests when `yt-dlp` cannot use a stream source.
+- `aria2c` segmented external downloads for parallel byte-range connections.
+- N_m3u8DL-RE or Streamlink fallback downloads for accessible HLS, DASH, or Smooth Streaming manifests when `yt-dlp` cannot use a stream source.
 
 Fast mode uses up to 32 yt-dlp fragments and up to 16 `aria2c` byte-range connections by default. For direct MP4/WebM downloads, `aria2c` splits the file into byte ranges and downloads those ranges in parallel before assembling the final file.
 
-This can improve speed on direct MP4/WebM, HLS, and DASH sources that allow multiple connections. It cannot force a slow server, overloaded CDN, DRM-protected stream, or rate-limited site to send data faster.
+## BitTorrent Download Behavior
 
-If the popup shows `fast mode`, `aria2c` is available. If it shows `stream fallbacks`, N_m3u8DL-RE or Streamlink is available. If it shows `yt-dlp only`, downloads still work but stream-tool fallbacks are unavailable.
+Both magnet links and .torrent files use `aria2c`'s built-in BitTorrent engine. The download behaves like a standard BitTorrent download:
 
-## Honest Limits
-
-No browser extension can guarantee downloading any video on any website. This implementation will not bypass:
-
-- DRM or encrypted media extensions.
-- Paid-access controls.
-- Private authorization that the helper cannot reproduce.
-- Site-specific anti-download systems.
-- Browser-only `blob:`, `data:`, or local URLs unless the extension also detects the underlying MP4, WebM, M3U8, MPD, supported extractor page URL, or you paste a supported page URL manually.
-
-Some sites require account cookies, headers, or tokens that are not available to this helper. In those cases the helper may return an error even though the video plays in the browser.
+- **Seeding is disabled** by default (`--seed-time=0`). After the download completes, `aria2c` stops seeding immediately.
+- **File allocation** is set to `none` to start writing immediately without pre-allocating space.
+- **Parallel connections** are made to up to 50 BitTorrent peers by default.
+- **Progress reporting** shows the same percent/speed/ETA display as video downloads.
+- **Output folder** follows the same download folder setting. Files are saved directly into the chosen folder (not inside a subfolder).
