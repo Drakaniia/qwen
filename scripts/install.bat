@@ -80,6 +80,22 @@ if %ERRORLEVEL% neq 0 (
   echo Downloads will still use yt-dlp and ffmpeg, but some stream-only fallbacks may be unavailable.
 )
 
+echo Installing or checking Go companion binary for CDM capture and screen recording...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-capture.ps1" -RootDir "%ROOT_DIR%"
+if %ERRORLEVEL% neq 0 (
+  echo qwin-capture could not be installed.
+  echo CDM capture and screen recording features will be unavailable.
+  echo You can install it later by running scripts\install-capture.ps1 manually.
+)
+
+echo Detecting or installing Widevine CDM for DRM stream decryption...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-cdm.ps1" -RootDir "%ROOT_DIR%"
+if %ERRORLEVEL% neq 0 (
+  echo Widevine CDM could not be installed.
+  echo CDM-proxy key extraction will be unavailable. Screen recording fallback only.
+  echo You can install it later by running scripts\install-cdm.ps1 manually.
+)
+
 echo Building browser-specific extension folders...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%build-extension.ps1" -Target all -RootDir "%ROOT_DIR%"
 if %ERRORLEVEL% neq 0 (
