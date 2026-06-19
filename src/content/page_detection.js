@@ -86,8 +86,8 @@ function create(options) {
       cleanText(document.querySelector('meta[property="og:video:title"]')?.content),
       cleanText(document.querySelector('meta[itemprop="name"]')?.content),
       cleanText(document.querySelector('meta[name="title"]')?.content),
-      ...otherHeadings,
       cleanMusicTitle(document.title),
+      ...otherHeadings,
     ];
 
     for (const candidate of pageTitles) {
@@ -172,12 +172,15 @@ function create(options) {
         titleFromUrl(url),
       ];
     } else {
+      // Priority: video-specific attrs → meta tags → closest heading → document.title → other headings → URL
+      // document.title is checked before otherHeadings to prevent generic nav headings
+      // ("Related Videos", "Comments") from overriding the actual page title.
       candidates = [
         ...specificAttrs,
-        closestHeadingText,
         ...metadataAttrs,
-        ...otherHeadings,
+        closestHeadingText,
         cleanMusicTitle(document.title),
+        ...otherHeadings,
         titleFromUrl(url),
       ];
     }
