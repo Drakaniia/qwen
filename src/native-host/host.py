@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from urllib.request import urlopen
 
+import capture_manager as _capture_manager
+
 import download_manager as _download_manager
 import format_list as _format_list
 import host_dispatch as _host_dispatch
@@ -76,6 +78,14 @@ def has_n_m3u8dl_re():
 
 def has_streamlink():
     return bool(resolve_streamlink_command())
+
+
+def has_capture_binary():
+    return _capture_manager.capture_available()
+
+
+def capture_status():
+    return _capture_manager.capture_status()
 
 
 def _active_downloads_lock():
@@ -155,10 +165,12 @@ def _dispatch_deps(include_dispatch=True):
         "HostError": HostError,
         "configure_binary_stdio": configure_binary_stdio,
         "control_download": control_download,
+        "capture_status": capture_status,
         "delete_download_artifacts": delete_download_artifacts,
         "dependency_status": dependency_status,
         "error_response": error_response,
         "has_aria2c": has_aria2c,
+        "has_capture_binary": has_capture_binary,
         "has_ffmpeg": has_ffmpeg,
         "has_n_m3u8dl_re": has_n_m3u8dl_re,
         "has_streamlink": has_streamlink,
