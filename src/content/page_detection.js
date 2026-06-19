@@ -69,13 +69,24 @@ function create(options) {
   }
 
   function titleForPage(url) {
+    const otherHeadings = [];
+    if (typeof document.querySelectorAll === "function") {
+      const allHeadings = document.querySelectorAll("h1, h2, h3, h4, h5, h6, figcaption, legend");
+      for (const heading of Array.from(allHeadings)) {
+        const cleaned = cleanText(heading.textContent);
+        if (cleaned) {
+          otherHeadings.push(cleaned);
+        }
+      }
+    }
+
     const pageTitles = [
       cleanText(document.querySelector('meta[property="og:title"]')?.content),
       cleanText(document.querySelector('meta[name="twitter:title"]')?.content),
       cleanText(document.querySelector('meta[property="og:video:title"]')?.content),
       cleanText(document.querySelector('meta[itemprop="name"]')?.content),
       cleanText(document.querySelector('meta[name="title"]')?.content),
-      cleanText(document.querySelector("h1")?.textContent),
+      ...otherHeadings,
       cleanMusicTitle(document.title),
     ];
 
@@ -105,6 +116,34 @@ function create(options) {
 
     const videoAriaLabel = cleanText(video.getAttribute("aria-label"));
     const videoTitleAttr = cleanText(video.getAttribute("title"));
+    const videoDataTitle = cleanText(video.getAttribute("data-title"));
+    const videoDataName = cleanText(video.getAttribute("data-name"));
+    const videoAltAttr = cleanText(video.getAttribute("alt"));
+
+    let closestHeadingText = "";
+    let current = video;
+    while (current) {
+      const heading = current.querySelector?.("h1, h2, h3, h4, h5, h6, figcaption, legend");
+      if (heading && heading.textContent) {
+        const cleaned = cleanText(heading.textContent);
+        if (cleaned && !videoFilters.isGenericTitle(cleaned)) {
+          closestHeadingText = cleaned;
+          break;
+        }
+      }
+      current = current.parentElement || (current.getRootNode && current.getRootNode()?.host);
+    }
+
+    const otherHeadings = [];
+    if (typeof document.querySelectorAll === "function") {
+      const allHeadings = document.querySelectorAll("h1, h2, h3, h4, h5, h6, figcaption, legend");
+      for (const heading of Array.from(allHeadings)) {
+        const cleaned = cleanText(heading.textContent);
+        if (cleaned) {
+          otherHeadings.push(cleaned);
+        }
+      }
+    }
 
     // For music/audio sources, prefer document.title over og:title
     // because music platforms set document.title to "Track · Artist · Platform"
@@ -112,33 +151,36 @@ function create(options) {
     const isMusicSource =
       videoFilters && videoFilters.isLikelyAudioUrl ? videoFilters.isLikelyAudioUrl(url, "") : false;
 
-    const candidates = isMusicSource
-      ? [
-          cleanMusicTitle(document.title),
-          cleanText(document.querySelector('meta[property="og:title"]')?.content),
-          cleanText(document.querySelector('meta[name="twitter:title"]')?.content),
-          cleanText(document.querySelector('meta[property="og:video:title"]')?.content),
-          cleanText(document.querySelector('meta[itemprop="name"]')?.content),
-          cleanText(document.querySelector('meta[name="title"]')?.content),
-          cleanText(document.querySelector("h1")?.textContent),
-          labelledByText,
-          videoAriaLabel,
-          videoTitleAttr,
-          titleFromUrl(url),
-        ]
-      : [
-          cleanText(document.querySelector('meta[property="og:title"]')?.content),
-          cleanText(document.querySelector('meta[name="twitter:title"]')?.content),
-          cleanText(document.querySelector('meta[property="og:video:title"]')?.content),
-          cleanText(document.querySelector('meta[itemprop="name"]')?.content),
-          cleanText(document.querySelector('meta[name="title"]')?.content),
-          cleanText(document.querySelector("h1")?.textContent),
-          cleanMusicTitle(document.title),
-          labelledByText,
-          videoAriaLabel,
-          videoTitleAttr,
-          titleFromUrl(url),
-        ];
+    const specificAttrs = [labelledByText, videoAriaLabel, videoTitleAttr, videoDataTitle, videoDataName, videoAltAttr];
+
+    const metadataAttrs = [
+      cleanText(document.querySelector('meta[property="og:title"]')?.content),
+      cleanText(document.querySelector('meta[name="twitter:title"]')?.content),
+      cleanText(document.querySelector('meta[property="og:video:title"]')?.content),
+      cleanText(document.querySelector('meta[itemprop="name"]')?.content),
+      cleanText(document.querySelector('meta[name="title"]')?.content),
+    ];
+
+    let candidates = [];
+    if (isMusicSource) {
+      candidates = [
+        cleanMusicTitle(document.title),
+        ...metadataAttrs,
+        ...specificAttrs,
+        closestHeadingText,
+        ...otherHeadings,
+        titleFromUrl(url),
+      ];
+    } else {
+      candidates = [
+        ...specificAttrs,
+        closestHeadingText,
+        ...metadataAttrs,
+        ...otherHeadings,
+        cleanMusicTitle(document.title),
+        titleFromUrl(url),
+      ];
+    }
 
     for (const candidate of candidates) {
       if (candidate && !videoFilters.isGenericTitle(candidate)) {
@@ -240,6 +282,32 @@ function create(options) {
   }
 
   function isLikelyRealPlayer(video) {
+    if (!video) {
+      return false;
+    }
+
+    if (video.srcObject) {
+      return false;
+    }
+
+    const hostname = location.hostname.toLowerCase();
+    if (
+      hostname === "meet.google.com" ||
+      hostname.endsWith(".zoom.us") ||
+      hostname === "zoom.us" ||
+      hostname.endsWith(".teams.microsoft.com") ||
+      hostname === "teams.microsoft.com" ||
+      hostname === "teams.live.com" ||
+      hostname.endsWith(".webex.com") ||
+      hostname === "webex.com" ||
+      hostname.endsWith(".jit.si") ||
+      hostname === "meet.jit.si" ||
+      hostname.endsWith(".whereby.com") ||
+      hostname === "whereby.com"
+    ) {
+      return false;
+    }
+
     const details = videoElementDetails(video);
     if (details.duration > 0 && details.duration < 30) {
       return false;

@@ -16,6 +16,10 @@ const ACTIVE_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "pa
 const RESCAN_IDLE_LABEL = "Rescan";
 const RESCAN_BUSY_LABEL = "Refreshing";
 
+// Format-type constants used to route items into the correct tab.
+// "AUDIO" items go to the Music tab; video formats (MP4, WEBM, M3U8, etc.) go to the Videos tab.
+const AUDIO_FORMAT = "AUDIO";
+
 const INDICATOR_STATES = {
   CHECKING: "checking",
   AVAILABLE: "available",
@@ -239,7 +243,7 @@ function videoTitle(video) {
   if (video.title) {
     return video.title;
   }
-  const isAudio = String(video.format || "").toUpperCase() === "AUDIO";
+  const isAudio = String(video.format || "").toUpperCase() === AUDIO_FORMAT;
   return shortenUrl(video.url) || (isAudio ? "Music" : "Video");
 }
 
@@ -320,7 +324,7 @@ function renderVideos(videos, downloads) {
     return;
   }
 
-  const audioCount = videos.filter((v) => String(v.format || "").toUpperCase() === "AUDIO").length;
+  const audioCount = videos.filter((v) => String(v.format || "").toUpperCase() === AUDIO_FORMAT).length;
   const videoCount = videos.length - audioCount;
   const messageParts = [];
   if (videoCount > 0) {
@@ -356,7 +360,7 @@ function renderVideos(videos, downloads) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "primary";
-    const isAudioItem = String(video.format || "").toUpperCase() === "AUDIO";
+    const isAudioItem = String(video.format || "").toUpperCase() === AUDIO_FORMAT;
     button.textContent = isAudioItem ? "Download Music" : "Download";
     button.dataset.videoId = video.id;
 
@@ -613,9 +617,11 @@ function render() {
   }
 
   if (mode === "videos") {
-    filteredVideos = state.currentVideos.filter((v) => String(v.format || "").toUpperCase() !== "AUDIO");
+    // Exclude audio-only items — Videos tab shows only video formats (MP4, WEBM, M3U8, etc.)
+    filteredVideos = state.currentVideos.filter((v) => String(v.format || "").toUpperCase() !== AUDIO_FORMAT);
   } else if (mode === "music") {
-    filteredVideos = state.currentVideos.filter((v) => String(v.format || "").toUpperCase() === "AUDIO");
+    // Include ONLY audio-only items — no video files should appear here
+    filteredVideos = state.currentVideos.filter((v) => String(v.format || "").toUpperCase() === AUDIO_FORMAT);
   }
 
   renderVideos(filteredVideos, state.currentDownloads);
@@ -758,14 +764,17 @@ elements.settingsToggle.addEventListener("click", () => {
 
 elements.showVideos.addEventListener("click", () => {
   setViewMode("videos");
+  render();
 });
 
 elements.showMusic.addEventListener("click", () => {
   setViewMode("music");
+  render();
 });
 
 elements.showDownloads.addEventListener("click", () => {
   setViewMode("downloads");
+  render();
 });
 
 elements.showListLayout.addEventListener("click", () => {
