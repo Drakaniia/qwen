@@ -452,14 +452,9 @@ def build_yt_dlp_fallback_variants(**build_kwargs):
     Returns a list of dicts::
         [{"command": […], "label": "…"}, …]
 
-    The ``build_kwargs`` are the same keyword arguments accepted by
-    ``build_yt_dlp_command()`` — except ``aria2c_location`` is always
-    set to ``None`` for these variants (standard mode avoids extra
-    points of failure).
+    All variants keep the original ``aria2c_location`` so aria2c is always
+    used for fast segmented downloads.
     """
-    if "aria2c_location" in build_kwargs:
-        build_kwargs["aria2c_location"] = None
-
     variants = []
 
     # 1 — No SSL certificate verification (server-side SSL issues)

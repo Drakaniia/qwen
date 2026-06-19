@@ -247,7 +247,7 @@ class DownloadTask:
     def fallback_attempts(self):
         attempts = [{"command": self.command, "label": "yt-dlp"}]
         if self.fallback_command:
-            attempts.append({"command": self.fallback_command, "label": "standard mode", "aria2_fallback": True})
+            attempts.append({"command": self.fallback_command, "label": "yt-dlp"})
         attempts.extend(self.fallback_commands)
         return attempts
 

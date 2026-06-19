@@ -11,7 +11,7 @@ from spotify_resolver import (
 
 from browser_context import write_cookie_file_from_headers
 from download_task import DownloadTask
-from native_paths import resolve_download_dir, validate_download_url
+from native_paths import resolve_download_dir, validate_download_url, validate_magnet_url, validate_torrent_file
 from native_protocol import HostError, send_native_message
 from stream_backends import (
     build_n_m3u8dl_re_command,
@@ -21,12 +21,101 @@ from stream_backends import (
 )
 from yt_dlp_command import build_yt_dlp_command, build_yt_dlp_fallback_variants
 from yt_dlp_dependencies import (
-    resolve_aria2c_location,
+    require_aria2c_location,
     resolve_ffmpeg_location,
     resolve_n_m3u8dl_re_location,
     resolve_streamlink_command,
     resolve_yt_dlp_command,
 )
+
+MAGNET_ARIA2_ARGS = {
+    "seed_time": 0,
+    "file_allocation": "none",
+    "continue": True,
+    "bt_max_peers": 50,
+    "summary_interval": 1,
+    "enable_color": False,
+    "human_readable": True,
+    "console_log_level": "warn",
+}
+
+
+def _build_aria2c_bittorrent_command(
+    aria2c_location,
+    download_dir,
+    bt_max_peers=None,
+    seed_time=None,
+):
+    """Build the shared aria2c argument list used for BitTorrent downloads.
+
+    Both magnet links and .torrent files share the same seeding, file
+    allocation, and console output options; the caller appends the source
+    (a magnet URL or a --torrent-file path).
+    """
+    return [
+        str(aria2c_location),
+        "--seed-time",
+        str(seed_time if seed_time is not None else MAGNET_ARIA2_ARGS["seed_time"]),
+        "--dir",
+        str(download_dir),
+        "--file-allocation",
+        MAGNET_ARIA2_ARGS["file_allocation"],
+        "--continue",
+        "true",
+        "--bt-max-peers",
+        str(bt_max_peers if bt_max_peers is not None else MAGNET_ARIA2_ARGS["bt_max_peers"]),
+        "--summary-interval",
+        str(MAGNET_ARIA2_ARGS["summary_interval"]),
+        "--console-log-level",
+        MAGNET_ARIA2_ARGS["console_log_level"],
+        "--enable-color",
+        "false",
+        "--human-readable",
+        "true",
+    ]
+
+
+def build_aria2c_magnet_command(
+    url,
+    download_dir,
+    aria2c_location,
+    bt_max_peers=None,
+    seed_time=None,
+):
+    """Build an aria2c command for downloading from a magnet link.
+
+    Returns a list of command arguments suitable for subprocess.Popen.
+    """
+    command = _build_aria2c_bittorrent_command(
+        aria2c_location=aria2c_location,
+        download_dir=download_dir,
+        bt_max_peers=bt_max_peers,
+        seed_time=seed_time,
+    )
+    command.append(str(url))
+    return command
+
+
+def build_aria2c_torrent_command(
+    torrent_path,
+    download_dir,
+    aria2c_location,
+    bt_max_peers=None,
+    seed_time=None,
+):
+    """Build an aria2c command for downloading from a local .torrent file.
+
+    Returns a list of command arguments suitable for subprocess.Popen.
+    """
+    command = _build_aria2c_bittorrent_command(
+        aria2c_location=aria2c_location,
+        download_dir=download_dir,
+        bt_max_peers=bt_max_peers,
+        seed_time=seed_time,
+    )
+    command.extend(["--torrent-file", str(torrent_path)])
+    return command
+
 
 ACTIVE_DOWNLOADS = {}
 ACTIVE_DOWNLOADS_LOCK = None
@@ -63,7 +152,7 @@ def run_download(
     task_class=DownloadTask,
     yt_dlp_command_resolver=resolve_yt_dlp_command,
     ffmpeg_location_resolver=resolve_ffmpeg_location,
-    aria2c_location_resolver=resolve_aria2c_location,
+    aria2c_location_resolver=require_aria2c_location,
     n_m3u8dl_re_location_resolver=resolve_n_m3u8dl_re_location,
     streamlink_command_resolver=resolve_streamlink_command,
 ):
@@ -122,15 +211,16 @@ def run_download(
         return kwargs
 
     command = build_yt_dlp_command(**build_command_kwargs({"aria2c_location": aria2c_location}))
+    # aria2c is required — no fallback without it
     fallback_command = None
-    if aria2c_location:
-        fallback_command = build_yt_dlp_command(**build_command_kwargs({"aria2c_location": None}))
 
     # ---- Fallback chain: multiple strategies exhaustively tried -------------------
     fallback_commands = []
 
-    # 1. yt-dlp strategy variants (SSL, geo, retries, etc.)
-    fallback_commands.extend(build_yt_dlp_fallback_variants(**build_command_kwargs()))
+    # 1. yt-dlp strategy variants (SSL, geo, retries, etc.) — always with aria2c
+    fallback_commands.extend(
+        build_yt_dlp_fallback_variants(**build_command_kwargs({"aria2c_location": aria2c_location}))
+    )
 
     # 2. N_m3u8DL-RE for HLS/DASH manifest URLs
     requested_backend = str(message.get("backend") or "auto").lower()
@@ -208,6 +298,90 @@ def run_download(
     task.start()
 
 
+def run_magnet_download(
+    message,
+    task_class=DownloadTask,
+    aria2c_location_resolver=require_aria2c_location,
+):
+    """Run a magnet link download directly through aria2c.
+
+    Magnet links are BitTorrent downloads that aria2c handles natively.
+    The function validates the magnet URL, builds the aria2c command,
+    and creates a DownloadTask that reports progress just like yt-dlp downloads.
+    """
+    request_id = str(message.get("id") or message.get("requestId") or "")
+    url = str(message.get("url") or "").strip()
+    validate_magnet_url(url)
+
+    aria2c_location = aria2c_location_resolver()
+    if not aria2c_location:
+        raise HostError(
+            "aria2c is not installed. It is required for magnet link downloads. "
+            "Run scripts\\install.bat, then restart your browser."
+        )
+
+    download_dir = resolve_download_dir(message.get("downloadFolder"))
+
+    command = build_aria2c_magnet_command(
+        url=url,
+        download_dir=download_dir,
+        aria2c_location=aria2c_location,
+    )
+
+    task = task_class(
+        message=message,
+        command=command,
+        fallback_command=None,
+        fallback_commands=[],
+        download_dir=download_dir,
+        temp_files=[],
+    )
+    with _active_downloads_lock():
+        ACTIVE_DOWNLOADS[request_id] = task
+    task.start()
+
+
+def run_torrent_download(
+    message,
+    task_class=DownloadTask,
+    aria2c_location_resolver=require_aria2c_location,
+):
+    """Run a download from a local .torrent file directly through aria2c.
+
+    Validates the .torrent file path, builds the aria2c command, and creates
+    a DownloadTask that reports progress just like magnet downloads.
+    """
+    request_id = str(message.get("id") or message.get("requestId") or "")
+    torrent_path = validate_torrent_file(message.get("path"))
+
+    aria2c_location = aria2c_location_resolver()
+    if not aria2c_location:
+        raise HostError(
+            "aria2c is not installed. It is required for .torrent file downloads. "
+            "Run scripts\\install.bat, then restart your browser."
+        )
+
+    download_dir = resolve_download_dir(message.get("downloadFolder"))
+
+    command = build_aria2c_torrent_command(
+        torrent_path=torrent_path,
+        download_dir=download_dir,
+        aria2c_location=aria2c_location,
+    )
+
+    task = task_class(
+        message=message,
+        command=command,
+        fallback_command=None,
+        fallback_commands=[],
+        download_dir=download_dir,
+        temp_files=[],
+    )
+    with _active_downloads_lock():
+        ACTIVE_DOWNLOADS[request_id] = task
+    task.start()
+
+
 def _run_spotify_fallback_download(
     message,
     url,
@@ -263,18 +437,8 @@ def _run_spotify_fallback_download(
         aria2c_location=aria2c_location,
     )
 
-    # Build fallback command without aria2c
+    # aria2c is required — no fallback without it
     fallback_command = None
-    if aria2c_location:
-        fallback_command = build_youtube_download_command(
-            youtube_url=youtube_url,
-            format_id=fmt_id,
-            download_dir=download_dir,
-            spotify_metadata=metadata,
-            yt_dlp_command=yt_dlp_command,
-            ffmpeg_location=ffmpeg_location,
-            aria2c_location=None,
-        )
 
     # Build fallback variants for the YouTube URL
     fallback_commands = []

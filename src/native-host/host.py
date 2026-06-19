@@ -1,52 +1,24 @@
 #!/usr/bin/env python3
-import importlib.util
-import os
-import shutil
-import subprocess
-import sys
-from pathlib import Path
 from urllib.request import urlopen
 
 import download_manager as _download_manager
 import format_list as _format_list
-import media_resolver as _media_resolver
-import stream_backends as _stream_backends
-import yt_dlp_adapter as _yt_dlp_adapter
 import host_dispatch as _host_dispatch
+import media_resolver as _media_resolver
+import yt_dlp_adapter as _yt_dlp_adapter
 from artifacts import (
-    build_open_path_command,
     delete_download_artifacts,
-    is_dangerous_delete_target,
     open_download_path,
-    path_is_relative_to,
-    resolve_artifact_path,
-    should_delete_parent_folder_for_file,
-    unique_delete_targets,
-    validate_delete_target,
 )
-from browser_context import (
-    append_browser_context_options,
-    canonical_header_name,
-    clean_header_value,
-    clean_request_headers,
-    cookie_header_from_request_headers,
-    parse_cookie_header,
-    remove_temp_files,
-    write_cookie_file_from_headers,
-)
-from download_task import DownloadTask
 from folder_picker import (
     choose_download_folder,
-    choose_download_folder_with_powershell,
-    choose_download_folder_with_tk,
-    initial_folder_for_picker,
+    choose_torrent_file,
 )
-from native_paths import default_download_dir, resolve_download_dir, sanitize_filename, validate_download_url
 from native_protocol import (
     HostError,
     configure_binary_stdio,
-    encode_native_message,
     error_response,
+    file_response,
     folder_response,
     pong_response,
     read_native_message,
@@ -55,49 +27,9 @@ from native_protocol import (
     send_native_message,
     unexpected_error_response,
 )
-from media_resolver import extract_media_candidates_from_text, resolve_media_candidates
-from stream_backends import (
-    build_n_m3u8dl_re_command,
-    build_streamlink_command,
-    is_retryable_backend_error,
-    is_stream_manifest_url,
-    stream_output_path,
-)
 from yt_dlp_adapter import (
-    DEFAULT_ARIA2_CONNECTIONS,
-    DEFAULT_CONCURRENT_FRAGMENTS,
-    DEFAULT_FORMAT_SELECTOR,
-    FILEPATH_MARKER,
-    MAX_ARIA2_CONNECTIONS,
-    MAX_FAST_CONNECTIONS,
-    append_youtube_ejs_options,
-    bounded_int,
-    build_formats_command,
-    build_yt_dlp_command,
-    compact_progress_value,
-    creation_flags,
-    format_label,
-    format_selector_for_choice,
-    format_sort_key,
-    has_n_m3u8dl_re,
-    has_streamlink,
     has_yt_dlp,
-    human_size,
-    is_aria2_access_refusal,
-    is_segmented_stream_format,
-    is_youtube_url,
-    iter_process_output_lines,
-    latest_output_line,
-    parse_aria2_progress_details,
-    parse_yt_dlp_line,
-    parse_yt_dlp_progress_details,
-    require_executable,
-    resolve_n_m3u8dl_re_location,
-    resolve_streamlink_command,
-    summarize_formats,
-    terminate_process_tree,
 )
-
 
 HOST_VERSION = "1.0.0"
 ACTIVE_DOWNLOADS = _download_manager.ACTIVE_DOWNLOADS
@@ -158,12 +90,26 @@ def cancel_active_downloads():
     return _download_manager.cancel_active_downloads()
 
 
+def run_magnet_download(message):
+    return _download_manager.run_magnet_download(
+        message,
+        aria2c_location_resolver=_yt_dlp_adapter.require_aria2c_location,
+    )
+
+
+def run_torrent_download(message):
+    return _download_manager.run_torrent_download(
+        message,
+        aria2c_location_resolver=_yt_dlp_adapter.require_aria2c_location,
+    )
+
+
 def run_download(message):
     return _download_manager.run_download(
         message,
         yt_dlp_command_resolver=resolve_yt_dlp_command,
         ffmpeg_location_resolver=resolve_ffmpeg_location,
-        aria2c_location_resolver=resolve_aria2c_location,
+        aria2c_location_resolver=_yt_dlp_adapter.require_aria2c_location,
         n_m3u8dl_re_location_resolver=resolve_n_m3u8dl_re_location,
         streamlink_command_resolver=resolve_streamlink_command,
     )
@@ -181,6 +127,11 @@ def run_format_list(message):
 def run_choose_folder(message):
     selected = choose_download_folder(message.get("initialFolder"))
     send_native_message(folder_response(message, selected))
+
+
+def run_choose_torrent_file(message):
+    selected = choose_torrent_file(message.get("initialFolder"))
+    send_native_message(file_response(message, selected))
 
 
 def run_resolve_media_candidates(message):
@@ -219,8 +170,11 @@ def _dispatch_deps(include_dispatch=True):
         "request_id": request_id,
         "request_type": request_type,
         "run_choose_folder": run_choose_folder,
+        "run_choose_torrent_file": run_choose_torrent_file,
         "run_download": run_download,
         "run_format_list": run_format_list,
+        "run_magnet_download": run_magnet_download,
+        "run_torrent_download": run_torrent_download,
         "run_resolve_media_candidates": run_resolve_media_candidates,
         "send_native_message": send_native_message,
         "unexpected_error_response": unexpected_error_response,

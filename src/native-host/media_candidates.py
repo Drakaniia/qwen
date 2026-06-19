@@ -1,7 +1,6 @@
 import re
 from urllib.parse import urlparse
 
-
 HLS_RE = re.compile(r"\.m3u8(?:$|[?#])", re.IGNORECASE)
 DASH_RE = re.compile(r"\.mpd(?:$|[?#])", re.IGNORECASE)
 ISM_RE = re.compile(r"\.ism(?:/manifest)?(?:$|[?#])", re.IGNORECASE)

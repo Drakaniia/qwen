@@ -103,6 +103,98 @@ def choose_download_folder_with_tk(initial_folder):
                 pass
 
 
+def choose_torrent_file_with_powershell(initial_folder):
+    powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+    if not powershell:
+        raise HostError("PowerShell is not available.")
+
+    script = """
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Title = 'Choose a .torrent file'
+$dialog.Filter = 'Torrent files (*.torrent)|*.torrent|All files (*.*)|*.*'
+$dialog.Multiselect = $false
+$initial = [Environment]::GetEnvironmentVariable('QWIN_INITIAL_FOLDER')
+if ($initial -and [System.IO.Directory]::Exists($initial)) {
+  $dialog.InitialDirectory = $initial
+}
+$result = $dialog.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+  $utf8 = New-Object System.Text.UTF8Encoding $false
+  [Console]::OutputEncoding = $utf8
+  [Console]::WriteLine($dialog.FileName)
+}
+""".strip()
+    env = {**os.environ, "QWIN_INITIAL_FOLDER": initial_folder or ""}
+    try:
+        completed = subprocess.run(
+            [powershell, "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            creationflags=creation_flags(),
+        )
+    except OSError as exc:
+        raise HostError(f"Could not start the Windows file picker: {exc}") from exc
+
+    if completed.returncode != 0:
+        details = (completed.stderr or completed.stdout or "").strip()
+        raise HostError(details or f"Windows file picker exited with status {completed.returncode}.")
+
+    selected = (completed.stdout or "").strip()
+    return Path(selected).resolve() if selected else None
+
+
+def choose_torrent_file_with_tk(initial_folder):
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as exc:
+        raise HostError(f"Tk file picker is not available: {exc}") from exc
+
+    root = None
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            root.attributes("-topmost", True)
+        except Exception:
+            pass
+        selected = filedialog.askopenfilename(
+            parent=root,
+            title="Choose a .torrent file",
+            initialdir=initial_folder or None,
+            filetypes=[("Torrent files", "*.torrent"), ("All files", "*.*")],
+        )
+        return Path(selected).resolve() if selected else None
+    except Exception as exc:
+        raise HostError(f"Could not open the file picker: {exc}") from exc
+    finally:
+        if root is not None:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
+
+def choose_torrent_file(initial_folder=None):
+    initial = initial_folder_for_picker(initial_folder)
+    if os.name == "nt":
+        try:
+            return choose_torrent_file_with_powershell(initial)
+        except HostError as powershell_error:
+            try:
+                return choose_torrent_file_with_tk(initial)
+            except HostError as tk_error:
+                raise HostError(f"Could not open the file picker: {powershell_error}; {tk_error}") from tk_error
+    return choose_torrent_file_with_tk(initial)
+
+
 def choose_download_folder(initial_folder=None):
     initial = initial_folder_for_picker(initial_folder)
     if os.name == "nt":

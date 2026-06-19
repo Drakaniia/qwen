@@ -20,6 +20,10 @@ def handle_message(message, deps):
             deps.send_native_message(deps.pong_response(message, deps.host_version, deps.dependency_status()))
         case "download":
             deps.run_download(message)
+        case "magnet":
+            deps.run_magnet_download(message)
+        case "torrentFile":
+            deps.run_torrent_download(message)
         case "pause" | "resume" | "cancel":
             deps.control_download(message, message_type)
         case "openFile":
@@ -34,6 +38,8 @@ def handle_message(message, deps):
             deps.run_resolve_media_candidates(message)
         case "chooseFolder":
             deps.run_choose_folder(message)
+        case "chooseTorrentFile":
+            deps.run_choose_torrent_file(message)
         case _:
             raise deps.HostError(f"Unknown native host request type: {message_type}")
 

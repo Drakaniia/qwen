@@ -62,6 +62,22 @@ def resolve_aria2c_location(local_aria2c=None):
     return None
 
 
+def require_aria2c_location(local_aria2c=None):
+    """Resolve aria2c location or raise HostError if not found.
+
+    Unlike ``resolve_aria2c_location()`` which returns None when aria2c
+    is missing, this function raises an error because aria2c is required
+    for all downloads (fast segmented mode, BitTorrent, etc.).
+    """
+    location = resolve_aria2c_location(local_aria2c=local_aria2c)
+    if not location:
+        raise HostError(
+            "aria2c is not installed. It is required for all downloads. "
+            "Run scripts\\install.bat, then restart your browser."
+        )
+    return location
+
+
 def resolve_n_m3u8dl_re_location(local_n_m3u8dl_re=None):
     configured = os.environ.get("QWIN_N_M3U8DL_RE")
     if configured:

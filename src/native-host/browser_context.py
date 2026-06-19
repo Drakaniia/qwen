@@ -5,7 +5,6 @@ from urllib.parse import urlparse
 
 from native_protocol import HostError
 
-
 HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
 NATIVE_HEADER_NAMES = {
     "accept",

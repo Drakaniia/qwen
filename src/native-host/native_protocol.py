@@ -4,7 +4,6 @@ import struct
 import sys
 import threading
 
-
 MAX_INCOMING_BYTES = 64 * 1024 * 1024
 MAX_OUTGOING_BYTES = 1024 * 1024
 OUTGOING_LOCK = threading.Lock()
@@ -35,6 +34,15 @@ def pong_response(message, version, dependencies):
 
 def folder_response(message, selected_path):
     response = {"type": "folder", "id": request_id(message)}
+    if selected_path:
+        response["path"] = str(selected_path)
+    else:
+        response["canceled"] = True
+    return response
+
+
+def file_response(message, selected_path):
+    response = {"type": "file", "id": request_id(message)}
     if selected_path:
         response["path"] = str(selected_path)
     else:
