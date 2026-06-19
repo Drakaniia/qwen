@@ -950,7 +950,7 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(popen.call_args.kwargs["creationflags"], 123)
         self.assertEqual(popen.call_args.kwargs["cwd"], str(Path(r"C:\Users\Viewer\Downloads")))
 
-    def test_download_task_retries_standard_command_after_aria2_access_refusal(self):
+    def test_download_task_retries_next_fallback_after_aria2_access_refusal(self):
         commands = []
         sent = []
 
@@ -967,7 +967,14 @@ class HostHelperTests(unittest.TestCase):
         task = FallbackTask(
             message={"id": "job_1"},
             command=["yt-dlp", "--downloader", r"C:\Tools\aria2c.exe", "https://cdn.example.com/video.mp4"],
-            fallback_command=["yt-dlp", "https://cdn.example.com/video.mp4"],
+            # aria2c is required — no fallback_command without it
+            fallback_command=None,
+            fallback_commands=[
+                {
+                    "command": ["yt-dlp", "--no-check-certificate", "https://cdn.example.com/video.mp4"],
+                    "label": "yt-dlp (no SSL check)",
+                }
+            ],
             download_dir=Path(r"C:\Users\Viewer\Downloads"),
             send=sent.append,
         )
@@ -977,11 +984,8 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(
             commands[0], ["yt-dlp", "--downloader", r"C:\Tools\aria2c.exe", "https://cdn.example.com/video.mp4"]
         )
-        self.assertEqual(commands[1], ["yt-dlp", "https://cdn.example.com/video.mp4"])
+        self.assertEqual(commands[1], ["yt-dlp", "--no-check-certificate", "https://cdn.example.com/video.mp4"])
         self.assertEqual(sent[-1]["type"], "done")
-        self.assertTrue(
-            any(message.get("type") == "progress" and "standard mode" in message.get("line", "") for message in sent)
-        )
 
     def test_download_task_retries_stream_backend_after_retryable_yt_dlp_error(self):
         commands = []
