@@ -7,6 +7,7 @@ import * as downloadState from "./download_state.js";
 import { nativeRequest as nativeRequestFn } from "./native_requests.js";
 import * as downloadFallbacks from "./download_fallbacks.js";
 import * as tabState from "./tab_state.js";
+import * as cdpRelay from "./cdp_relay.js";
 import { create as createMessageRouter } from "./message_router.js";
 import { create as createDownloadOrchestration } from "./download_orchestration.js";
 
@@ -1212,6 +1213,9 @@ browserApi.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { url
   "responseHeaders",
 ]);
 
+// Initialise CDP relay module (listens for debugger events)
+cdpRelay.init();
+
 // --- Message handlers (registered with MessageRouter) ---
 
 function senderTabId(message, sender) {
@@ -1526,6 +1530,24 @@ messageRouter.handle("downloadMagnet", async (message) => {
   });
 
   return { ok: true, jobId };
+});
+
+// ─── CDP relay ──────────────────────────────────────────────────────────────
+
+messageRouter.handle("cdpCommand", async (message) => {
+  return cdpRelay.handleCdpCommand(message);
+});
+
+messageRouter.handle("cdpAttach", async (message) => {
+  return cdpRelay.handleCdpAttach(message);
+});
+
+messageRouter.handle("cdpDetach", async (message) => {
+  return cdpRelay.handleCdpDetach(message);
+});
+
+messageRouter.handle("cdpStatus", async () => {
+  return cdpRelay.handleCdpStatus();
 });
 
 messageRouter.handle("chooseTorrentFile", async () => {
