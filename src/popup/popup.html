@@ -61,7 +61,18 @@
         placeholder="Paste YouTube, Spotify, Instagram, TikTok, or other video/music URL"
       />
       <button id="downloadManualUrl" class="primary settings-button" type="button">Download link</button>
-      <p class="hint">Uses yt-dlp and stream fallbacks. Cannot bypass DRM or blocked private access.</p>
+      <p class="hint">Uses yt-dlp and stream fallbacks for video page URLs.</p>
+
+      <label for="magnetUrl">Download from magnet link</label>
+      <input
+        id="magnetUrl"
+        type="text"
+        spellcheck="false"
+        placeholder="Paste magnet:?xt=urn:btih:..."
+      />
+      <button id="downloadMagnet" class="settings-button magnet-button" type="button">Download magnet</button>
+      <button id="downloadTorrentFile" class="settings-button magnet-button" type="button">Download .torrent file</button>
+      <p class="hint">Downloads BitTorrent content via aria2c (magnet link or a local .torrent file).</p>
 
       <label for="audioFormat">Audio format (when Music mode is on)</label>
       <select id="audioFormat" class="settings-select">

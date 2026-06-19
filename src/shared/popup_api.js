@@ -139,6 +139,21 @@ function pingNativeHost() {
   return runtimeMessage({ type: "pingNativeHost" });
 }
 
+/** @param {string} magnetUrl @param {string} [downloadFolder] */
+function downloadMagnet(magnetUrl, downloadFolder) {
+  return runtimeMessage({ type: "downloadMagnet", url: magnetUrl, downloadFolder: downloadFolder || "" });
+}
+
+/** Open a native file picker to select a .torrent file. */
+function chooseTorrentFile() {
+  return runtimeMessage({ type: "chooseTorrentFile" });
+}
+
+/** @param {string} torrentPath @param {string} [downloadFolder] */
+function downloadTorrent(torrentPath, downloadFolder) {
+  return runtimeMessage({ type: "downloadTorrent", path: torrentPath, downloadFolder: downloadFolder || "" });
+}
+
 export {
   tabsQuery,
   getVideos,
@@ -158,4 +173,7 @@ export {
   saveSettings,
   chooseDownloadFolder,
   pingNativeHost,
+  downloadMagnet,
+  chooseTorrentFile,
+  downloadTorrent,
 };

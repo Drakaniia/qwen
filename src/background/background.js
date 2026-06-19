@@ -397,9 +397,12 @@ async function addDetectedVideo(tabId, input, notify = true) {
   const finalTitle = (function () {
     const candidate =
       (!isGenericInput && inputTitle) || (!isGenericCurrent && currentTitle) || inputTitle || urlDerivedTitle;
-    // If the title came from the URL and looks like a random server hash/token,
+    // If the title is generic or came from the URL and looks like a random server hash/token,
     // fall back to the page <title> which is more descriptive (e.g. "My Video - Site").
-    if (candidate === urlDerivedTitle && looksLikeServerToken(urlDerivedTitle)) {
+    if (
+      videoFilters.isGenericTitle(candidate) ||
+      (candidate === urlDerivedTitle && looksLikeServerToken(urlDerivedTitle))
+    ) {
       const pageTitle = pageTitlesByTab[tabId];
       if (pageTitle && !videoFilters.isGenericTitle(pageTitle)) {
         return pageTitle;
@@ -1389,6 +1392,293 @@ messageRouter.handle("getSettings", async () => {
 messageRouter.handle("openPopup", async () => {
   await browserApi.action.openPopup();
   return { ok: true };
+});
+
+messageRouter.handle("downloadMagnet", async (message) => {
+  const magnetUrl = String(message.url || "").trim();
+  if (!magnetUrl.startsWith("magnet:?")) {
+    throw new Error("Invalid magnet link format.");
+  }
+
+  const jobId = `magnet_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const downloadFolder = String(message.downloadFolder || tabState.getSettings().downloadFolder || "");
+
+  tabState.updateDownload(jobId, {
+    id: jobId,
+    url: magnetUrl,
+    title: "Magnet link",
+    format: "TORRENT",
+    status: "connecting",
+    message: "Connecting to BitTorrent network via aria2c...",
+    downloadFolder,
+    createdAt: Date.now(),
+    ...resetDownloadProgressDetails(),
+    percent: null,
+  });
+
+  let port;
+  let finished = false;
+
+  try {
+    port = browserApi.runtime.connectNative(HOST_NAME);
+  } catch (error) {
+    tabState.updateDownload(jobId, {
+      status: "error",
+      error: `Native messaging is not connected: ${error.message || error}`,
+    });
+    return { ok: true, jobId };
+  }
+  downloadPortsById[jobId] = port;
+
+  port.onMessage.addListener((portMessage) => {
+    if (!portMessage || portMessage.id !== jobId) {
+      return;
+    }
+
+    if (portMessage.type === "started") {
+      tabState.updateDownload(jobId, { status: "running", message: "Downloading via aria2c..." });
+      return;
+    }
+
+    if (portMessage.type === "progress") {
+      const patch = {
+        status: "running",
+        stage: portMessage.stage,
+        ...artifactPatchFromMessage(portMessage),
+        ...progressDetailPatchFromMessage(portMessage),
+      };
+      if (typeof portMessage.percent === "number") {
+        patch.percent = normalizeDownloadProgress(jobId, portMessage.percent);
+        patch.message = downloadProgressMessage(patch.percent);
+      }
+      tabState.updateDownload(jobId, patch);
+      return;
+    }
+
+    if (portMessage.type === "done") {
+      finished = true;
+      delete downloadPortsById[jobId];
+      tabState.updateDownload(jobId, {
+        status: "done",
+        percent: 100,
+        speed: "",
+        eta: "",
+        stage: "done",
+        filepath: portMessage.filepath || "",
+        artifactRoot: portMessage.artifactRoot || "",
+        message: portMessage.message || "Magnet download complete.",
+      });
+      try {
+        port.disconnect();
+      } catch (_error) {}
+      return;
+    }
+
+    if (portMessage.type === "error") {
+      finished = true;
+      delete downloadPortsById[jobId];
+      try {
+        port.disconnect();
+      } catch (_error) {}
+      tabState.updateDownload(jobId, {
+        status: "error",
+        error: portMessage.error || "aria2c failed to download the magnet link.",
+        ...artifactPatchFromMessage(portMessage),
+      });
+      return;
+    }
+
+    if (portMessage.type === "canceled") {
+      finished = true;
+      delete downloadPortsById[jobId];
+      try {
+        port.disconnect();
+      } catch (_error) {}
+      tabState.updateDownload(jobId, {
+        status: "canceled",
+        message: portMessage.message || "Download canceled.",
+        ...artifactPatchFromMessage(portMessage),
+      });
+    }
+  });
+
+  port.onDisconnect.addListener(() => {
+    const runtimeError = api.runtime.lastError ? api.runtime.lastError.message : "";
+    delete downloadPortsById[jobId];
+    if (!finished) {
+      tabState.updateDownload(jobId, {
+        status: "error",
+        error: runtimeError || "Native messaging helper disconnected while downloading magnet link.",
+      });
+    }
+  });
+
+  port.postMessage({
+    type: "magnet",
+    id: jobId,
+    url: magnetUrl,
+    downloadFolder,
+  });
+
+  tabState.updateDownload(jobId, {
+    status: "queued",
+    message: "Sent to native helper for magnet download.",
+  });
+
+  return { ok: true, jobId };
+});
+
+messageRouter.handle("chooseTorrentFile", async () => {
+  const requestId = `torrentfile_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const response = await nativeRequest(
+    {
+      type: "chooseTorrentFile",
+      id: requestId,
+      initialFolder: tabState.getSettings().downloadFolder || "",
+    },
+    600000,
+  );
+
+  const selectedPath = String(response.path || "").trim();
+  if (response.canceled || !selectedPath) {
+    return { ok: true, canceled: true };
+  }
+  return { ok: true, path: selectedPath };
+});
+
+messageRouter.handle("downloadTorrent", async (message) => {
+  const torrentPath = String(message.path || "").trim();
+  if (!torrentPath || !/\.torrent$/i.test(torrentPath)) {
+    throw new Error("Select a valid .torrent file.");
+  }
+
+  const jobId = `torrent_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const downloadFolder = String(message.downloadFolder || tabState.getSettings().downloadFolder || "");
+  const torrentName = torrentPath.split(/[\\/]/).pop() || "Torrent file";
+
+  tabState.updateDownload(jobId, {
+    id: jobId,
+    url: torrentPath,
+    title: torrentName,
+    format: "TORRENT",
+    status: "connecting",
+    message: "Connecting to BitTorrent network via aria2c...",
+    downloadFolder,
+    createdAt: Date.now(),
+    ...resetDownloadProgressDetails(),
+    percent: null,
+  });
+
+  let port;
+  let finished = false;
+
+  try {
+    port = browserApi.runtime.connectNative(HOST_NAME);
+  } catch (error) {
+    tabState.updateDownload(jobId, {
+      status: "error",
+      error: `Native messaging is not connected: ${error.message || error}`,
+    });
+    return { ok: true, jobId };
+  }
+  downloadPortsById[jobId] = port;
+
+  port.onMessage.addListener((portMessage) => {
+    if (!portMessage || portMessage.id !== jobId) {
+      return;
+    }
+
+    if (portMessage.type === "started") {
+      tabState.updateDownload(jobId, { status: "running", message: "Downloading via aria2c..." });
+      return;
+    }
+
+    if (portMessage.type === "progress") {
+      const patch = {
+        status: "running",
+        stage: portMessage.stage,
+        ...artifactPatchFromMessage(portMessage),
+        ...progressDetailPatchFromMessage(portMessage),
+      };
+      if (typeof portMessage.percent === "number") {
+        patch.percent = normalizeDownloadProgress(jobId, portMessage.percent);
+        patch.message = downloadProgressMessage(patch.percent);
+      }
+      tabState.updateDownload(jobId, patch);
+      return;
+    }
+
+    if (portMessage.type === "done") {
+      finished = true;
+      delete downloadPortsById[jobId];
+      tabState.updateDownload(jobId, {
+        status: "done",
+        percent: 100,
+        speed: "",
+        eta: "",
+        stage: "done",
+        filepath: portMessage.filepath || "",
+        artifactRoot: portMessage.artifactRoot || "",
+        message: portMessage.message || "Torrent download complete.",
+      });
+      try {
+        port.disconnect();
+      } catch (_error) {}
+      return;
+    }
+
+    if (portMessage.type === "error") {
+      finished = true;
+      delete downloadPortsById[jobId];
+      try {
+        port.disconnect();
+      } catch (_error) {}
+      tabState.updateDownload(jobId, {
+        status: "error",
+        error: portMessage.error || "aria2c failed to download the .torrent file.",
+        ...artifactPatchFromMessage(portMessage),
+      });
+      return;
+    }
+
+    if (portMessage.type === "canceled") {
+      finished = true;
+      delete downloadPortsById[jobId];
+      try {
+        port.disconnect();
+      } catch (_error) {}
+      tabState.updateDownload(jobId, {
+        status: "canceled",
+        message: portMessage.message || "Download canceled.",
+        ...artifactPatchFromMessage(portMessage),
+      });
+    }
+  });
+
+  port.onDisconnect.addListener(() => {
+    const runtimeError = api.runtime.lastError ? api.runtime.lastError.message : "";
+    delete downloadPortsById[jobId];
+    if (!finished) {
+      tabState.updateDownload(jobId, {
+        status: "error",
+        error: runtimeError || "Native messaging helper disconnected while downloading the .torrent file.",
+      });
+    }
+  });
+
+  port.postMessage({
+    type: "torrentFile",
+    id: jobId,
+    path: torrentPath,
+    downloadFolder,
+  });
+
+  tabState.updateDownload(jobId, {
+    status: "queued",
+    message: "Sent to native helper for .torrent download.",
+  });
+
+  return { ok: true, jobId };
 });
 
 messageRouter.handle("pingNativeHost", async () => {

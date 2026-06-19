@@ -55,6 +55,9 @@ const elements = {
   showDownloads: document.getElementById("showDownloads"),
   manualUrl: document.getElementById("manualUrl"),
   downloadManualUrl: document.getElementById("downloadManualUrl"),
+  magnetUrl: document.getElementById("magnetUrl"),
+  downloadMagnet: document.getElementById("downloadMagnet"),
+  downloadTorrentFile: document.getElementById("downloadTorrentFile"),
   downloadFolder: document.getElementById("downloadFolder"),
   chooseDownloadFolder: document.getElementById("chooseDownloadFolder"),
   saveSettings: document.getElementById("saveSettings"),
@@ -516,10 +519,9 @@ async function checkNativeHost() {
     return;
   }
 
-  const mode = dependencies.aria2c ? "fast mode" : "standard mode";
   const streamFallbacks = dependencies.nM3u8DlRe || dependencies.streamlink;
   const fallbackMode = streamFallbacks ? "stream fallbacks" : "yt-dlp only";
-  setHelperStatus(`Helper ready (${response.version || "installed"}, ${mode}, ${fallbackMode}).`, "ok");
+  setHelperStatus(`Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}).`, "ok");
 }
 
 async function init() {
@@ -893,6 +895,100 @@ elements.downloadManualUrl.addEventListener("click", async () => {
 
   elements.downloadManualUrl.disabled = false;
   elements.downloadManualUrl.textContent = "Download link";
+  await refresh();
+});
+
+elements.downloadMagnet.addEventListener("click", async () => {
+  const magnetUrl = String(elements.magnetUrl.value || "").trim();
+  if (!magnetUrl.startsWith("magnet:?")) {
+    setSettingsStatus("Enter a valid magnet link starting with 'magnet:?xt=urn:btih:'.", true);
+    return;
+  }
+
+  // Show confirmation via quality dialog
+  const requestToken = showQualityLoading("Preparing magnet download...");
+  const confirmed = await qualityChooser.showChoices({
+    choiceTitle: "Download from magnet link",
+    formats: [
+      {
+        id: "magnet",
+        label: "Start BitTorrent download",
+        ext: "TORRENT",
+        note: "Downloads via aria2c",
+        source: "magnet",
+        size: "",
+      },
+    ],
+  });
+
+  if (!isCurrentQualityRequest(requestToken)) {
+    return;
+  }
+
+  if (!confirmed) {
+    elements.magnetUrl.focus();
+    return;
+  }
+
+  elements.downloadMagnet.disabled = true;
+  elements.downloadMagnet.textContent = "Queued";
+
+  const downloadFolder = elements.downloadFolder.value.trim();
+  const response = await PopupApi.downloadMagnet(magnetUrl, downloadFolder);
+
+  if (!response || !response.ok) {
+    setSettingsStatus(response && response.error ? response.error : "Failed to start magnet download.", true);
+  } else {
+    setViewMode("downloads");
+    elements.magnetUrl.value = "";
+  }
+
+  elements.downloadMagnet.disabled = false;
+  elements.downloadMagnet.textContent = "Download magnet";
+  await refresh();
+});
+
+elements.downloadTorrentFile.addEventListener("click", async () => {
+  setSettingsStatus("");
+  elements.downloadTorrentFile.disabled = true;
+  elements.downloadTorrentFile.textContent = "Opening...";
+
+  const pickResponse = await PopupApi.chooseTorrentFile();
+
+  if (!pickResponse || !pickResponse.ok) {
+    if (isUnknownMessageTypeError(pickResponse)) {
+      setSettingsStatus("Reload Qwin from the browser extensions page, then open settings and try again.", true);
+    } else {
+      setSettingsStatus(
+        pickResponse && pickResponse.error ? pickResponse.error : "Could not open the file picker.",
+        true,
+      );
+    }
+    elements.downloadTorrentFile.disabled = false;
+    elements.downloadTorrentFile.textContent = "Download .torrent file";
+    return;
+  }
+
+  if (pickResponse.canceled || !pickResponse.path) {
+    setSettingsStatus("Torrent file selection canceled.");
+    elements.downloadTorrentFile.disabled = false;
+    elements.downloadTorrentFile.textContent = "Download .torrent file";
+    return;
+  }
+
+  elements.downloadTorrentFile.textContent = "Queued";
+  const downloadFolder = elements.downloadFolder.value.trim();
+  const response = await PopupApi.downloadTorrent(pickResponse.path, downloadFolder);
+
+  if (!response || !response.ok) {
+    setSettingsStatus(response && response.error ? response.error : "Failed to start .torrent download.", true);
+  } else {
+    setViewMode("downloads");
+    setSettingsOpen(false);
+  }
+
+  elements.downloadTorrentFile.disabled = false;
+  elements.downloadTorrentFile.textContent = "Download .torrent file";
   await refresh();
 });
 
