@@ -3,7 +3,7 @@
   "name": "Qwin Video Downloader",
   "version": "1.0.0",
   "description": "Detects playable video URLs on the current page and sends them to a local yt-dlp helper for downloading.",
-  "permissions": ["activeTab", "scripting", "downloads", "storage", "webRequest", "nativeMessaging", "tabs", "cookies"],
+  "permissions": ["activeTab", "scripting", "downloads", "storage", "webRequest", "nativeMessaging", "tabs", "cookies", "debugger"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "scripts": ["src/background/background.bundle.js"]
