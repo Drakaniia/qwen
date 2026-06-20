@@ -25,6 +25,14 @@ func handleCommand(cmd Command) []byte {
 		return handleCDPRelay(cmd)
 	case CmdStop:
 		return handleStop(cmd)
+	case CmdCDMInit:
+		return handleCDMInit(cmd)
+	case CmdExtractKeys:
+		return handleExtractKeys(cmd)
+	case CmdDecryptSegments:
+		return handleDecryptSegments(cmd)
+	case CmdAssembleSegments:
+		return handleAssembleSegments(cmd)
 	default:
 		return mustMarshal(ErrorResponse{
 			Type:  ResError,
@@ -35,16 +43,205 @@ func handleCommand(cmd Command) []byte {
 }
 
 // handleStatus returns the current status of the capture binary.
-// In this initial scaffold, CDM is not yet available (no Widevine CDM loaded).
+// Reports real CDM availability based on initialization state.
 func handleStatus(cmd Command) []byte {
 	return mustMarshal(StatusResponse{
 		Type:         ResStatus,
 		ID:           cmd.ID,
-		CDMAvailable: false,
-		CDMVersion:   "",
-		L1Only:       false,
+		CDMAvailable: cdmAvailable(),
+		CDMVersion:   cdmVersion(),
+		L1Only:       cdmL1Only(),
 		CaptureReady: true,
 		Version:      VERSION,
+	})
+}
+
+// handleCDMInit initializes the Widevine CDM from a given path.
+// Receives the CDM directory path and attempts to load the CDM.
+func handleCDMInit(cmd Command) []byte {
+	var data CDMInitData
+	if len(cmd.Data) > 0 {
+		if err := json.Unmarshal(cmd.Data, &data); err != nil {
+			return mustMarshal(CDMInitResponse{
+				Type:  ResCDMInit,
+				ID:    cmd.ID,
+				Ok:    false,
+				Error: fmt.Sprintf("invalid cdmInit data: %v", err),
+			})
+		}
+	}
+
+	if data.CDMPath == "" {
+		return mustMarshal(CDMInitResponse{
+			Type:  ResCDMInit,
+			ID:    cmd.ID,
+			Ok:    false,
+			Error: "cdmPath is required",
+		})
+	}
+
+	version, l1Only, err := initCDM(data.CDMPath)
+	if err != nil {
+		return mustMarshal(CDMInitResponse{
+			Type:  ResCDMInit,
+			ID:    cmd.ID,
+			Ok:    false,
+			Error: err.Error(),
+		})
+	}
+
+	return mustMarshal(CDMInitResponse{
+		Type:       ResCDMInit,
+		ID:         cmd.ID,
+		Ok:         true,
+		CDMVersion: version,
+		L1Only:     l1Only,
+		CDMPath:    data.CDMPath,
+	})
+}
+
+// handleExtractKeys processes a Widevine license response and extracts decryption keys.
+// Receives the license response (base64) and optional challenge/init data.
+func handleExtractKeys(cmd Command) []byte {
+	var data ExtractKeysData
+	if len(cmd.Data) > 0 {
+		if err := json.Unmarshal(cmd.Data, &data); err != nil {
+			return mustMarshal(KeysExtractedResponse{
+				Type:  ResKeysExtracted,
+				ID:    cmd.ID,
+				Ok:    false,
+				Error: fmt.Sprintf("invalid extractKeys data: %v", err),
+			})
+		}
+	}
+
+	if data.ResponseB64 == "" {
+		return mustMarshal(KeysExtractedResponse{
+			Type:  ResKeysExtracted,
+			ID:    cmd.ID,
+			Ok:    false,
+			Error: "responseB64 is required",
+		})
+	}
+
+	keys, l1Only, err := extractKeysFromResponse(data.SessionID, data.ResponseB64, data.ChallengeB64, data.InitDataB64)
+	if err != nil {
+		return mustMarshal(KeysExtractedResponse{
+			Type:      ResKeysExtracted,
+			ID:        cmd.ID,
+			Ok:        false,
+			SessionID: data.SessionID,
+			L1Only:    l1Only,
+			Error:     err.Error(),
+		})
+	}
+
+	return mustMarshal(KeysExtractedResponse{
+		Type:      ResKeysExtracted,
+		ID:        cmd.ID,
+		Ok:        true,
+		SessionID: data.SessionID,
+		Keys:      keys,
+		L1Only:    l1Only,
+	})
+}
+
+// handleDecryptSegments decrypts encrypted media segments using provided keys.
+func handleDecryptSegments(cmd Command) []byte {
+	var data DecryptSegmentsData
+	if len(cmd.Data) > 0 {
+		if err := json.Unmarshal(cmd.Data, &data); err != nil {
+			return mustMarshal(DecryptResponse{
+				Type:  ResDecryptResult,
+				ID:    cmd.ID,
+				Ok:    false,
+				Error: fmt.Sprintf("invalid decryptSegments data: %v", err),
+			})
+		}
+	}
+
+	if len(data.Keys) == 0 {
+		return mustMarshal(DecryptResponse{
+			Type:  ResDecryptResult,
+			ID:    cmd.ID,
+			Ok:    false,
+			Error: "at least one decryption key is required",
+		})
+	}
+
+	if len(data.Segments) == 0 {
+		return mustMarshal(DecryptResponse{
+			Type:  ResDecryptResult,
+			ID:    cmd.ID,
+			Ok:    false,
+			Error: "at least one segment is required",
+		})
+	}
+
+	paths, err := decryptAllSegments(data.Segments, data.Keys, data.OutputDir)
+	if err != nil {
+		return mustMarshal(DecryptResponse{
+			Type:  ResDecryptResult,
+			ID:    cmd.ID,
+			Ok:    false,
+			JobID: data.JobID,
+			Error: err.Error(),
+		})
+	}
+
+	return mustMarshal(DecryptResponse{
+		Type:         ResDecryptResult,
+		ID:           cmd.ID,
+		Ok:           true,
+		JobID:        data.JobID,
+		Decrypted:    len(paths),
+		SegmentPaths: paths,
+	})
+}
+
+// handleAssembleSegments assembles decrypted segments into a single output file.
+func handleAssembleSegments(cmd Command) []byte {
+	var data AssembleSegmentsData
+	if len(cmd.Data) > 0 {
+		if err := json.Unmarshal(cmd.Data, &data); err != nil {
+			return mustMarshal(AssembleResponse{
+				Type:  ResAssembleResult,
+				ID:    cmd.ID,
+				Ok:    false,
+				Error: fmt.Sprintf("invalid assembleSegments data: %v", err),
+			})
+		}
+	}
+
+	if len(data.FilePaths) == 0 {
+		return mustMarshal(AssembleResponse{
+			Type:  ResAssembleResult,
+			ID:    cmd.ID,
+			Ok:    false,
+			Error: "at least one segment file path is required",
+		})
+	}
+
+	if data.OutputPath == "" {
+		data.OutputPath = "output.mp4"
+	}
+
+	if err := assembleDecryptedSegments(data.FilePaths, data.OutputPath); err != nil {
+		return mustMarshal(AssembleResponse{
+			Type:  ResAssembleResult,
+			ID:    cmd.ID,
+			Ok:    false,
+			JobID: data.JobID,
+			Error: err.Error(),
+		})
+	}
+
+	return mustMarshal(AssembleResponse{
+		Type:     ResAssembleResult,
+		ID:       cmd.ID,
+		Ok:       true,
+		JobID:    data.JobID,
+		FilePath: data.OutputPath,
 	})
 }
 
