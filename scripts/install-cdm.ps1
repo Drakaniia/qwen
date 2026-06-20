@@ -1,5 +1,6 @@
 param(
-  [string]$RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+  [string]$RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
+  [switch]$RunInit = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -154,6 +155,31 @@ function Install-FallbackCdm {
   }
 }
 
+# ─── Post-install CDM init (optional) ────────────────────────────────────────
+
+function Invoke-CdmInit {
+  param([string]$TargetDir)
+
+  Write-Output "Attempting to initialize CDM with native host (if running)..."
+  $nativeHostDir = Join-Path $PSScriptRoot ".." "src" "native-host"
+  $pythonCode = @"
+import sys, json
+sys.path.insert(0, r"$($nativeHostDir -replace '\\', '/')")
+try:
+    from capture_manager import cdm_init, get_capture_manager
+    mgr = get_capture_manager()
+    if mgr.is_running:
+        r = cdm_init(r"$($TargetDir -replace '\\', '/')")
+        print(json.dumps(r))
+    else:
+        print('{"status":"skipped","message":"Native host not running. CDM will init on next startup."}')
+except Exception as e:
+    print(json.dumps({"status":"error","error":str(e)}))
+"@
+  $result = python -c $pythonCode 2>&1
+  Write-Output "CDM init result: $result"
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
@@ -177,6 +203,10 @@ if ($chromeCdm) {
 
     Write-CdmStatus -Available $true -Version $chromeCdm.version -Source $chromeCdm.source
     Write-Output "Widevine CDM installed to tools/cdm/ (source: Chrome)."
+
+    if ($RunInit) {
+      Invoke-CdmInit -TargetDir $cdmDir
+    }
     exit 0
   } else {
     Write-Output "Chrome's CDM version $($chromeCdm.version) is not in the compatible list."
@@ -186,7 +216,12 @@ if ($chromeCdm) {
     if (Install-FallbackCdm -Version $FALLBACK_VERSION) {
       Write-CdmStatus -Available $true -Version $FALLBACK_VERSION -Source "fallback-download"
       Write-Output "Widevine CDM $FALLBACK_VERSION installed to tools/cdm/ (source: fallback download)."
+
+      if ($RunInit) {
+        Invoke-CdmInit -TargetDir $cdmDir
+      }
       exit 0
+    }
     } else {
       Write-Warning "Could not install a compatible CDM."
       Write-CdmStatus -Available $false -Error "Chrome CDM version $($chromeCdm.version) incompatible, and fallback download failed."
@@ -200,6 +235,10 @@ if ($chromeCdm) {
   if (Install-FallbackCdm -Version $FALLBACK_VERSION) {
     Write-CdmStatus -Available $true -Version $FALLBACK_VERSION -Source "fallback-download"
     Write-Output "Widevine CDM $FALLBACK_VERSION installed to tools/cdm/ (source: fallback download)."
+
+    if ($RunInit) {
+      Invoke-CdmInit -TargetDir $cdmDir
+    }
     exit 0
   } else {
     Write-Warning "Could not find or download a Widevine CDM."
