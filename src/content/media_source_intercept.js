@@ -319,10 +319,17 @@ function init() {
     URL.createObjectURL = interceptedCreateObjectURL;
   }
 
-  // Listen for cleanup requests from background
+  // Listen for messages from background
   extensionApi.runtime.onMessage.addListener((message) => {
     if (message && message.type === "mseCleanupCapture") {
       cleanup();
+      return false;
+    }
+    // Ensure MSE interception is active (best-effort signal from background)
+    if (message && message.type === "mseInitCapture") {
+      if (!window.__qwinMseIntercepted) {
+        init();
+      }
       return false;
     }
   });
