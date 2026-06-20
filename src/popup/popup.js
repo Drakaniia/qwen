@@ -77,6 +77,7 @@ const elements = {
   musicLinkUrl: document.getElementById("musicLinkUrl"),
   downloadMusicLink: document.getElementById("downloadMusicLink"),
   audioFormat: document.getElementById("audioFormat"),
+  recordingMode: document.getElementById("recordingMode"),
 };
 
 // ─── Quality chooser ────────────────────────────────────────────────────────
