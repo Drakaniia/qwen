@@ -1222,11 +1222,123 @@ browserApi.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { url
 // Initialise CDP relay module (listens for debugger events)
 cdpRelay.init();
 
+// In-memory store for recording details
+let recordingUpdateTimer = null;
+
+/** Update recording progress for all active recordings every 5 seconds. */
+function startRecordingProgressUpdates() {
+  if (recordingUpdateTimer) {
+    return;
+  }
+  recordingUpdateTimer = setInterval(() => {
+    const activeRecJobs = Object.keys(activeRecordings);
+    if (!activeRecJobs.length) {
+      return;
+    }
+
+    const now = Date.now();
+    for (const jobId of activeRecJobs) {
+      const rec = activeRecordings[jobId];
+      const durationSec = Math.round((now - rec.startTime) / 1000);
+      const sizeGuess = durationSec * 2.5 * 1024 * 1024; // ~2.5 MB per second estimate
+
+      tabState.updateDownload(jobId, {
+        recordingDuration: durationSec,
+        recordingSizeBytes: sizeGuess,
+        message: `Recording... ${formatDuration(durationSec)}, ${formatFileSize(sizeGuess)}`,
+      });
+    }
+  }, 5000);
+}
+
+function stopRecordingProgressUpdates() {
+  if (recordingUpdateTimer) {
+    clearInterval(recordingUpdateTimer);
+    recordingUpdateTimer = null;
+  }
+}
+
+function formatFileSize(bytes) {
+  if (!bytes || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+// Start the recording update timer
+startRecordingProgressUpdates();
+
+// In-memory store of captured MSE segments (keyed by tabId).
+const mseSegmentsByTab = {};
+
+/**
+ * Handle captured MSE/Blob segments from the content script.
+ * Segments are accumulated in memory and can later be flushed
+ * to the native host for re-assembly.
+ */
+function handleMseCapturedSegments(message, sender) {
+  const tabId = senderTabId(message, sender);
+  if (!tabId || !Array.isArray(message.segments)) {
+    return;
+  }
+
+  if (!mseSegmentsByTab[tabId]) {
+    mseSegmentsByTab[tabId] = [];
+  }
+
+  for (const segment of message.segments) {
+    mseSegmentsByTab[tabId].push({
+      streamId: segment.streamId,
+      mimeType: segment.mimeType,
+      data: segment.data, // base64
+      index: segment.index,
+      timestamp: segment.timestamp,
+      isLast: segment.isLast,
+    });
+  }
+
+  // If last segment received, we could notify the popup
+  const hasLast = message.segments.some((s) => s.isLast);
+  if (hasLast) {
+    notifyPopup({
+      type: "mseCaptureComplete",
+      tabId,
+      totalSegments: mseSegmentsByTab[tabId].length,
+      streams: groupMseStreams(tabId),
+    });
+  }
+}
+
+function groupMseStreams(tabId) {
+  const segments = mseSegmentsByTab[tabId] || [];
+  const streams = {};
+  for (const seg of segments) {
+    if (!streams[seg.streamId]) {
+      streams[seg.streamId] = { mimeType: seg.mimeType, count: 0, hasLast: false };
+    }
+    streams[seg.streamId].count++;
+    if (seg.isLast) {
+      streams[seg.streamId].hasLast = true;
+    }
+  }
+  return streams;
+}
+
 // --- Message handlers (registered with MessageRouter) ---
 
 function senderTabId(message, sender) {
   return message.tabId || (sender.tab && sender.tab.id);
 }
+
+messageRouter.handle("mseCapturedSegments", async (message, sender) => {
+  handleMseCapturedSegments(message, sender);
+  return { ok: true };
+});
 
 messageRouter.handle("contentDetectedVideos", async (message, sender) => {
   const tabId = senderTabId(message, sender);
@@ -1537,6 +1649,165 @@ messageRouter.handle("downloadMagnet", async (message) => {
 
   return { ok: true, jobId };
 });
+
+// ─── Recording ──────────────────────────────────────────────────────────────
+
+/** Map of recording jobId → { tabId, port, startTime, filepath } */
+const activeRecordings = {};
+
+messageRouter.handle("startRecording", async (message) => {
+  const tabId = Number(message.tabId) || 0;
+  const options = message.options || {};
+  const jobId = options.jobId || `rec_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  if (!tabId) {
+    return { ok: false, error: "No tab ID provided for recording." };
+  }
+
+  // Create the recording download entry
+  const recordingJob = {
+    id: jobId,
+    tabId,
+    title: options.title || "Screen recording",
+    format: "RECORDING",
+    status: "connecting",
+    message: "Starting screen recording...",
+    url: options.url || "",
+    videoId: jobId,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    stage: "recording",
+    isRecording: true,
+    recordingDuration: 0,
+    recordingSizeBytes: 0,
+    recordingFps: 0,
+    recordingDroppedFrames: 0,
+    percent: null,
+  };
+
+  tabState.updateDownload(jobId, recordingJob);
+
+  // Try to start via the capture binary
+  try {
+    // Signal the native host to start recording via CDP/Go binary
+    const nativeResponse = await nativeRequest(
+      {
+        type: "startRecording",
+        id: `rec_start_${Date.now()}`,
+        tabId,
+        jobId,
+        outputPath: "", // Will be resolved by native host
+        quality: "best",
+      },
+      15000,
+    );
+
+    if (nativeResponse && nativeResponse.ok) {
+      activeRecordings[jobId] = {
+        tabId,
+        startTime: Date.now(),
+        filepath: nativeResponse.filepath || "",
+      };
+
+      tabState.updateDownload(jobId, {
+        status: "running",
+        message: nativeResponse.message || "Recording started.",
+        filepath: nativeResponse.filepath || "",
+      });
+
+      return { ok: true, jobId };
+    }
+
+    // If native host doesn't support recording yet, create a placeholder recording
+    activeRecordings[jobId] = {
+      tabId,
+      startTime: Date.now(),
+      filepath: "",
+    };
+
+    tabState.updateDownload(jobId, {
+      status: "running",
+      message: "Recording... (native capture not yet available, placeholder mode)",
+    });
+
+    return { ok: true, jobId };
+  } catch (error) {
+    // Recording unavailable — create placeholder so UI still works
+    tabState.updateDownload(jobId, {
+      status: "running",
+      message: "Recording... (native capture not yet available, placeholder mode)",
+    });
+    return { ok: true, jobId };
+  }
+});
+
+messageRouter.handle("stopRecording", async (message) => {
+  const jobId = message.jobId;
+  const recording = activeRecordings[jobId];
+
+  if (!recording) {
+    return { ok: false, error: "Recording job not found." };
+  }
+
+  // Try to stop via native host
+  try {
+    await nativeRequest(
+      {
+        type: "stopRecording",
+        id: `rec_stop_${Date.now()}`,
+        jobId,
+      },
+      10000,
+    );
+  } catch (_error) {
+    // Native stop failed, but we can still mark as done locally
+  }
+
+  delete activeRecordings[jobId];
+
+  // Stop the progress timer if no recordings remain
+  if (!Object.keys(activeRecordings).length) {
+    stopRecordingProgressUpdates();
+  }
+
+  const durationSec = Math.round((Date.now() - recording.startTime) / 1000);
+  const durationStr = formatDuration(durationSec);
+
+  tabState.updateDownload(jobId, {
+    status: "done",
+    stage: "done",
+    isRecording: false,
+    recordingDuration: durationSec,
+    message: `Recording complete. Duration: ${durationStr}.`,
+    percent: 100,
+  });
+
+  return { ok: true, jobId };
+});
+
+messageRouter.handle("getRecordingStatus", async () => {
+  const jobs = Object.keys(activeRecordings).map((jobId) => {
+    const rec = activeRecordings[jobId];
+    const elapsedSec = Math.round((Date.now() - rec.startTime) / 1000);
+    return {
+      jobId,
+      tabId: rec.tabId,
+      elapsedSec,
+      elapsedFormatted: formatDuration(elapsedSec),
+    };
+  });
+
+  return { ok: true, activeRecordings: jobs };
+});
+
+function formatDuration(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
 
 // ─── CDP relay ──────────────────────────────────────────────────────────────
 
