@@ -5,6 +5,7 @@ import * as qualityFormat from "../shared/quality_format.js";
 import * as qualityDialog from "../shared/quality_dialog.js";
 import * as videoPicker from "../shared/video_picker.js";
 import * as pageDetectionModule from "./page_detection.js";
+import * as mediaSourceIntercept from "./media_source_intercept.js";
 
 const extensionApi = typeof browser !== "undefined" ? browser : chrome;
 const seenUrls = new Map();
@@ -596,6 +597,9 @@ function start() {
     attributes: true,
     attributeFilter: ["src", "type"],
   });
+  // Initialise MSE/Blob URL interception for custom players
+  mediaSourceIntercept.init();
+
   publishScan();
   window.setInterval(publishScan, 3000);
   window.setInterval(positionAllOverlays, 600);
