@@ -447,11 +447,21 @@ function createHarness({ videos = [], downloads = [], settings = {} } = {}) {
   assert.ok(stopButton, "Recording job must have a Stop recording button");
 
   // ─── Test 6: Stop recording button triggers stopRecording API ──────────────
+  // The download list uses event delegation: a single click listener on
+  // the download list container catches clicks via event.target.closest().
+  // We simulate this by dispatching the click on the download list element.
 
   if (stopButton) {
     const preStopCount = recJobHarness.messages.filter((m) => m.type === "stopRecording").length;
-    await stopButton.click();
+    
+    // Simulate event delegation by calling the download list's click listener
+    // with the stopButton as event.target
+    const dlListeners = recJobHarness.element("downloadList").listeners.click || [];
+    for (const listener of dlListeners) {
+      await listener({ target: stopButton });
+    }
     await flushPromises();
+    
     const postStopCount = recJobHarness.messages.filter((m) => m.type === "stopRecording").length;
     assert.ok(
       postStopCount > preStopCount,
