@@ -204,7 +204,8 @@ function isLikelyFullLengthVideoCandidate(details) {
     details.source === "dom-video" ||
     details.source === "dom-source" ||
     details.source === "page-fallback" ||
-    details.source === "youtube-page";
+    details.source === "youtube-page" ||
+    (typeof details.source === "string" && details.source.startsWith("cdp-"));
 
   if (!youtubePage && !isDomSource && hasShortOrIncompleteSignal(details)) {
     return false;

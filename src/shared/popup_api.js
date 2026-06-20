@@ -169,6 +169,45 @@ function stopRecording(jobId) {
   return runtimeMessage({ type: "stopRecording", jobId });
 }
 
+// ─── Segment Capture ──────────────────────────────────────────────────────
+
+/** @param {number} tabId @param {Object} [options] */
+function startSegmentCapture(tabId, options) {
+  return runtimeMessage({ type: "startSegmentCapture", tabId, ...(options || {}) });
+}
+
+/** @param {number} tabId */
+function stopSegmentCapture(tabId) {
+  return runtimeMessage({ type: "stopSegmentCapture", tabId });
+}
+
+/** @param {number} tabId */
+function getSegmentCaptureStatus(tabId) {
+  return runtimeMessage({ type: "getSegmentCaptureStatus", tabId });
+}
+
+// ─── CDM Key Extraction ───────────────────────────────────────────────────
+
+/** @param {string} cdmPath */
+function cdmInit(cdmPath) {
+  return runtimeMessage({ type: "cdmInit", cdmPath });
+}
+
+/** @param {Object} exchange */
+function extractCdmKeys(exchange) {
+  return runtimeMessage({ type: "extractCdmKeys", exchange });
+}
+
+/** @param {Object} params */
+function decryptCdmSegments(params) {
+  return runtimeMessage({ type: "decryptCdmSegments", ...params });
+}
+
+/** @param {Object} params */
+function assembleDecryptedSegments(params) {
+  return runtimeMessage({ type: "assembleDecryptedSegments", ...params });
+}
+
 export {
   tabsQuery,
   getVideos,
@@ -194,4 +233,11 @@ export {
   startRecording,
   getRecordingStatus,
   stopRecording,
+  startSegmentCapture,
+  stopSegmentCapture,
+  getSegmentCaptureStatus,
+  cdmInit,
+  extractCdmKeys,
+  decryptCdmSegments,
+  assembleDecryptedSegments,
 };
