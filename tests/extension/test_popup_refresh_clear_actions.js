@@ -308,7 +308,17 @@ function createHarness({
   const refreshHarness = createHarness({ refreshedVideos: [refreshedVideo] });
 
   await refreshHarness.ready();
-  assert.equal(refreshHarness.element("videoList").children.length, 0);
+  // Empty state now shows a "Record this page" button
+  assert.equal(
+    refreshHarness.element("videoList").children.length,
+    1,
+    "empty video list must show a Record this page button",
+  );
+  assert.equal(
+    refreshHarness.element("videoList").children[0].textContent,
+    "Record this page",
+    "the single empty-state child must be the Record this page button",
+  );
 
   await refreshHarness.element("rescan").click();
   await flushPromises();

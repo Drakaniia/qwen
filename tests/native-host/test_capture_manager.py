@@ -32,7 +32,7 @@ if not GO_BINARY.exists():
         print(f"Warning: Could not build Go binary: {exc}", file=sys.stderr)
         print("Tests that spawn the Go binary will be skipped.", file=sys.stderr)
 
-from capture_manager import CaptureManager
+from capture_manager import CaptureManager, _read_native_message, _write_native_message
 
 
 class TestCDPRelayChain(unittest.TestCase):

@@ -447,15 +447,22 @@ function createHarness({ videos = [], downloads = [], settings = {} } = {}) {
   assert.ok(stopButton, "Recording job must have a Stop recording button");
 
   // ─── Test 6: Stop recording button triggers stopRecording API ──────────────
-  // The download list uses event delegation: a single click listener on
-  // the download list container catches clicks via event.target.closest().
-  // We simulate this by dispatching the click on the download list element.
+  // The download list uses event delegation via event.target.closest().
+  // TestElement.closest() returns null by default, so we override it on
+  // the stop button so closest() returns the button itself.
 
   if (stopButton) {
+    // Patch closest() so the delegated listener finds this button
+    stopButton.closest = function (selector) {
+      if (selector === "button[data-action][data-job-id]") {
+        return stopButton;
+      }
+      return null;
+    };
+
     const preStopCount = recJobHarness.messages.filter((m) => m.type === "stopRecording").length;
     
     // Simulate event delegation by calling the download list's click listener
-    // with the stopButton as event.target
     const dlListeners = recJobHarness.element("downloadList").listeners.click || [];
     for (const listener of dlListeners) {
       await listener({ target: stopButton });
@@ -529,13 +536,13 @@ function createHarness({ videos = [], downloads = [], settings = {} } = {}) {
   );
   assert.ok(progressItem, "Progress recording must be rendered with recording-item class");
 
-  // Check for recording duration text
+  // Check for recording duration text (formatDuration(65) => "1m 5s")
   const hasDurationText = Array.from(progressItem.children).some(
     (child) =>
       child.className === "recording-progress" &&
-      Array.from(child.children).some((span) => span.textContent && span.textContent.includes("65")),
+      Array.from(child.children).some((span) => span.textContent && span.textContent.includes("1m 5s")),
   );
-  assert.ok(hasDurationText, "Recording progress must show duration in the progress section");
+  assert.ok(hasDurationText, "Recording progress must show formatted duration");
 
   // ─── Test 9: formatDuration and formatFileSize code coverage ──────────────
 
