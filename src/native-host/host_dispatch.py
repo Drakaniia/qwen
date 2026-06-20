@@ -54,6 +54,52 @@ def handle_message(message, deps):
             deps.run_choose_folder(message)
         case "chooseTorrentFile":
             deps.run_choose_torrent_file(message)
+        case "startCdmCapture":
+            # Forward CDM capture start to the extension (CDP work happens there)
+            deps.send_native_message(
+                {
+                    "type": "cdmCaptureStarted",
+                    "id": deps.request_id(message),
+                    "tabId": message.get("tabId", 0),
+                    "ok": True,
+                    "message": "CDM capture request forwarded to extension.",
+                }
+            )
+        case "stopCdmCapture":
+            deps.send_native_message(
+                {
+                    "type": "cdmCaptureStopped",
+                    "id": deps.request_id(message),
+                    "tabId": message.get("tabId", 0),
+                    "ok": True,
+                    "message": "CDM capture stop forwarded to extension.",
+                }
+            )
+        case "getCdmCaptures":
+            deps.send_native_message(
+                {
+                    "type": "cdmCapturesResult",
+                    "id": deps.request_id(message),
+                    "ok": True,
+                    "message": "CDM captures forwarded to extension. Query extension directly for full results.",
+                }
+            )
+        case "cdmInit":
+            # Initialize the Widevine CDM in the Go binary
+            result = deps.run_cdm_init(message)
+            deps.send_native_message(result)
+        case "extractKeys":
+            # Extract decryption keys from a captured license response
+            result = deps.run_extract_keys(message)
+            deps.send_native_message(result)
+        case "decryptSegments":
+            # Decrypt encrypted media segments with extracted keys
+            result = deps.run_decrypt_segments(message)
+            deps.send_native_message(result)
+        case "assembleSegments":
+            # Assemble decrypted segments into a final output file
+            result = deps.run_assemble_segments(message)
+            deps.send_native_message(result)
         case "cdpStatus":
             deps.send_native_message(
                 {
