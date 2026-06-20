@@ -4,17 +4,23 @@ The CaptureManager is responsible for:
 - Locating the qwin-capture binary in tools/capture/
 - Spawning it as a subprocess
 - Sending JSON commands with native messaging framing
-- Receiving JSON responses
+- Receiving JSON responses via a single persistent background reader
 - Graceful lifecycle management (start, stop, restart)
+- Async CDP relay forwarding from the Go binary to the extension
 
-This module mirrors the pattern used by download_task.py for managing
-subprocess-based download tools (aria2c, N_m3u8DL-RE, etc.).
+Architecture:
+  A single background reader thread reads ALL messages from Go's stdout.
+  Messages are dispatched to:
+    - Sync command responses (match by command ID → signal waiting thread)
+    - Async CDP relay forwards (type == "cdpRelayForward" → put in queue)
 """
 
 import json
 import os
+import queue
 import struct
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -28,13 +34,11 @@ def _resolve_capture_binary():
     1. tools/capture/qwin-capture.exe (installed by install-capture.ps1)
     2. go/qwin-capture.exe (development build)
     """
-    # Walk up from this file's location to find the project root
     current = Path(__file__).resolve()
     for parent in current.parents:
         if (parent / "tools").is_dir() and (parent / "go").is_dir():
             break
     else:
-        # Fallback to a reasonable guess
         parent = current.parent
 
     candidates = [
@@ -76,6 +80,15 @@ def _write_native_message(stream, message):
     stream.flush()
 
 
+class _PendingCommand:
+    """Tracks a synchronous command waiting for a response from Go."""
+
+    def __init__(self):
+        self.event = threading.Event()
+        self.response = None
+        self.error = None
+
+
 class CaptureManager:
     """Manages the lifecycle of the qwin-capture Go binary subprocess."""
 
@@ -83,6 +96,16 @@ class CaptureManager:
         self._process = None
         self._lock = threading.Lock()
         self._binary_path = None
+
+        # Single background reader state
+        self._reader_thread = None
+        self._reader_stop = threading.Event()
+
+        # Pending sync commands: command_id → _PendingCommand
+        self._pending_commands = {}
+
+        # Queue for async CDP relay forwards from Go
+        self._cdp_forward_queue = queue.Queue()
 
     @property
     def is_available(self):
@@ -124,11 +147,83 @@ class CaptureManager:
             self._process = process
             self._binary_path = binary_path
 
+        # Start the single background reader thread
+        self._start_background_reader()
+
+        # Small delay to ensure the reader thread is actively reading stdout
+        # before any commands are sent (avoids race conditions on Windows).
+        import time as _time
+        _time.sleep(0.05)
+
+    def _start_background_reader(self):
+        """Start a single daemon thread that reads ALL messages from Go's stdout.
+
+        Messages are dispatched to:
+        - Pending sync commands (matched by ID → signals waiting thread)
+        - Async CDP relay forwards (type == "cdpRelayForward" → enqueued)
+        """
+        if self._reader_thread is not None and self._reader_thread.is_alive():
+            return
+
+        self._reader_stop.clear()
+
+        def _reader_loop():
+            try:
+                stdout = self._process.stdout
+                if stdout is None:
+                    return
+
+                while not self._reader_stop.is_set():
+                    try:
+                        message = _read_native_message(stdout)
+                    except Exception:
+                        break
+
+                    if message is None:
+                        break
+
+                    msg_id = message.get("id", "")
+                    msg_type = message.get("type", "")
+
+                    # Check if this is a response to a pending sync command
+                    with self._lock:
+                        pending = self._pending_commands.pop(msg_id, None)
+                        if pending is not None:
+                            pending.response = message
+                            pending.event.set()
+                            continue
+
+                    # Check if this is an async CDP relay forward from Go
+                    if msg_type == "cdpRelayForward":
+                        self._cdp_forward_queue.put(message)
+                        continue
+
+                    # Unknown message — log and skip
+                    print(
+                        f"[capture_manager] Unknown message from Go: type={msg_type} id={msg_id}",
+                        file=sys.stderr,
+                    )
+
+            except Exception:
+                pass
+            finally:
+                # Wake up any remaining pending commands on reader exit
+                with self._lock:
+                    for pending in self._pending_commands.values():
+                        pending.error = Exception("Capture binary stdout closed")
+                        pending.event.set()
+                    self._pending_commands.clear()
+
+        self._reader_thread = threading.Thread(target=_reader_loop, daemon=True)
+        self._reader_thread.start()
+
     def stop(self, timeout=5.0):
         """Gracefully stop the capture binary by sending a stop command.
 
         Falls back to process termination if the binary does not respond.
         """
+        self._reader_stop.set()
+
         with self._lock:
             process = self._process
             if process is None or process.poll() is not None:
@@ -172,8 +267,10 @@ class CaptureManager:
     def send_command(self, command_type, data=None, timeout=10.0):
         """Send a JSON command to the capture binary and await the response.
 
+        Uses the single background reader to receive the response.
+
         Args:
-            command_type: The command type string (e.g., "status", "cdpCommand").
+            command_type: The command type string (e.g., "status", "echo").
             data: Optional dict payload to include in the "data" field.
             timeout: Maximum seconds to wait for a response.
 
@@ -199,37 +296,102 @@ class CaptureManager:
         if data is not None:
             message["data"] = data
 
-        event = threading.Event()
-        response_holder = [None]
-        error_holder = [None]
-
-        def _reader():
-            try:
-                while True:
-                    response = _read_native_message(stdout)
-                    if response is None:
-                        break
-                    if response.get("id") == command_id:
-                        response_holder[0] = response
-                        event.set()
-                        break
-                    # Ignore messages with other IDs (they belong to other commands)
-            except Exception as exc:
-                error_holder[0] = exc
-                event.set()
-
-        reader_thread = threading.Thread(target=_reader, daemon=True)
-        reader_thread.start()
+        # Register the pending command before sending
+        pending = _PendingCommand()
+        with self._lock:
+            self._pending_commands[command_id] = pending
 
         _write_native_message(stdin, message)
 
-        if not event.wait(timeout=timeout):
+        if not pending.event.wait(timeout=timeout):
+            with self._lock:
+                self._pending_commands.pop(command_id, None)
             raise HostError(f"qwin-capture did not respond to '{command_type}' within {timeout}s.")
 
-        if error_holder[0]:
-            raise HostError(f"Error reading from capture binary: {error_holder[0]}")
+        if pending.error:
+            raise HostError(f"Error reading from capture binary: {pending.error}")
 
-        return response_holder[0]
+        if pending.response is None:
+            raise HostError(f"qwin-capture returned no response for '{command_type}'.")
+
+        return pending.response
+
+    def send_cdp_relay(self, method, params=None, tab_id=0, timeout=60.0):
+        """Send a CDP command through the full relay chain.
+
+        Flow:
+          1. Send 'cdp_relay' to Go via stdin
+          2. Go writes 'cdpRelayForward' to stdout (caught by background reader)
+          3. Python forwards to extension → chrome.debugger
+          4. Extension sends result back to Python
+          5. Python calls send_cdp_relay_result() to write result to Go's stdin
+          6. Go reads the result and returns it as the response
+
+        Args:
+            method: CDP method name (e.g., "Network.enable").
+            params: Optional dict of CDP method parameters.
+            tab_id: Browser tab ID to target.
+            timeout: Maximum seconds to wait for the relay roundtrip.
+
+        Returns:
+            The CDP result dict with keys: ok, result (dict), error (str).
+        """
+        data = {"method": method, "tabId": tab_id}
+        if params is not None:
+            data["params"] = params
+
+        response = self.send_command("cdp_relay", data=data, timeout=timeout)
+
+        result = {"ok": response.get("ok", False), "error": response.get("error", "")}
+        raw_result = response.get("result")
+        if raw_result:
+            result["result"] = raw_result
+
+        return result
+
+    def send_cdp_relay_result(self, forward_id, result=None, error=""):
+        """Write a CDP relay result back to Go's stdin.
+
+        This is called after the extension has executed the CDP command
+        and returned a result. We forward the result to Go so it can
+        complete the relay roundtrip.
+
+        Args:
+            forward_id: The ID from the cdpRelayForward message.
+            result: Optional result dict to send back.
+            error: Optional error string.
+        """
+        with self._lock:
+            process = self._process
+            if process is None or process.poll() is not None:
+                raise HostError("qwin-capture is not running.")
+
+            stdin = process.stdin
+            if stdin is None:
+                raise HostError("qwin-capture process has no stdin pipe.")
+
+        message = {"id": forward_id}
+        if result is not None:
+            message["result"] = result
+        if error:
+            message["error"] = error
+
+        _write_native_message(stdin, message)
+
+    def get_pending_cdp_forward(self, block=False, timeout=1.0):
+        """Get the next pending CDP relay forward from Go (non-blocking by default).
+
+        Args:
+            block: If True, block until a forward is available.
+            timeout: Seconds to wait if block=True.
+
+        Returns:
+            The CDP forward message dict, or None if no message is available.
+        """
+        try:
+            return self._cdp_forward_queue.get(block=block, timeout=timeout if block else 0.1)
+        except queue.Empty:
+            return None
 
     def get_capture_status(self):
         """Get the current status of the capture binary.
@@ -308,11 +470,10 @@ def capture_status():
 
 
 def send_cdp_command(method, params=None, tab_id=0):
-    """Send a CDP command through the capture binary relay.
+    """Send a CDP command through the capture binary relay (sync).
 
-    The Go binary receives the command and relays it through the extension
-    to chrome.debugger.sendCommand. The response comes back through the
-    same relay chain.
+    DEPRECATED: Use send_cdp_relay() instead for the full relay chain.
+    This method sends the command directly to Go without the async relay.
     """
     manager = get_capture_manager()
     if not manager.is_running:
@@ -323,3 +484,24 @@ def send_cdp_command(method, params=None, tab_id=0):
         data["params"] = params
 
     return manager.send_command("cdpCommand", data=data)
+
+
+def send_cdp_relay(method, params=None, tab_id=0, timeout=60.0):
+    """Send a CDP command through the full relay chain (Go → Python → Extension → chrome.debugger).
+
+    Returns the CDP result after the complete roundtrip.
+    """
+    manager = get_capture_manager()
+    if not manager.is_running:
+        manager.start()
+    return manager.send_cdp_relay(method, params=params, tab_id=tab_id, timeout=timeout)
+
+
+def send_cdp_relay_result(forward_id, result=None, error=""):
+    """Send a CDP relay result back to Go (from extension to Go via Python)."""
+    return get_capture_manager().send_cdp_relay_result(forward_id, result=result, error=error)
+
+
+def get_pending_cdp_forward(block=False, timeout=1.0):
+    """Get the next pending CDP relay forward from Go."""
+    return get_capture_manager().get_pending_cdp_forward(block=block, timeout=timeout)

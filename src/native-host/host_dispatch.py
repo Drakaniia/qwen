@@ -71,8 +71,55 @@ def handle_message(message, deps):
                     "message": "CDP command received and forwarded. Results arrive via the relay chain.",
                 }
             )
+        case "cdpRelayResult" | "cdpRelayError":
+            # Result from extension for a CDP relay command — forward to Go
+            if hasattr(deps, "send_cdp_relay_result"):
+                error_msg = message.get("error", "")
+                print(
+                    f"[cdpRelayResult] forwardId={message.get('forwardId', '')} ok={message.get('ok', False)}",
+                    file=sys.stderr,
+                )
+                deps.send_cdp_relay_result(
+                    forward_id=message.get("forwardId", ""),
+                    result=message.get("result"),
+                    error=error_msg,
+                )
         case _:
             raise deps.HostError(f"Unknown native host request type: {message_type}")
+
+
+def process_cdp_relay_forwards(deps):
+    """Check for pending CDP relay forwards from Go and forward to extension.
+
+    This is called from the main loop to handle async CDP commands that
+    Go has pushed to stdout. The background reader in capture_manager
+    puts them in a queue, and we forward them to the extension.
+    """
+    if not hasattr(deps, "get_pending_cdp_forward"):
+        return
+
+    while True:
+        forward = deps.get_pending_cdp_forward(block=False)
+        if forward is None:
+            break
+
+        forward_id = forward.get("id", "")
+        forward_data = forward.get("data", {}) or {}
+        tab_id = forward_data.get("tabId", 0)
+        method = forward_data.get("method", "")
+        params = forward_data.get("params", {})
+
+        if hasattr(deps, "send_native_message"):
+            deps.send_native_message(
+                {
+                    "type": "cdpRelayForward",
+                    "id": forward.get("id", ""),
+                    "tabId": tab_id,
+                    "method": method,
+                    "params": params,
+                    "forwardId": forward_id,
+                }
+            )
 
 
 def main(deps):
@@ -95,6 +142,12 @@ def main(deps):
         except Exception as exc:
             print(f"Unhandled host error: {exc}", file=sys.stderr)
             deps.send_native_message(deps.unexpected_error_response(request_id_value, exc))
+
+        # After handling each message, check for any pending CDP forwards from Go
+        try:
+            process_cdp_relay_forwards(deps)
+        except Exception as exc:
+            print(f"Error processing CDP relay forwards: {exc}", file=sys.stderr)
 
 
 def namespace(**values):

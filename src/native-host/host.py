@@ -88,6 +88,14 @@ def capture_status():
     return _capture_manager.capture_status()
 
 
+def get_pending_cdp_forward(block=False, timeout=1.0):
+    return _capture_manager.get_pending_cdp_forward(block=block, timeout=timeout)
+
+
+def send_cdp_relay_result(forward_id, result=None, error=""):
+    return _capture_manager.send_cdp_relay_result(forward_id, result=result, error=error)
+
+
 def _active_downloads_lock():
     return _download_manager._active_downloads_lock()
 
@@ -189,6 +197,8 @@ def _dispatch_deps(include_dispatch=True):
         "run_torrent_download": run_torrent_download,
         "run_resolve_media_candidates": run_resolve_media_candidates,
         "send_native_message": send_native_message,
+        "send_cdp_relay_result": send_cdp_relay_result,
+        "get_pending_cdp_forward": get_pending_cdp_forward,
         "unexpected_error_response": unexpected_error_response,
     }
     if include_dispatch:
