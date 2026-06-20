@@ -23,6 +23,8 @@ func main() {
 	// Read JSON messages from stdin using native messaging framing
 	// (4-byte little-endian length prefix + UTF-8 JSON payload).
 	stdin := bufio.NewReader(os.Stdin)
+	// Share the reader with commands.go for CDP relay result waiting
+	stdinReader = stdin
 
 	for {
 		// Read 4-byte length prefix

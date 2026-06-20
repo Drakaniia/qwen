@@ -25,6 +25,31 @@ type CDPCommandData struct {
 	Params json.RawMessage `json:"params,omitempty"`
 }
 
+// CDPRelayData is the payload for a "cdp_relay" command.
+// Python sends this to Go when it wants Go to relay a CDP command
+// through the chain: Go → Python → Extension → chrome.debugger.
+type CDPRelayData struct {
+	TabID  int             `json:"tabId"`
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params,omitempty"`
+}
+
+// CDPRelayResult is the message Python sends back to Go with
+// the result of a CDP command that was relayed through the chain.
+type CDPRelayResult struct {
+	ID     string          `json:"id"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  string          `json:"error,omitempty"`
+}
+
+// CDPForwardMessage is the message Go writes to stdout to forward
+// a CDP command through the relay chain.
+type CDPForwardMessage struct {
+	Type string          `json:"type"`
+	ID   string          `json:"id"`
+	Data CDPCommandData  `json:"data"`
+}
+
 // ─── Outgoing responses ─────────────────────────────────────────────────────
 
 // Response is a generic outgoing message to the Python host.
@@ -51,10 +76,11 @@ type EchoResponse struct {
 	Message string `json:"message"`
 }
 
-// CDPResult is the response to a "cdpCommand".
+// CDPResult is the response to a "cdpCommand" (sync) or "cdp_relay" (async relay).
 type CDPResult struct {
 	Type   string          `json:"type"`
 	ID     string          `json:"id"`
+	Ok     bool            `json:"ok"`
 	Result json.RawMessage `json:"result,omitempty"`
 	Error  string          `json:"error,omitempty"`
 }
@@ -74,11 +100,14 @@ const (
 	CmdStatus     = "status"
 	CmdEcho       = "echo"
 	CmdCDPCommand = "cdpCommand"
+	CmdCDPRelay   = "cdp_relay"
 	CmdStop       = "stop"
 
-	ResStatus    = "cdmStatus"
-	ResEcho      = "echo"
-	ResCDPResult = "cdpResult"
-	ResDone      = "done"
-	ResError     = "error"
+	ResStatus        = "cdmStatus"
+	ResEcho          = "echo"
+	ResCDPResult     = "cdpResult"
+	ResCDPForward    = "cdpRelayForward"
+	ResCDPRelayInput = "cdpRelayInput"
+	ResDone          = "done"
+	ResError         = "error"
 )

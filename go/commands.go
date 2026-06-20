@@ -1,9 +1,16 @@
 package main
 
 import (
+	"bufio"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
+	"time"
 )
+
+// stdinReader is a shared buffered reader for stdin used by the relay handler.
+var stdinReader *bufio.Reader
 
 // handleCommand routes an incoming command to the appropriate handler.
 func handleCommand(cmd Command) []byte {
@@ -14,6 +21,8 @@ func handleCommand(cmd Command) []byte {
 		return handleEcho(cmd)
 	case CmdCDPCommand:
 		return handleCDPCommand(cmd)
+	case CmdCDPRelay:
+		return handleCDPRelay(cmd)
 	case CmdStop:
 		return handleStop(cmd)
 	default:
@@ -27,7 +36,6 @@ func handleCommand(cmd Command) []byte {
 
 // handleStatus returns the current status of the capture binary.
 // In this initial scaffold, CDM is not yet available (no Widevine CDM loaded).
-// The Python host reads tools/cdm/status.json to populate the real status.
 func handleStatus(cmd Command) []byte {
 	return mustMarshal(StatusResponse{
 		Type:         ResStatus,
@@ -57,11 +65,11 @@ func handleEcho(cmd Command) []byte {
 	})
 }
 
-// handleCDPCommand receives a CDP command from the Python host relay.
-// In the scaffold, we acknowledge receipt and return a placeholder result.
-// The full implementation will send this to chrome.debugger via the extension.
+// handleCDPCommand receives a synchronous CDP command from the Python host.
+// The current implementation acknowledges receipt, since CDP commands are
+// forwarded through the relay chain and results arrive asynchronously
+// via cdp_relay.
 func handleCDPCommand(cmd Command) []byte {
-	// Parse the CDP command data for validation
 	var data CDPCommandData
 	if len(cmd.Data) > 0 {
 		if err := json.Unmarshal(cmd.Data, &data); err != nil {
@@ -73,18 +81,143 @@ func handleCDPCommand(cmd Command) []byte {
 		}
 	}
 
-	// Return acknowledgment — CDP commands are async and will receive
-	// their results via the relay chain (extension → Python → Go).
 	return mustMarshal(CDPResult{
 		Type: ResCDPResult,
 		ID:   cmd.ID,
 	})
 }
 
+// handleCDPRelay receives a "cdp_relay" command from the Python host.
+// Flow:
+//  1. Parse the CDP command from the payload
+//  2. Write a CDP forward message to stdout (Go → Python → Extension → chrome.debugger)
+//  3. Wait for the result to come back via stdin (Python sends cdpRelayInput)
+//  4. Return the result as the response
+//
+// This is a blocking operation — the binary processes the relay synchronously
+// so the Python host gets a clean request-response cycle.
+func handleCDPRelay(cmd Command) []byte {
+	var data CDPRelayData
+	if len(cmd.Data) > 0 {
+		if err := json.Unmarshal(cmd.Data, &data); err != nil {
+			return mustMarshal(ErrorResponse{
+				Type:  ResError,
+				ID:    cmd.ID,
+				Error: fmt.Sprintf("invalid cdp_relay data: %v", err),
+			})
+		}
+	}
+
+	if data.TabID == 0 || data.Method == "" {
+		return mustMarshal(ErrorResponse{
+			Type:  ResError,
+			ID:    cmd.ID,
+			Error: "cdp_relay requires tabId and method",
+		})
+	}
+
+	forwardID := fmt.Sprintf("relay_%s", cmd.ID)
+
+	// Write the CDP forward message to stdout.
+	// Python's background reader catches this, forwards to the extension,
+	// and sends the result back via stdin as a cdpRelayInput message.
+	forward := CDPForwardMessage{
+		Type: ResCDPForward,
+		ID:   forwardID,
+		Data: CDPCommandData{
+			TabID:  data.TabID,
+			Method: data.Method,
+			Params: data.Params,
+		},
+	}
+	forwardData := mustMarshal(forward)
+	writeMessage(forwardData)
+
+	// Wait for the result to come back on stdin.
+	// Read messages from stdin until we find one with matching relay ID.
+	timeout := time.After(30 * time.Second)
+	for {
+		// Peek at what's coming next without consuming bytes (bufio allows this)
+		_, err := stdinReader.Peek(1)
+		if err != nil {
+			return mustMarshal(CDPResult{
+				Type:  ResCDPResult,
+				ID:    cmd.ID,
+				Ok:    false,
+				Error: fmt.Sprintf("stdin read error while waiting for relay result: %v", err),
+			})
+		}
+
+		// Read the next message from stdin
+		header := make([]byte, 4)
+		if _, err := io.ReadFull(stdinReader, header); err != nil {
+			return mustMarshal(CDPResult{
+				Type:  ResCDPResult,
+				ID:    cmd.ID,
+				Ok:    false,
+				Error: fmt.Sprintf("failed to read relay result header: %v", err),
+			})
+		}
+
+		length := binary.LittleEndian.Uint32(header)
+		if length > 64*1024*1024 {
+			writeError("read", "relay result message too large")
+			continue
+		}
+
+		payload := make([]byte, length)
+		if _, err := io.ReadFull(stdinReader, payload); err != nil {
+			return mustMarshal(CDPResult{
+				Type:  ResCDPResult,
+				ID:    cmd.ID,
+				Ok:    false,
+				Error: fmt.Sprintf("failed to read relay result payload: %v", err),
+			})
+		}
+
+		// Try to parse as a relay result
+		var relayResult CDPRelayResult
+		if err := json.Unmarshal(payload, &relayResult); err != nil {
+			writeError("parse", fmt.Sprintf("invalid relay result JSON: %v", err))
+			continue
+		}
+
+		// Check if this result matches our relay command
+		if relayResult.ID == forwardID {
+			// Found the matching result — return it
+			var resultPayload json.RawMessage
+			if relayResult.Result != nil {
+				resultPayload = relayResult.Result
+			}
+			return mustMarshal(CDPResult{
+				Type:   ResCDPResult,
+				ID:     cmd.ID,
+				Ok:     relayResult.Error == "",
+				Result: resultPayload,
+				Error:  relayResult.Error,
+			})
+		}
+
+		// Non-matching message — write error about receiving unexpected message
+		// This shouldn't happen in normal flow since Python only sends results back
+		writeError("relay", fmt.Sprintf("received unexpected message while waiting for relay result (id=%s)", relayResult.ID))
+
+		select {
+		case <-timeout:
+			return mustMarshal(CDPResult{
+				Type:  ResCDPResult,
+				ID:    cmd.ID,
+				Ok:    false,
+				Error: fmt.Sprintf("CDP relay timed out waiting for result after 30s"),
+			})
+		default:
+			// Continue waiting
+		}
+	}
+}
+
 // handleStop gracefully shuts down the binary.
 func handleStop(cmd Command) []byte {
-	// Signal the main loop to exit by setting a global flag.
-	// The response is written, then main() checks this flag and exits.
 	stopRequested = true
 	return mustMarshal(Response{
 		Type: ResDone,
