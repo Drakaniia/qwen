@@ -10,9 +10,10 @@ The CaptureManager is responsible for:
 
 Architecture:
   A single background reader thread reads ALL messages from Go's stdout.
-  Messages are dispatched to:
-    - Sync command responses (match by command ID → signal waiting thread)
-    - Async CDP relay forwards (type == "cdpRelayForward" → put in queue)
+  Every message is put into a single incoming queue. The send_command()
+  method reads from this queue to find responses matching its command ID.
+  Async CDP relay forwards (type == "cdpRelayForward") are automatically
+  routed to a separate queue for external consumption.
 """
 
 import json
@@ -53,6 +54,37 @@ def _resolve_capture_binary():
     return None
 
 
+def _resolve_cdm_status_file():
+    """Locate the CDM status.json file written by install-cdm.ps1.
+
+    Returns the parsed status dict, or None if not found or invalid.
+    """
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "tools").is_dir() and (parent / "go").is_dir():
+            break
+    else:
+        parent = current.parent
+
+    status_path = parent / "tools" / "cdm" / "status.json"
+    if not status_path.is_file():
+        return None
+
+    try:
+        raw = status_path.read_text("utf-8", errors="replace")
+        data = json.loads(raw)
+        if data.get("cdmAvailable") and data.get("cdmPath"):
+            return {
+                "cdmPath": str(data["cdmPath"]),
+                "cdmVersion": str(data.get("cdmVersion", "")),
+                "l1Only": bool(data.get("l1Only", False)),
+            }
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    return None
+
+
 def _read_native_message(stream):
     """Read one JSON message from a native messaging framed stream."""
     raw_length = stream.read(4)
@@ -80,15 +112,6 @@ def _write_native_message(stream, message):
     stream.flush()
 
 
-class _PendingCommand:
-    """Tracks a synchronous command waiting for a response from Go."""
-
-    def __init__(self):
-        self.event = threading.Event()
-        self.response = None
-        self.error = None
-
-
 class CaptureManager:
     """Manages the lifecycle of the qwin-capture Go binary subprocess."""
 
@@ -101,8 +124,9 @@ class CaptureManager:
         self._reader_thread = None
         self._reader_stop = threading.Event()
 
-        # Pending sync commands: command_id → _PendingCommand
-        self._pending_commands = {}
+        # Single incoming queue: ALL messages from Go's stdout go here.
+        # send_command reads from this queue to find matching responses.
+        self._incoming_queue = queue.Queue()
 
         # Queue for async CDP relay forwards from Go
         self._cdp_forward_queue = queue.Queue()
@@ -147,6 +171,14 @@ class CaptureManager:
             self._process = process
             self._binary_path = binary_path
 
+        # Drain stale sentinels from previous sessions
+        for q in (self._incoming_queue, self._cdp_forward_queue):
+            while not q.empty():
+                try:
+                    q.get_nowait()
+                except queue.Empty:
+                    break
+
         # Start the single background reader thread
         self._start_background_reader()
 
@@ -155,12 +187,61 @@ class CaptureManager:
         import time as _time
         _time.sleep(0.05)
 
+        # Auto-initialize the CDM from the install-cdm.ps1 status file
+        try:
+            self._auto_init_cdm()
+        except Exception:
+            pass
+
+    def _auto_init_cdm(self):
+        """Automatically initialize the Widevine CDM from the installer status file.
+
+        After starting the Go binary, check if install-cdm.ps1 has written
+        tools/cdm/status.json with a successful CDM installation. If so,
+        forward the CDM path to the Go binary via cdmInit so that subsequent
+        cdmStatus / status queries return accurate availability information.
+        """
+        cdm_info = _resolve_cdm_status_file()
+        if cdm_info is None:
+            return
+
+        cdm_path = cdm_info["cdmPath"]
+        if not cdm_path:
+            return
+
+        try:
+            response = self.send_command(
+                "cdmInit",
+                data={"cdmPath": cdm_path},
+                timeout=15.0,
+            )
+            if response.get("ok"):
+                print(
+                    f"[capture_manager] CDM auto-init successful: "
+                    f"version={response.get('cdmVersion', '')} "
+                    f"l1Only={response.get('l1Only', False)}",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"[capture_manager] CDM auto-init failed: {response.get('error', 'unknown')}",
+                    file=sys.stderr,
+                )
+        except HostError as exc:
+            # CDM init may fail if the Go binary doesn't support it yet,
+            # or if the CDM path is invalid. Non-fatal.
+            print(
+                f"[capture_manager] CDM auto-init error: {exc}",
+                file=sys.stderr,
+            )
+
     def _start_background_reader(self):
         """Start a single daemon thread that reads ALL messages from Go's stdout.
 
-        Messages are dispatched to:
-        - Pending sync commands (matched by ID → signals waiting thread)
-        - Async CDP relay forwards (type == "cdpRelayForward" → enqueued)
+        Every message from Go's stdout is put into self._incoming_queue.
+        The send_command() method reads from this queue to find command
+        responses. Async CDP relay forwards are routed to the separate
+        _cdp_forward_queue for external consumption.
         """
         if self._reader_thread is not None and self._reader_thread.is_alive():
             return
@@ -182,37 +263,17 @@ class CaptureManager:
                     if message is None:
                         break
 
-                    msg_id = message.get("id", "")
-                    msg_type = message.get("type", "")
-
-                    # Check if this is a response to a pending sync command
-                    with self._lock:
-                        pending = self._pending_commands.pop(msg_id, None)
-                        if pending is not None:
-                            pending.response = message
-                            pending.event.set()
-                            continue
-
-                    # Check if this is an async CDP relay forward from Go
-                    if msg_type == "cdpRelayForward":
-                        self._cdp_forward_queue.put(message)
-                        continue
-
-                    # Unknown message — log and skip
-                    print(
-                        f"[capture_manager] Unknown message from Go: type={msg_type} id={msg_id}",
-                        file=sys.stderr,
-                    )
+                    # Put ALL messages into the incoming queue.
+                    # send_command will consume matching responses;
+                    # everything else (cdpRelayForward, etc.) gets routed
+                    # from there.
+                    self._incoming_queue.put(message)
 
             except Exception:
                 pass
             finally:
-                # Wake up any remaining pending commands on reader exit
-                with self._lock:
-                    for pending in self._pending_commands.values():
-                        pending.error = Exception("Capture binary stdout closed")
-                        pending.event.set()
-                    self._pending_commands.clear()
+                # Signal EOF to any thread waiting in send_command
+                self._incoming_queue.put(None)
 
         self._reader_thread = threading.Thread(target=_reader_loop, daemon=True)
         self._reader_thread.start()
@@ -267,7 +328,10 @@ class CaptureManager:
     def send_command(self, command_type, data=None, timeout=10.0):
         """Send a JSON command to the capture binary and await the response.
 
-        Uses the single background reader to receive the response.
+        Writes the command to Go's stdin, then reads from the background
+        reader's incoming queue until a matching response (by command ID)
+        is received. Async CDP relay forwards are automatically routed
+        to the separate _cdp_forward_queue.
 
         Args:
             command_type: The command type string (e.g., "status", "echo").
@@ -286,9 +350,8 @@ class CaptureManager:
                 raise HostError("qwin-capture is not running. Call start() first.")
 
             stdin = process.stdin
-            stdout = process.stdout
-            if stdin is None or stdout is None:
-                raise HostError("qwin-capture process has no stdio pipes.")
+            if stdin is None:
+                raise HostError("qwin-capture process has no stdin pipe.")
 
         command_id = f"py_{os.urandom(4).hex()}"
 
@@ -296,25 +359,47 @@ class CaptureManager:
         if data is not None:
             message["data"] = data
 
-        # Register the pending command before sending
-        pending = _PendingCommand()
-        with self._lock:
-            self._pending_commands[command_id] = pending
-
         _write_native_message(stdin, message)
 
-        if not pending.event.wait(timeout=timeout):
-            with self._lock:
-                self._pending_commands.pop(command_id, None)
-            raise HostError(f"qwin-capture did not respond to '{command_type}' within {timeout}s.")
+        # Read from the incoming queue until we find our response
+        import time as _time
 
-        if pending.error:
-            raise HostError(f"Error reading from capture binary: {pending.error}")
+        deadline = _time.time() + timeout
+        while _time.time() < deadline:
+            remaining = deadline - _time.time()
+            if remaining <= 0:
+                break
 
-        if pending.response is None:
-            raise HostError(f"qwin-capture returned no response for '{command_type}'.")
+            try:
+                incoming = self._incoming_queue.get(block=True, timeout=min(remaining, 1.0))
+            except queue.Empty:
+                continue
 
-        return pending.response
+            if incoming is None:
+                raise HostError(
+                    f"qwin-capture process exited while waiting for '{command_type}' response."
+                )
+
+            msg_id = incoming.get("id", "")
+            msg_type = incoming.get("type", "")
+
+            # Match by command ID — this is our response
+            if msg_id == command_id:
+                return incoming
+
+            # Async CDP relay forwards go to the separate queue
+            if msg_type == "cdpRelayForward":
+                self._cdp_forward_queue.put(incoming)
+                continue
+
+            # Unknown message — log and discard
+            print(
+                f"[capture_manager] Unexpected message from Go while waiting "
+                f"for '{command_type}': type={msg_type} id={msg_id}",
+                file=sys.stderr,
+            )
+
+        raise HostError(f"qwin-capture did not respond to '{command_type}' within {timeout}s.")
 
     def send_cdp_relay(self, method, params=None, tab_id=0, timeout=60.0):
         """Send a CDP command through the full relay chain.
@@ -430,13 +515,32 @@ class CaptureManager:
                     "captureReady": False,
                     "error": "Unexpected response type",
                 }
-            return {
+
+            result = {
                 "cdmAvailable": response.get("cdmAvailable", False),
                 "cdmVersion": response.get("cdmVersion", ""),
                 "l1Only": response.get("l1Only", False),
                 "captureReady": response.get("captureReady", False),
                 "version": response.get("version", ""),
             }
+
+            # If Go reports CDM unavailable but the installer status file
+            # says CDM is available, attempt auto-init and re-query.
+            if not response.get("cdmAvailable") and _resolve_cdm_status_file() is not None:
+                try:
+                    self._auto_init_cdm()
+                    # Re-query after init
+                    retry = self.send_command("status", timeout=5.0)
+                    if retry.get("type") == "cdmStatus":
+                        result["cdmAvailable"] = retry.get("cdmAvailable", False)
+                        result["cdmVersion"] = retry.get("cdmVersion", "")
+                        result["l1Only"] = retry.get("l1Only", False)
+                        result["captureReady"] = retry.get("captureReady", False)
+                        result["version"] = retry.get("version", "")
+                except HostError:
+                    pass
+
+            return result
         except HostError as exc:
             return {
                 "cdmAvailable": False,
@@ -487,7 +591,7 @@ def send_cdp_command(method, params=None, tab_id=0):
 
 
 def send_cdp_relay(method, params=None, tab_id=0, timeout=60.0):
-    """Send a CDP command through the full relay chain (Go → Python → Extension → chrome.debugger).
+    """Send a CDP command through the full relay chain (Go -> Python -> Extension -> chrome.debugger).
 
     Returns the CDP result after the complete roundtrip.
     """
@@ -505,3 +609,157 @@ def send_cdp_relay_result(forward_id, result=None, error=""):
 def get_pending_cdp_forward(block=False, timeout=1.0):
     """Get the next pending CDP relay forward from Go."""
     return get_capture_manager().get_pending_cdp_forward(block=block, timeout=timeout)
+
+
+# ─── CDM Key Extraction & Decryption API ─────────────────────────────────────
+
+
+def cdm_init(cdm_path, timeout=15.0):
+    """Initialize the Widevine CDM at the given path.
+
+    Sends a 'cdmInit' command to the Go binary.
+
+    Args:
+        cdm_path: Path to the directory containing widevinecdm.dll.
+        timeout: Maximum seconds to wait for a response.
+
+    Returns:
+        Dict with keys: ok, cdmVersion, l1Only, error (if any).
+    """
+    manager = get_capture_manager()
+    if not manager.is_running:
+        manager.start()
+
+    try:
+        response = manager.send_command(
+            "cdmInit",
+            data={"cdmPath": cdm_path},
+            timeout=timeout,
+        )
+        return {
+            "ok": response.get("ok", False),
+            "cdmVersion": response.get("cdmVersion", ""),
+            "l1Only": response.get("l1Only", False),
+            "cdmPath": response.get("cdmPath", ""),
+            "error": response.get("error", ""),
+        }
+    except HostError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def extract_keys(session_id, response_b64, challenge_b64="", init_data_b64="", timeout=30.0):
+    """Extract decryption keys from a Widevine license response.
+
+    Sends an 'extractKeys' command to the Go binary with the captured
+    license exchange data from CDP network interception.
+
+    Args:
+        session_id: Opaque session identifier from the license exchange.
+        response_b64: Base64-encoded license response body.
+        challenge_b64: Optional base64-encoded license challenge (POST body).
+        init_data_b64: Optional base64-encoded PSSH init data.
+        timeout: Maximum seconds to wait for key extraction.
+
+    Returns:
+        Dict with keys: ok, sessionId, keys (list of DecryptionKey), l1Only, error.
+    """
+    manager = get_capture_manager()
+    if not manager.is_running:
+        manager.start()
+
+    data = {
+        "sessionId": session_id,
+        "responseB64": response_b64,
+    }
+    if challenge_b64:
+        data["challengeB64"] = challenge_b64
+    if init_data_b64:
+        data["initDataB64"] = init_data_b64
+
+    try:
+        response = manager.send_command("extractKeys", data=data, timeout=timeout)
+        return {
+            "ok": response.get("ok", False),
+            "sessionId": response.get("sessionId", session_id),
+            "keys": response.get("keys", []),
+            "l1Only": response.get("l1Only", False),
+            "error": response.get("error", ""),
+        }
+    except HostError as exc:
+        return {"ok": False, "sessionId": session_id, "keys": [], "error": str(exc)}
+
+
+def decrypt_segments(job_id, segments, keys, output_dir="", timeout=60.0):
+    """Decrypt encrypted media segments using provided keys.
+
+    Sends a 'decryptSegments' command to the Go binary.
+
+    Args:
+        job_id: Identifier for this decryption job.
+        segments: List of dicts with streamId, index, dataB64, mimeType, isLast.
+        keys: List of dicts with keyIdB64, keyB64, type.
+        output_dir: Optional directory for decrypted outputs.
+        timeout: Maximum seconds to wait for decryption.
+
+    Returns:
+        Dict with keys: ok, jobId, decrypted (count), segmentPaths, error.
+    """
+    manager = get_capture_manager()
+    if not manager.is_running:
+        manager.start()
+
+    data = {
+        "jobId": job_id,
+        "segments": segments,
+        "keys": keys,
+    }
+    if output_dir:
+        data["outputDir"] = output_dir
+
+    try:
+        response = manager.send_command("decryptSegments", data=data, timeout=timeout)
+        return {
+            "ok": response.get("ok", False),
+            "jobId": response.get("jobId", job_id),
+            "decrypted": response.get("decrypted", 0),
+            "segmentPaths": response.get("segmentPaths", []),
+            "error": response.get("error", ""),
+        }
+    except HostError as exc:
+        return {"ok": False, "jobId": job_id, "decrypted": 0, "error": str(exc)}
+
+
+def assemble_segments(job_id, file_paths, output_path, timeout=60.0):
+    """Assemble decrypted segment files into a single output file.
+
+    Sends an 'assembleSegments' command to the Go binary.
+
+    Args:
+        job_id: Identifier for this assembly job.
+        file_paths: List of file paths to decrypted segments.
+        output_path: Path for the assembled output file.
+        timeout: Maximum seconds to wait for assembly.
+
+    Returns:
+        Dict with keys: ok, jobId, filePath, error.
+    """
+    manager = get_capture_manager()
+    if not manager.is_running:
+        manager.start()
+
+    data = {
+        "jobId": job_id,
+        "filePaths": file_paths,
+        "outputPath": output_path,
+    }
+
+    try:
+        response = manager.send_command("assembleSegments", data=data, timeout=timeout)
+        return {
+            "ok": response.get("ok", False),
+            "jobId": response.get("jobId", job_id),
+            "filePath": response.get("filePath", ""),
+            "error": response.get("error", ""),
+        }
+    except HostError as exc:
+        return {"ok": False, "jobId": job_id, "error": str(exc)}
