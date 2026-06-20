@@ -8,6 +8,9 @@ import { nativeRequest as nativeRequestFn } from "./native_requests.js";
 import * as downloadFallbacks from "./download_fallbacks.js";
 import * as tabState from "./tab_state.js";
 import * as cdpRelay from "./cdp_relay.js";
+import * as cdpExtraction from "./cdp_extraction.js";
+import * as cdmNetworkIntercept from "./cdm_network_intercept.js";
+import * as segmentCapture from "./segment_capture.js";
 import { create as createMessageRouter } from "./message_router.js";
 import { create as createDownloadOrchestration } from "./download_orchestration.js";
 
@@ -1337,6 +1340,15 @@ function senderTabId(message, sender) {
 
 messageRouter.handle("mseCapturedSegments", async (message, sender) => {
   handleMseCapturedSegments(message, sender);
+  // Also forward to segmentCapture module if active capture is running
+  const tabId = senderTabId(message, sender);
+  if (tabId && Array.isArray(message.segments) && message.segments.length > 0) {
+    // Only forward if there's an active segment capture session
+    const captureStatus = segmentCapture.getStatus(tabId);
+    if (captureStatus.active) {
+      segmentCapture.addSegments(tabId, message.segments);
+    }
+  }
   return { ok: true };
 });
 
@@ -1825,6 +1837,301 @@ messageRouter.handle("cdpDetach", async (message) => {
 
 messageRouter.handle("cdpStatus", async () => {
   return cdpRelay.handleCdpStatus();
+});
+
+// ─── CDP extraction (Phase 1a) ────────────────────────────────────────────
+
+messageRouter.handle("cdpExtractVideos", async (message, sender) => {
+  const tabId = Number(message.tabId) || 0;
+  if (!tabId) {
+    return { ok: false, videos: [], error: "No tabId provided for CDP extraction." };
+  }
+
+  // Extract raw video sources via CDP Runtime.evaluate (§5.1, §5.5)
+  const extractionResult = await cdpExtraction.extractVideosFromTab(tabId, {
+    timeout: message.timeout || 15000,
+  });
+
+  // Feed extracted videos into the detection pipeline so they appear
+  // in the popup and can be downloaded like any other detected video.
+  const pageUrl = message.pageUrl || (sender?.tab?.url) || "";
+  let integratedCount = 0;
+
+  if (extractionResult.ok && Array.isArray(extractionResult.videos)) {
+    for (const video of extractionResult.videos) {
+      if (!video.url) continue;
+      if (video.url.startsWith("blob:") || video.url.startsWith("data:")) continue;
+
+      const added = await addDetectedVideo(
+        tabId,
+        {
+          url: video.url,
+          format: detectFormat(video.url, video.type || ""),
+          source: "cdp-" + (video.source || "extraction"),
+          pageUrl: pageUrl,
+          contentType: video.type || "",
+          width: Number(video.width) || 0,
+          height: Number(video.height) || 0,
+          duration: Number(video.duration) || 0,
+        },
+        false,
+      );
+      if (added) integratedCount++;
+    }
+  }
+
+  return {
+    ok: true,
+    videos: extractionResult.videos || [],
+    tabVideos: getVisibleVideosForTab(tabId),
+    integrated: integratedCount,
+    error: extractionResult.error || "",
+  };
+});
+
+// ─── CDM network interception (Phase 1b) ─────────────────────────────────────
+
+messageRouter.handle("startCdmCapture", async (message) => {
+  const tabId = Number(message.tabId) || 0;
+  if (!tabId) {
+    return { ok: false, error: "No tabId provided for CDM capture." };
+  }
+  return cdmNetworkIntercept.initIntercept(tabId);
+});
+
+messageRouter.handle("stopCdmCapture", async (message) => {
+  const tabId = Number(message.tabId) || 0;
+  if (!tabId) {
+    return { ok: false, error: "No tabId provided." };
+  }
+  const exchanges = cdmNetworkIntercept.getCapturedExchanges();
+  const result = await cdmNetworkIntercept.stopIntercept(tabId);
+  if (result.ok) {
+    cdmNetworkIntercept.clearCapturedExchanges();
+  }
+  return { ok: result.ok, exchanges, error: result.error };
+});
+
+messageRouter.handle("getCdmCaptures", async () => {
+  return {
+    ok: true,
+    exchanges: cdmNetworkIntercept.getCapturedExchanges(),
+    status: cdmNetworkIntercept.getStatus(),
+  };
+});
+
+messageRouter.handle("cdmStatus", async () => {
+  return { ok: true, status: cdmNetworkIntercept.getStatus() };
+});
+
+// ─── CDM Key Extraction Pipeline (wires cdm_network_intercept → Go → decrypt) ─
+
+/**
+ * Initialize the Widevine CDM in the Go binary.
+ * Expects message.cdmPath — directory containing widevinecdm.dll.
+ */
+messageRouter.handle("cdmInit", async (message) => {
+  const cdmPath = message.cdmPath || "";
+  if (!cdmPath) {
+    return { ok: false, error: "cdmPath is required." };
+  }
+  try {
+    const response = await nativeRequest(
+      { type: "cdmInit", id: `cdm_init_${Date.now()}`, cdmPath },
+      30000,
+    );
+    return {
+      ok: response?.ok !== false,
+      cdmVersion: response?.cdmVersion || "",
+      l1Only: Boolean(response?.l1Only),
+      error: response?.error || "",
+    };
+  } catch (error) {
+    return { ok: false, error: `CDM init failed: ${error.message || error}` };
+  }
+});
+
+/**
+ * Extract decryption keys from a captured Widevine license exchange.
+ * Expects message.exchange — a single exchange from getCapturedExchanges().
+ * Forwards to the Go binary via native host for key extraction.
+ */
+messageRouter.handle("extractCdmKeys", async (message) => {
+  const exchange = message.exchange;
+  if (!exchange || !exchange.responseBody) {
+    return { ok: false, error: "A completed license exchange with responseBody is required." };
+  }
+
+  const sessionId = `${exchange.tabId || 0}_${exchange.requestId || Date.now()}`;
+
+  try {
+    const response = await nativeRequest(
+      {
+        type: "extractKeys",
+        id: `extract_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        sessionId,
+        responseB64: exchange.responseBody,
+        challengeB64: exchange.postData || "",
+        initDataB64: "", // PSSH init data — populated from manifest if available
+      },
+      60000,
+    );
+
+    return {
+      ok: response?.ok !== false,
+      sessionId: response?.sessionId || sessionId,
+      keys: response?.keys || [],
+      l1Only: Boolean(response?.l1Only),
+      error: response?.error || "",
+    };
+  } catch (error) {
+    return { ok: false, error: `Key extraction failed: ${error.message || error}` };
+  }
+});
+
+/**
+ * Decrypt encrypted media segments using provided keys.
+ * Expects message.jobId, message.segments, message.keys.
+ */
+messageRouter.handle("decryptCdmSegments", async (message) => {
+  if (!message.jobId) {
+    return { ok: false, error: "jobId is required." };
+  }
+  if (!Array.isArray(message.segments) || !message.segments.length) {
+    return { ok: false, error: "At least one encrypted segment is required." };
+  }
+  if (!Array.isArray(message.keys) || !message.keys.length) {
+    return { ok: false, error: "At least one decryption key is required." };
+  }
+
+  try {
+    const response = await nativeRequest(
+      {
+        type: "decryptSegments",
+        id: `decrypt_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        jobId: message.jobId,
+        segments: message.segments,
+        keys: message.keys,
+        outputDir: message.outputDir || "",
+      },
+      120000,
+    );
+
+    return {
+      ok: response?.ok !== false,
+      jobId: response?.jobId || message.jobId,
+      decrypted: response?.decrypted || 0,
+      segmentPaths: response?.segmentPaths || [],
+      error: response?.error || "",
+    };
+  } catch (error) {
+    return { ok: false, error: `Segment decryption failed: ${error.message || error}` };
+  }
+});
+
+/**
+ * Assemble decrypted segments into a final output file.
+ * Expects message.jobId, message.filePaths, message.outputPath.
+ */
+messageRouter.handle("assembleDecryptedSegments", async (message) => {
+  if (!message.jobId) {
+    return { ok: false, error: "jobId is required." };
+  }
+  if (!Array.isArray(message.filePaths) || !message.filePaths.length) {
+    return { ok: false, error: "At least one segment file path is required." };
+  }
+
+  try {
+    const response = await nativeRequest(
+      {
+        type: "assembleSegments",
+        id: `assemble_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        jobId: message.jobId,
+        filePaths: message.filePaths,
+        outputPath: message.outputPath || "",
+      },
+      120000,
+    );
+
+    return {
+      ok: response?.ok !== false,
+      jobId: response?.jobId || message.jobId,
+      filePath: response?.filePath || "",
+      error: response?.error || "",
+    };
+  } catch (error) {
+    return { ok: false, error: `Segment assembly failed: ${error.message || error}` };
+  }
+});
+
+// ─── Segment capture (Phase 1c) ─────────────────────────────────────────────
+
+messageRouter.handle("startSegmentCapture", async (message) => {
+  const tabId = Number(message.tabId) || 0;
+  if (!tabId) {
+    return { ok: false, error: "No tabId provided for segment capture." };
+  }
+  return segmentCapture.startCapture(tabId, {
+    title: message.title || "Video",
+    url: message.url || "",
+  });
+});
+
+messageRouter.handle("stopSegmentCapture", async (message) => {
+  const tabId = Number(message.tabId) || 0;
+  if (!tabId) {
+    return { ok: false, error: "No tabId provided." };
+  }
+  return segmentCapture.stopCapture(tabId);
+});
+
+messageRouter.handle("getSegmentCaptureStatus", async (message) => {
+  const tabId = Number(message.tabId) || 0;
+  return { ok: true, status: segmentCapture.getStatus(tabId) };
+});
+
+messageRouter.handle("assembleSegments", async (message) => {
+  // Forward captured segments to native host for reassembly
+  const segments = Array.isArray(message.segments) ? message.segments : [];
+  if (!segments.length) {
+    return { ok: true, jobId: message.jobId || "", warning: "No segments to assemble." };
+  }
+
+  const requestId = `assemble_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  try {
+    const response = await nativeRequest(
+      {
+        type: "assembleSegments",
+        id: requestId,
+        tabId: message.tabId || 0,
+        jobId: message.jobId || "",
+        title: message.title || "Video",
+        url: message.url || "",
+        streams: message.streams || {},
+        segments: segments.map((s) => ({
+          streamId: s.streamId || "unknown",
+          mimeType: s.mimeType || "",
+          data: s.data || "",
+          index: typeof s.index === "number" ? s.index : 0,
+          timestamp: typeof s.timestamp === "number" ? s.timestamp : 0,
+          isLast: Boolean(s.isLast),
+        })),
+      },
+      120000,
+    );
+    return {
+      ok: response && response.ok !== false,
+      jobId: message.jobId || "",
+      filepath: response?.filepath || "",
+      error: response?.error || "",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      jobId: message.jobId || "",
+      error: `Native host assembly failed: ${error.message || error}`,
+    };
+  }
 });
 
 messageRouter.handle("chooseTorrentFile", async () => {
