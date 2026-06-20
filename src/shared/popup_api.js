@@ -154,6 +154,21 @@ function downloadTorrent(torrentPath, downloadFolder) {
   return runtimeMessage({ type: "downloadTorrent", path: torrentPath, downloadFolder: downloadFolder || "" });
 }
 
+// ─── Recording ────────────────────────────────────────────────────────────
+
+/** @param {number} tabId @param {Object} options */
+function startRecording(tabId, options) {
+  return runtimeMessage({ type: "startRecording", tabId, options });
+}
+
+function getRecordingStatus() {
+  return runtimeMessage({ type: "getRecordingStatus" });
+}
+
+function stopRecording(jobId) {
+  return runtimeMessage({ type: "stopRecording", jobId });
+}
+
 export {
   tabsQuery,
   getVideos,
@@ -176,4 +191,7 @@ export {
   downloadMagnet,
   chooseTorrentFile,
   downloadTorrent,
+  startRecording,
+  getRecordingStatus,
+  stopRecording,
 };
