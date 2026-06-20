@@ -9,7 +9,7 @@ const STORAGE_DOWNLOADS = "qwinDownloadsById";
 
 let videosByTab = {};
 let downloadsById = {};
-let settings = { downloadFolder: "", musicMode: false, audioFormat: "mp3" };
+let settings = { downloadFolder: "", musicMode: false, audioFormat: "mp3", recordingMode: "ask" };
 let stateLoaded = false;
 let stateLoadPromise = null;
 const subscribers = [];
