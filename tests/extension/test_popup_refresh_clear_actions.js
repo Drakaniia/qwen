@@ -63,6 +63,7 @@ const POPUP_ELEMENT_IDS = [
   "musicLinkUrl",
   "downloadMusicLink",
   "audioFormat",
+  "recordingMode",
 ];
 
 class ClassList {
