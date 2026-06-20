@@ -2,23 +2,172 @@
 
 /**
  * CDP Relay — bridges CDP commands from the Go companion binary to
- * chrome.debugger API.
+ * chrome.debugger API, via a persistent native messaging port.
  *
  * Architecture:
- *   Go binary → (stdio JSON) → Python host → (native msg) → Extension → chrome.debugger
+ *   Go binary → (stdio JSON) → Python host → (native msg port) → Extension → chrome.debugger
  *
- * The Go binary sends CDP method calls (Network.enable, Runtime.evaluate, etc.)
- * which are relayed through the Python host to the extension's background script,
- * which executes them via chrome.debugger.sendCommand.
+ * The relay port is a persistent chrome.runtime.connectNative connection
+ * that stays open for the lifetime of the extension. CDP commands arrive
+ * as messages on this port, get executed via chrome.debugger, and results
+ * are sent back through the same port.
  */
+
+const HOST_NAME = "com.qwin.video_downloader";
 
 // Map of active debugger sessions: tabId → attached state
 const activeSessions = new Map();
 
-// Map of pending CDP command callbacks: commandId → { resolve, reject, timeout }
-const pendingCommands = new Map();
+// Persistent native messaging port for the CDP relay chain.
+// Opened by connectRelay() and kept alive until disconnectRelay().
+let relayPort = null;
+let relayPortConnected = false;
 
-let commandCounter = 0;
+/**
+ * Open a persistent native messaging port for the CDP relay chain.
+ * This port stays open so Python can push CDP commands to the extension
+ * asynchronously (triggered by Go binary's CDP relay messages).
+ *
+ * @returns {boolean} True if the port was opened successfully.
+ */
+function connectRelay() {
+  if (relayPortConnected && relayPort) {
+    return true;
+  }
+
+  try {
+    relayPort = chrome.runtime.connectNative(HOST_NAME);
+  } catch (error) {
+    console.warn("[cdpRelay] Could not open relay port:", error.message || error);
+    return false;
+  }
+
+  if (!relayPort) {
+    return false;
+  }
+
+  relayPortConnected = true;
+
+  relayPort.onMessage.addListener((message) => {
+    if (!message || !message.type) {
+      return;
+    }
+
+    // Handle CDP relay commands forwarded from Python/Go
+    if (message.type === "cdpRelayForward") {
+      handleRelayForward(message);
+      return;
+    }
+
+    // Handle CDP relay results coming back from chrome.debugger
+    // (sent back through the port when the debugger responds)
+    if (message.type === "cdpRelayResult" || message.type === "cdpRelayError") {
+      // These are received when the extension sends a result back.
+      // The response is already handled inline in handleRelayForward's callback.
+      return;
+    }
+  });
+
+  relayPort.onDisconnect.addListener(() => {
+    relayPortConnected = false;
+    const lastError = chrome.runtime.lastError ? chrome.runtime.lastError.message : "";
+    if (lastError) {
+      console.warn("[cdpRelay] Relay port disconnected:", lastError);
+    }
+  });
+
+  return true;
+}
+
+/**
+ * Close the persistent CDP relay port.
+ */
+function disconnectRelay() {
+  if (relayPort) {
+    try {
+      relayPort.disconnect();
+    } catch (_error) {
+      // Ignore disconnect errors
+    }
+  }
+  relayPort = null;
+  relayPortConnected = false;
+}
+
+/**
+ * Check if the CDP relay port is connected.
+ * @returns {boolean}
+ */
+function isRelayConnected() {
+  return relayPortConnected && relayPort !== null;
+}
+
+/**
+ * Handle a CDP relay forward message from the Python host.
+ * Executes the CDP command via chrome.debugger and sends the result back.
+ *
+ * @param {Object} message - The relay forward message with tabId, method, params, forwardId
+ */
+function handleRelayForward(message) {
+  const tabId = Number(message.tabId) || 0;
+  const method = String(message.method || "").trim();
+  const params = message.params || {};
+  const forwardId = String(message.forwardId || message.id || "");
+
+  if (!tabId || !method) {
+    sendRelayResult(forwardId, null, "Invalid CDP relay: tabId and method are required.");
+    return;
+  }
+
+  attach(tabId).then((attachResult) => {
+    if (!attachResult.ok) {
+      sendRelayResult(forwardId, null, attachResult.error || "Failed to attach debugger");
+      return;
+    }
+
+    sendCommand(tabId, method, params).then((commandResult) => {
+      if (commandResult.ok) {
+        sendRelayResult(forwardId, commandResult.result || {}, "");
+      } else {
+        sendRelayResult(forwardId, null, commandResult.error || "CDP command failed");
+      }
+    });
+  });
+}
+
+/**
+ * Send a CDP relay result back through the native messaging port.
+ * This goes back to Python, which forwards it to the Go binary.
+ *
+ * @param {string} forwardId - The original forward ID from the relay message.
+ * @param {Object|null} result - The CDP command result.
+ * @param {string} error - Error message, if any.
+ */
+function sendRelayResult(forwardId, result, error) {
+  if (!relayPort || !relayPortConnected) {
+    console.warn("[cdpRelay] Cannot send result: relay port not connected");
+    return;
+  }
+
+  const message = {
+    type: error ? "cdpRelayError" : "cdpRelayResult",
+    forwardId: forwardId,
+    ok: !error,
+  };
+
+  if (result !== null && result !== undefined) {
+    message.result = result;
+  }
+  if (error) {
+    message.error = error;
+  }
+
+  try {
+    relayPort.postMessage(message);
+  } catch (err) {
+    console.warn("[cdpRelay] Failed to send relay result:", err.message || err);
+  }
+}
 
 /**
  * Attach the debugger to a tab.
@@ -26,26 +175,22 @@ let commandCounter = 0;
  * @param {string} [targetUrl] - Optional URL to match for the target.
  * @returns {Promise<{ok: boolean, error?: string}>}
  */
-async function attach(tabId, targetUrl) {
+async function attach(tabId, _targetUrl) {
   if (activeSessions.has(tabId)) {
     return { ok: true };
   }
 
   return new Promise((resolve) => {
     try {
-      chrome.debugger.attach(
-        { tabId },
-        "1.3",
-        () => {
-          const lastError = chrome.runtime.lastError;
-          if (lastError) {
-            resolve({ ok: false, error: lastError.message || "Failed to attach debugger" });
-            return;
-          }
-          activeSessions.set(tabId, true);
-          resolve({ ok: true });
-        },
-      );
+      chrome.debugger.attach({ tabId }, "1.3", () => {
+        const lastError = chrome.runtime.lastError;
+        if (lastError) {
+          resolve({ ok: false, error: lastError.message || "Failed to attach debugger" });
+          return;
+        }
+        activeSessions.set(tabId, true);
+        resolve({ ok: true });
+      });
     } catch (error) {
       resolve({ ok: false, error: error.message || String(error) });
     }
@@ -64,18 +209,15 @@ async function detach(tabId) {
 
   return new Promise((resolve) => {
     try {
-      chrome.debugger.detach(
-        { tabId },
-        () => {
-          const lastError = chrome.runtime.lastError;
-          if (lastError) {
-            resolve({ ok: false, error: lastError.message || "Failed to detach debugger" });
-            return;
-          }
-          activeSessions.delete(tabId);
-          resolve({ ok: true });
-        },
-      );
+      chrome.debugger.detach({ tabId }, () => {
+        const lastError = chrome.runtime.lastError;
+        if (lastError) {
+          resolve({ ok: false, error: lastError.message || "Failed to detach debugger" });
+          return;
+        }
+        activeSessions.delete(tabId);
+        resolve({ ok: true });
+      });
     } catch (error) {
       resolve({ ok: false, error: error.message || String(error) });
     }
@@ -97,19 +239,14 @@ function sendCommand(tabId, method, params) {
     }
 
     try {
-      chrome.debugger.sendCommand(
-        { tabId },
-        method,
-        params || {},
-        (result) => {
-          const lastError = chrome.runtime.lastError;
-          if (lastError) {
-            resolve({ ok: false, error: lastError.message || "CDP command failed" });
-            return;
-          }
-          resolve({ ok: true, result });
-        },
-      );
+      chrome.debugger.sendCommand({ tabId }, method, params || {}, (result) => {
+        const lastError = chrome.runtime.lastError;
+        if (lastError) {
+          resolve({ ok: false, error: lastError.message || "CDP command failed" });
+          return;
+        }
+        resolve({ ok: true, result });
+      });
     } catch (error) {
       resolve({ ok: false, error: error.message || String(error) });
     }
@@ -181,6 +318,7 @@ async function handleCdpStatus() {
     debuggerAvailable,
     activeSessions: sessions,
     sessionCount: sessions.length,
+    relayConnected: relayPortConnected,
   };
 }
 
@@ -206,26 +344,35 @@ function cleanup() {
     }
     activeSessions.delete(tabId);
   }
+  disconnectRelay();
 }
 
 /**
  * Initialize the CDP relay module.
  * Registers a chrome.debugger event listener for detach events.
+ * Opens the persistent relay port for Go → Python → Extension CDP relay.
  */
 function init() {
-  if (typeof chrome !== "undefined" && chrome.debugger && chrome.debugger.onEvent) {
-    chrome.debugger.onEvent.addListener((source, method, params) => {
-      // Chrome debugger events are forwarded through the relay chain.
-      // Currently no-op in scaffold — will be used for CDM license interception.
-      void source;
-      void method;
-      void params;
-    });
+  if (typeof chrome !== "undefined" && chrome.debugger) {
+    if (chrome.debugger.onEvent) {
+      chrome.debugger.onEvent.addListener((source, method, params) => {
+        // Chrome debugger events are forwarded through the relay chain.
+        // Currently no-op in scaffold — will be used for CDM license interception.
+        void source;
+        void method;
+        void params;
+      });
+    }
 
-    chrome.debugger.onDetach.addListener((source) => {
-      activeSessions.delete(source.tabId);
-    });
+    if (chrome.debugger.onDetach) {
+      chrome.debugger.onDetach.addListener((source) => {
+        activeSessions.delete(source.tabId);
+      });
+    }
   }
+
+  // Open persistent relay port for Go → Python → Extension CDP relay
+  connectRelay();
 }
 
 export {
@@ -239,4 +386,7 @@ export {
   getActiveSessionTabIds,
   cleanup,
   init,
+  connectRelay,
+  disconnectRelay,
+  isRelayConnected,
 };

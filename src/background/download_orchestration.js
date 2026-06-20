@@ -247,9 +247,13 @@ function create(deps) {
           return;
         }
 
+        // Use a user-friendly message when possible, but keep technical details in rawProgressLine
+        const friendlyError = deps.userFriendlyDownloadError(errorText);
         deps.updateDownload(jobId, {
           status: "error",
-          error: errorText,
+          stage: "",
+          error: friendlyError || errorText,
+          rawProgressLine: friendlyError ? errorText : "",
           ...artifactPatch,
         });
       }

@@ -630,6 +630,10 @@ function exhaustedSourcesError(error, attemptedUrls) {
   return downloadFallbacks.exhaustedSourcesError(error, attemptedUrls);
 }
 
+function userFriendlyDownloadError(error) {
+  return downloadFallbacks.userFriendlyDownloadError(error);
+}
+
 async function markVideoUrlUnavailable(tabId, url, error) {
   const targetUrl = normalizeUrl(url);
   const changed = await tabState.patchVideo(
@@ -808,6 +812,7 @@ function downloadOrchestrationDeps() {
     titleFromUrl,
     updateDownload,
     userAgent: () => navigator.userAgent || "",
+    userFriendlyDownloadError,
     variantsForVideo,
     videoFilters,
   };
@@ -1112,7 +1117,8 @@ async function getNativeFormatsForVideo(tabId, video) {
       : downloadableVariants(refreshedVideo, excludedUrls).map(detectedVariantOption);
 
   if (nativeError && !nativeFormats.length && !sourceFormats.length) {
-    throw new Error(nativeError);
+    const friendlyError = userFriendlyDownloadError(nativeError);
+    throw new Error(friendlyError ? `${friendlyError}\n\nTechnical details: ${nativeError}` : nativeError);
   }
   if (!nativeFormats.length && !sourceFormats.length) {
     throw new Error("yt-dlp did not find any downloadable video formats for this link.");
