@@ -35,6 +35,156 @@ if not GO_BINARY.exists():
 from capture_manager import CaptureManager
 
 
+class TestCDPRelayChain(unittest.TestCase):
+    """Tests for the CDP relay chain (Go → Python → Extension → chrome.debugger).
+
+    These tests verify the relay chain from the Python perspective:
+    - Sending a cdp_relay command to Go
+    - Go writes a cdpRelayForward message to stdout
+    - Python reads it via the background reader
+    - Python sends a result back via send_cdp_relay_result
+    - Go returns the result as the response
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._has_binary = GO_BINARY.exists()
+
+    def test_send_cdp_relay_via_manager(self):
+        """Send_cdp_relay should go through the full relay roundtrip."""
+        if not self._has_binary:
+            self.skipTest("Go binary not built")
+
+        mgr = CaptureManager()
+        try:
+            mgr.start()
+            self.assertTrue(mgr.is_running)
+
+            # Step 1: Check for pending forwards (should be empty initially)
+            initial_forward = mgr.get_pending_cdp_forward()
+            self.assertIsNone(initial_forward, "No forward should be pending initially")
+
+            # Step 2: Send cdp_relay command (Go will write to stdout)
+            # This blocks until Go gets the relay result back
+            # We send the result in a separate thread to avoid deadlock
+            import threading as t
+
+            result_holder = [None]
+
+            def _send_relay_and_capture_result():
+                try:
+                    result = mgr.send_cdp_relay(
+                        method="Network.enable",
+                        tab_id=42,
+                        params={},
+                        timeout=15.0,
+                    )
+                    result_holder[0] = result
+                except Exception as exc:
+                    result_holder[0] = exc
+
+            relay_thread = t.Thread(target=_send_relay_and_capture_result, daemon=True)
+            relay_thread.start()
+
+            # Step 3: Wait for the cdpRelayForward message from the background reader
+            import time as _time
+
+            forward = None
+            deadline = _time.time() + 10.0
+            while _time.time() < deadline and forward is None:
+                forward = mgr.get_pending_cdp_forward(block=True, timeout=1.0)
+
+            self.assertIsNotNone(forward, "Should receive a cdpRelayForward from Go")
+            self.assertEqual(forward.get("type"), "cdpRelayForward")
+            forward_id = forward.get("id", "")
+            self.assertTrue(forward_id.startswith("relay_"), f"forward ID should start with 'relay_': {forward_id}")
+
+            forward_data = forward.get("data", {})
+            self.assertEqual(forward_data.get("tabId"), 42)
+            self.assertEqual(forward_data.get("method"), "Network.enable")
+
+            # Step 4: Send the CDP result back to Go (simulating extension response)
+            mgr.send_cdp_relay_result(
+                forward_id=forward_id,
+                result={"success": True},
+            )
+
+            # Step 5: Wait for the relay command to complete
+            relay_thread.join(timeout=10.0)
+            self.assertFalse(relay_thread.is_alive(), "Relay thread should have completed")
+
+            result = result_holder[0]
+            self.assertIsNotNone(result, "Should have received a CDP relay result")
+            if isinstance(result, Exception):
+                self.fail(f"CDP relay raised an exception: {result}")
+
+            self.assertTrue(result["ok"], f"CDP relay should report ok=true: {result}")
+            self.assertIn("result", result)
+            self.assertEqual(result.get("result", {}).get("success"), True)
+
+        finally:
+            mgr.stop(timeout=5.0)
+
+    def test_send_cdp_relay_error_response(self):
+        """CDP relay should handle error responses from the extension."""
+        if not self._has_binary:
+            self.skipTest("Go binary not built")
+
+        mgr = CaptureManager()
+        try:
+            mgr.start()
+
+            import threading as t
+            import time as _time
+
+            result_holder = [None]
+
+            def _send_relay():
+                try:
+                    result = mgr.send_cdp_relay(
+                        method="Invalid.method",
+                        tab_id=99,
+                        timeout=15.0,
+                    )
+                    result_holder[0] = result
+                except Exception as exc:
+                    result_holder[0] = exc
+
+            relay_thread = t.Thread(target=_send_relay, daemon=True)
+            relay_thread.start()
+
+            # Wait for the forward
+            forward = None
+            deadline = _time.time() + 10.0
+            while _time.time() < deadline and forward is None:
+                forward = mgr.get_pending_cdp_forward(block=True, timeout=1.0)
+
+            self.assertIsNotNone(forward)
+            forward_id = forward.get("id", "")
+
+            # Send an error result back
+            mgr.send_cdp_relay_result(
+                forward_id=forward_id,
+                error="Invalid CDP method: Invalid.method",
+            )
+
+            relay_thread.join(timeout=10.0)
+            result = result_holder[0]
+            self.assertIsNotNone(result)
+            if isinstance(result, Exception):
+                self.fail(f"CDP relay error test raised: {result}")
+
+            self.assertFalse(result["ok"], f"CDP relay should report ok=false for error: {result}")
+            self.assertIn("error", result)
+            self.assertTrue(
+                "Invalid CDP method" in result.get("error", ""),
+                f"Error should contain 'Invalid CDP method': {result.get('error')}",
+            )
+
+        finally:
+            mgr.stop(timeout=5.0)
+
+
 class TestCaptureManager(unittest.TestCase):
     """Tests for CaptureManager that verify Go binary IPC."""
 

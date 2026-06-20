@@ -88,5 +88,41 @@
     "blocked": true,
     "downloadable": false,
     "reusable": false
+  },
+  {
+    "name": "static page asset stylesheet",
+    "url": "https://beeg.com/stylesheet",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": true,
+    "downloadable": false,
+    "reusable": false
+  },
+  {
+    "name": "static page asset theme-color",
+    "url": "https://beeg.com/theme-color",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": true,
+    "downloadable": false,
+    "reusable": false
+  },
+  {
+    "name": "web app manifest webm",
+    "url": "https://beeg.com/manifest.webm",
+    "contentType": "",
+    "format": "WEBM",
+    "blocked": true,
+    "downloadable": false,
+    "reusable": false
+  },
+  {
+    "name": "legitimate webm video",
+    "url": "https://cdn.example.com/videos/movie.webm",
+    "contentType": "",
+    "format": "WEBM",
+    "blocked": false,
+    "downloadable": true,
+    "reusable": true
   }
 ]
