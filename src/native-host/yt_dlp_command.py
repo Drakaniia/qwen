@@ -106,6 +106,8 @@ def build_yt_dlp_command(
         str(fragment_count),
         "--no-keep-fragments",
         "--no-playlist",
+        "--extractor-retries",
+        "10",
         "-f",
         format_selector,
     ]

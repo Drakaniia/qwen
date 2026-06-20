@@ -6,8 +6,9 @@ const HLS_RE = /\.m3u8(?:$|[?#])/i;
 const DASH_RE = /\.mpd(?:$|[?#])/i;
 const ISM_RE = /\.ism(?:\/Manifest)?(?:$|[?#])/i;
 const GIF_RE = /\.(gif|gifv)(?:$|[?#])/i;
-const WEB_APP_MANIFEST_RE = /(?:\.webmanifest|(?:^|[/?#._-])manifest\.json)(?:$|[?#])/i;
+const WEB_APP_MANIFEST_RE = /(?:\.webmanifest|(?:^|[/?#._-])manifest\.(?:json|webm)(?:$|[?#]))/i;
 const STATIC_PLAYER_ASSET_RE = /\.(?:hlsjs|js|mjs|cjs|css|map)(?:$|[?#])/i;
+const STATIC_PAGE_ASSET_RE = /\/(?:stylesheet|theme-color|browserconfig)(?:$|[?#])/i;
 const MUSIC_CDN_RE = /(?:spotifycdn|audio-ak|audio-fa|audio-[\w-]+\.spotify|cadenas\.|audio-pa\.spotifycdn)/i;
 const AUDIO_ONLY_HOST_RE = /(?:audio[-.])/i;
 const GIF_VIDEO_RE =
@@ -146,6 +147,9 @@ function isBlockedMediaUrl(url, contentType = "") {
     return true;
   }
   if (STATIC_PLAYER_ASSET_RE.test(text)) {
+    return true;
+  }
+  if (STATIC_PAGE_ASSET_RE.test(text)) {
     return true;
   }
   if (type.includes("manifest+json") || type.includes("webmanifest") || WEB_APP_MANIFEST_RE.test(text)) {

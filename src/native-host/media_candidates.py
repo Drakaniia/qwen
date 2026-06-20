@@ -14,8 +14,9 @@ SEGMENT_RE = re.compile(
     re.IGNORECASE,
 )
 STATIC_ASSET_RE = re.compile(r"\.(?:hlsjs|js|mjs|cjs|css|map)(?:$|[?#])", re.IGNORECASE)
+STATIC_PAGE_ASSET_RE = re.compile(r"/(?:stylesheet|theme-color|browserconfig)(?:$|[?#])", re.IGNORECASE)
 WEB_APP_MANIFEST_RE = re.compile(
-    r"(?:\.webmanifest|(?:^|[/?#._-])manifest\.json)(?:$|[?#])",
+    r"(?:\.webmanifest|(?:^|[/?#._-])manifest\.(?:json|webm)(?:$|[?#]))",
     re.IGNORECASE,
 )
 
@@ -74,6 +75,7 @@ def is_reusable_media_url(url, content_type=""):
         or GIF_RE.search(text)
         or SEGMENT_RE.search(text)
         or STATIC_ASSET_RE.search(text)
+        or STATIC_PAGE_ASSET_RE.search(text)
         or WEB_APP_MANIFEST_RE.search(text)
         or "manifest+json" in media_type
         or "webmanifest" in media_type
