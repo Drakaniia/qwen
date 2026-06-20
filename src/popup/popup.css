@@ -203,6 +203,14 @@ h1 {
   display: none !important;
 }
 
+.settings-divider {
+  grid-column: 1 / -1;
+  height: 0;
+  margin: 6px 0;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
 .music-link-input-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -801,4 +809,108 @@ footer {
 
 .quality-dialog .quality-loading {
   color: var(--accent-strong);
+}
+
+/* ─── Recording styles ──────────────────────────────────────────────────── */
+
+.record-button {
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 12px;
+  min-height: 28px;
+  padding: 3px 8px;
+}
+
+.record-button:hover {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+.record-page-button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.record-page-button:hover {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+.recording-item {
+  border-color: #fecaca;
+  background: linear-gradient(135deg, #fef2f2 0%, var(--surface) 100%);
+}
+
+.recording-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+  animation: recording-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.4);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 0 6px rgba(185, 28, 28, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recording-icon {
+    animation: none;
+  }
+}
+
+.recording-badge {
+  background: #fecaca;
+  color: #991b1b;
+  font-weight: 800;
+}
+
+.recording-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fef2f2;
+  font-size: 11px;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.recording-duration {
+  font-weight: 800;
+}
+
+.recording-size {
+  color: #4d596b;
+}
+
+.recording-fps {
+  color: #4d596b;
+}
+
+.recording-dropped {
+  color: #b91c1c;
 }

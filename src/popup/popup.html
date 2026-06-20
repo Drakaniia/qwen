@@ -74,6 +74,18 @@
       <button id="downloadTorrentFile" class="settings-button magnet-button" type="button">Download .torrent file</button>
       <p class="hint">Downloads BitTorrent content via aria2c (magnet link or a local .torrent file).</p>
 
+      <hr class="settings-divider" />
+      <label for="recordingMode">Recording mode</label>
+      <select id="recordingMode">
+        <option value="ask">Ask first (recommended)</option>
+        <option value="manual">Manual — show Record button</option>
+        <option value="auto">Automatic — record without asking</option>
+      </select>
+      <p class="hint">
+        When no downloadable URL is found, Qwin can record the tab's video output.
+        Recording produces best-effort quality and may use significant disk space.
+      </p>
+
       <label for="audioFormat">Audio format (when Music mode is on)</label>
       <select id="audioFormat" class="settings-select">
         <option value="mp3">MP3</option>

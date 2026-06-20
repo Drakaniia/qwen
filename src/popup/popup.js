@@ -324,6 +324,16 @@ function renderVideos(videos, downloads) {
 
   if (!videos.length) {
     setMessage("No downloadable video or music detected yet.");
+    // Show "Record this page" button for zero-detect pages with video elements
+    const recordPageBtn = document.createElement("button");
+    recordPageBtn.type = "button";
+    recordPageBtn.className = "record-page-button primary";
+    recordPageBtn.textContent = "Record this page";
+    recordPageBtn.title = "No video URL detected. Record the tab's video output instead.";
+    recordPageBtn.addEventListener("click", () => {
+      startRecording({ title: "Page recording", format: "RECORDING" });
+    });
+    elements.videoList.append(recordPageBtn);
     return;
   }
 
@@ -377,6 +387,23 @@ function renderVideos(videos, downloads) {
 
     main.append(details, button);
 
+    // Record button for non-downloadable items
+    if (!video.downloadable && !runningJob) {
+      const recordBtn = document.createElement("button");
+      recordBtn.type = "button";
+      recordBtn.className = "record-button";
+      recordBtn.textContent = "Record";
+      recordBtn.title = "No downloadable URL found. Record the tab's video output.";
+      recordBtn.dataset.videoId = video.id;
+      recordBtn.dataset.action = "record";
+      recordBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        startRecording(video);
+      });
+      main.append(recordBtn);
+    }
+
     const meta = document.createElement("div");
     meta.className = "meta";
     const badge = document.createElement("span");
@@ -397,7 +424,7 @@ function renderVideos(videos, downloads) {
       const warning = document.createElement("div");
       warning.className = "download-message error";
       warning.textContent =
-        "Browser-only URL. Wait for a downloadable video stream. The helper saves supported streams as MP4.";
+        "Browser-only URL. Wait for a downloadable video stream or use the Record button above.";
       content.append(main, meta, warning);
     } else {
       content.append(main, meta);
@@ -458,6 +485,91 @@ function normalizeManualUrl(value) {
   }
 }
 
+// ─── Recording flow ────────────────────────────────────────────────────────
+
+/**
+ * Start screen recording for a video or page.
+ * Sends a message to the background script to begin tab capture.
+ *
+ * @param {Object} video - The video object (or placeholder) to record.
+ */
+async function startRecording(video) {
+  await updateActiveTabContext();
+  if (!hasActiveTab()) {
+    setMessage("No active tab found to record.", true);
+    return;
+  }
+
+  const tabId = PopupState.get("activeTabId");
+  const recordingMode = elements.recordingMode ? elements.recordingMode.value : "ask";
+
+  // If mode is "ask", confirm with user first
+  if (recordingMode === "ask") {
+    const confirmed = await qualityChooser.showChoices({
+      choiceTitle: "Start recording?",
+      formats: [
+        {
+          id: "record",
+          label: "Start screen recording",
+          ext: "RECORDING",
+          note: video.title
+            ? `Recording "${video.title}" — quality matches source (best-effort)`
+            : "Recording the current tab — quality matches source (best-effort)",
+          source: "recording",
+          size: "",
+        },
+      ],
+    });
+
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  const jobId = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  // Create a recording job entry
+  const recordingJob = {
+    id: jobId,
+    tabId,
+    title: video.title || "Screen recording",
+    format: "RECORDING",
+    status: "connecting",
+    message: "Starting screen recording...",
+    videoId: video.id || jobId,
+    url: video.url || "",
+    pageUrl: video.pageUrl || "",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    stage: "recording",
+    isRecording: true,
+    recordingDuration: 0,
+    recordingSizeBytes: 0,
+    recordingFps: 0,
+    recordingDroppedFrames: 0,
+    percent: null,
+  };
+
+  // Send recording start request to background
+  const response = await PopupApi.startRecording(tabId, {
+    jobId,
+    title: video.title || "Screen recording",
+    url: video.url || "",
+    format: "RECORDING",
+  });
+
+  if (!response || !response.ok) {
+    setMessage(
+      response && response.error ? response.error : "Could not start recording. CDP/recording binary may not be available.",
+      true,
+    );
+    return;
+  }
+
+  setViewMode("downloads");
+  await refresh();
+}
+
 // ─── Tab context ────────────────────────────────────────────────────────────
 
 async function updateActiveTabContext() {
@@ -501,6 +613,11 @@ async function refresh(options = {}) {
     elements.audioFormat.value = response.settings.audioFormat;
   } else {
     elements.audioFormat.value = "mp3";
+  }
+  if (response.settings && response.settings.recordingMode) {
+    elements.recordingMode.value = response.settings.recordingMode;
+  } else {
+    elements.recordingMode.value = "ask";
   }
   return true;
 }
@@ -755,6 +872,9 @@ elements.downloadList.addEventListener("click", async (event) => {
     case "remove":
       response = await PopupApi.removeDownload(tabId, jobId);
       break;
+    case "stopRecording":
+      response = await PopupApi.stopRecording(jobId);
+      break;
   }
 
   if (!response || !response.ok) {
@@ -796,12 +916,22 @@ elements.showListLayout.addEventListener("click", () => {
 
 elements.showBoxLayout.addEventListener("click", () => {
   setVideoLayoutMode("boxes");
-});
+});  elements.recordingMode.addEventListener("change", async () => {
+    const response = await PopupApi.saveSettings({
+      recordingMode: elements.recordingMode.value,
+    });
+    if (!response || !response.ok) {
+      setSettingsStatus("Could not save recording mode.", true);
+    } else {
+      setSettingsStatus("Recording mode saved.");
+    }
+  });
 
-elements.saveSettings.addEventListener("click", async () => {
+  elements.saveSettings.addEventListener("click", async () => {
   const response = await PopupApi.saveSettings({
     downloadFolder: elements.downloadFolder.value.trim(),
     audioFormat: elements.audioFormat.value,
+    recordingMode: elements.recordingMode.value,
   });
   if (!response || !response.ok) {
     setSettingsStatus(response && response.error ? response.error : "Could not save settings.", true);
