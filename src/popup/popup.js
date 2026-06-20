@@ -521,7 +521,18 @@ async function checkNativeHost() {
 
   const streamFallbacks = dependencies.nM3u8DlRe || dependencies.streamlink;
   const fallbackMode = streamFallbacks ? "stream fallbacks" : "yt-dlp only";
-  setHelperStatus(`Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}).`, "ok");
+
+  // Build CDM / recording capability suffix
+  let capability = "";
+  if (dependencies.cdmCapture && dependencies.recording) {
+    capability = ", CDM capture + recording";
+  } else if (dependencies.recording) {
+    capability = ", recording available";
+  } else if (dependencies.cdmCapture) {
+    capability = ", CDM capture";
+  }
+
+  setHelperStatus(`Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}${capability}).`, "ok");
 }
 
 async function init() {
