@@ -2,11 +2,13 @@ import errno
 import shutil
 import subprocess
 import threading
+import time
 from collections import deque
 from pathlib import Path
 
 from artifacts import unique_delete_targets
 from browser_context import remove_temp_files
+from download_logger import get_logger
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags, terminate_process_tree
 from progress_parser import iter_process_output_lines, parse_yt_dlp_line
@@ -22,6 +24,7 @@ class DownloadTask:
         fallback_command=None,
         fallback_commands=None,
         temp_files=None,
+        logger=None,
     ):
         self.message = message
         self.command = command
@@ -44,6 +47,8 @@ class DownloadTask:
         self.thread = None
         self.active_command_meta = None
         self.output_disconnected = False
+        self.logger = logger or get_logger()
+        self.start_time = 0.0
 
     def start(self):
         self.thread = threading.Thread(target=self.run, name=f"qwin-download-{self.id}", daemon=False)
@@ -113,6 +118,7 @@ class DownloadTask:
 
     def send_canceled(self):
         self.set_state("canceled")
+        self.logger.cancel(self.id, message="Download canceled.")
         self.send_message(
             {
                 "type": "canceled",
@@ -127,6 +133,7 @@ class DownloadTask:
     def pause(self):
         with self.lock:
             if self.state == "paused":
+                self.logger.pause(self.id, message="Download is already paused.")
                 return {
                     "type": "paused",
                     "id": self.id,
@@ -144,6 +151,7 @@ class DownloadTask:
             self.pause_requested.set()
             process = self.process
 
+        self.logger.pause(self.id, message="Pausing download...")
         terminate_process_tree(process)
         return {
             "type": "control",
@@ -235,7 +243,10 @@ class DownloadTask:
             if parsed["stage"] == "filepath":
                 self.final_path = parsed["filepath"]
             else:
-                self.recent_lines.append(parsed.get("line", ""))
+                line_text = parsed.get("line", "")
+                self.recent_lines.append(line_text)
+                # Feed every line to the download logger (full output capture)
+                self.logger.attempt_line(self.id, line_text)
             self.send_message({"type": "progress", **parsed})
 
         exit_code = process.wait()
@@ -271,6 +282,22 @@ class DownloadTask:
         return False
 
     def run(self):
+        self.start_time = time.time()
+
+        # Log the download init event
+        self.logger.init(
+            download_id=self.id,
+            url=self.message.get("url", ""),
+            page_url=self.message.get("pageUrl", ""),
+            fmt=self.message.get("format", ""),
+            selected_format=self.message.get("formatId", "best"),
+            backend=self.message.get("backend", "auto"),
+            extract_audio=bool(self.message.get("musicMode") or self.message.get("extractAudio") or False),
+            audio_format=self.message.get("audioFormat", ""),
+            title=self.message.get("title", ""),
+            download_folder=str(self.download_dir),
+        )
+
         try:
             attempts = self.fallback_attempts()
             attempt_index = 0
@@ -284,6 +311,15 @@ class DownloadTask:
                 attempt_num += 1
                 active_meta = attempts[attempt_index]
                 self.active_command_meta = active_meta
+
+                label = str(active_meta.get("label") or "unknown")
+                self.logger.attempt_start(
+                    download_id=self.id,
+                    attempt_num=attempt_num,
+                    label=label,
+                    command=active_meta["command"],
+                )
+
                 self.send_message(
                     {
                         "type": "started",
@@ -296,6 +332,12 @@ class DownloadTask:
                     }
                 )
                 exit_code = self.run_process_once(active_meta["command"])
+
+                self.logger.attempt_end(
+                    download_id=self.id,
+                    attempt_num=attempt_num,
+                    exit_code=exit_code,
+                )
 
                 if self.cancel_requested.is_set():
                     self.send_canceled()
@@ -315,6 +357,14 @@ class DownloadTask:
                     if artifact_root and not self.artifact_root:
                         self.artifact_root = artifact_root
                     self.set_state("done")
+                    duration = time.time() - self.start_time
+                    self.logger.complete(
+                        download_id=self.id,
+                        filepath=self.final_path or "",
+                        artifact_root=self.artifact_root or "",
+                        duration_seconds=duration,
+                        message="Download complete.",
+                    )
                     self.send_message(
                         {
                             "type": "done",
@@ -342,6 +392,14 @@ class DownloadTask:
                     original_path = self.current_path or self.final_path or ""
                     if original_path and Path(original_path).exists():
                         self.set_state("done")
+                        duration = time.time() - self.start_time
+                        self.logger.complete(
+                            download_id=self.id,
+                            filepath=str(original_path),
+                            artifact_root=str(Path(original_path).parent),
+                            duration_seconds=duration,
+                            message="Download complete (audio conversion skipped, original format kept).",
+                        )
                         self.send_message(
                             {
                                 "type": "done",
@@ -356,14 +414,21 @@ class DownloadTask:
                 # Try the next fallback command unconditionally
                 attempt_index += 1
                 if attempt_index < len(attempts):
-                    self.recent_lines.clear()
+                    from_label = label
                     next_meta = attempts[attempt_index]
-                    label = str(next_meta.get("label") or "another downloader")
+                    to_label = str(next_meta.get("label") or "another downloader")
+                    self.logger.fallback(
+                        download_id=self.id,
+                        attempt_num=attempt_num,
+                        from_label=from_label,
+                        to_label=to_label,
+                    )
+                    self.recent_lines.clear()
                     self.send_message(
                         {
                             "type": "progress",
                             "stage": "log",
-                            "line": f"yt-dlp could not use this source; retrying with {label}.",
+                            "line": f"yt-dlp could not use this source; retrying with {to_label}.",
                         }
                     )
                     continue
@@ -374,6 +439,12 @@ class DownloadTask:
             if self.cancel_requested.is_set():
                 self.send_canceled()
             else:
+                duration = time.time() - self.start_time
+                self.logger.error(
+                    download_id=self.id,
+                    error_text=str(exc),
+                    duration_seconds=duration,
+                )
                 self.set_state("error")
                 self.send_message(
                     {
@@ -385,6 +456,13 @@ class DownloadTask:
                     }
                 )
         except Exception as exc:
+            duration = time.time() - self.start_time
+            error_text = f"Unexpected helper error: {exc}"
+            self.logger.error(
+                download_id=self.id,
+                error_text=error_text,
+                duration_seconds=duration,
+            )
             self.set_state("error")
             self.send_message(
                 {
@@ -392,7 +470,7 @@ class DownloadTask:
                     "status": "error",
                     "filepath": self.current_path or self.final_path or "",
                     "artifactRoot": self.artifact_root or "",
-                    "error": f"Unexpected helper error: {exc}",
+                    "error": error_text,
                 }
             )
         finally:
