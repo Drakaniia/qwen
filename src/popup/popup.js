@@ -424,8 +424,7 @@ function renderVideos(videos, downloads) {
     if (!video.downloadable) {
       const warning = document.createElement("div");
       warning.className = "download-message error";
-      warning.textContent =
-        "Browser-only URL. Wait for a downloadable video stream or use the Record button above.";
+      warning.textContent = "Browser-only URL. Wait for a downloadable video stream or use the Record button above.";
       content.append(main, meta, warning);
     } else {
       content.append(main, meta);
@@ -561,7 +560,9 @@ async function startRecording(video) {
 
   if (!response || !response.ok) {
     setMessage(
-      response && response.error ? response.error : "Could not start recording. CDP/recording binary may not be available.",
+      response && response.error
+        ? response.error
+        : "Could not start recording. CDP/recording binary may not be available.",
       true,
     );
     return;
@@ -687,9 +688,14 @@ async function rescanActiveTab() {
       return;
     }
 
+    // Refresh immediately after rescan request
     await refresh({ syncActiveTab: false });
-    // Retry after content scan should have completed
-    window.setTimeout(() => refresh({ syncActiveTab: false }), 2000);
+
+    // Wait for content script to finish scanning, then refresh again with up-to-date data.
+    // Keeping the refreshing state active during this delay so the user sees the spinner
+    // through the full cycle instead of a brief blink.
+    await new Promise(resolve => window.setTimeout(resolve, 2000));
+    await refresh({ syncActiveTab: false });
   } finally {
     setRescanRefreshing(false);
   }
@@ -917,18 +923,19 @@ elements.showListLayout.addEventListener("click", () => {
 
 elements.showBoxLayout.addEventListener("click", () => {
   setVideoLayoutMode("boxes");
-});  elements.recordingMode.addEventListener("change", async () => {
-    const response = await PopupApi.saveSettings({
-      recordingMode: elements.recordingMode.value,
-    });
-    if (!response || !response.ok) {
-      setSettingsStatus("Could not save recording mode.", true);
-    } else {
-      setSettingsStatus("Recording mode saved.");
-    }
+});
+elements.recordingMode.addEventListener("change", async () => {
+  const response = await PopupApi.saveSettings({
+    recordingMode: elements.recordingMode.value,
   });
+  if (!response || !response.ok) {
+    setSettingsStatus("Could not save recording mode.", true);
+  } else {
+    setSettingsStatus("Recording mode saved.");
+  }
+});
 
-  elements.saveSettings.addEventListener("click", async () => {
+elements.saveSettings.addEventListener("click", async () => {
   const response = await PopupApi.saveSettings({
     downloadFolder: elements.downloadFolder.value.trim(),
     audioFormat: elements.audioFormat.value,
@@ -1220,6 +1227,11 @@ elements.clear.addEventListener("click", async () => {
 
 api.runtime.onMessage.addListener((message) => {
   if (!message) {
+    return;
+  }
+
+  if (message.type === "updateQualityLoadingStatus") {
+    qualityChooser.updateLoadingStatus(message.text);
     return;
   }
 
