@@ -480,10 +480,15 @@ function fullVideoPriority(video) {
 }
 
 function variantSortKey(video) {
+  const size = numericVideoSize(video);
+  const format = String(video.format || "").toUpperCase();
+  const isStreamFormat = format === "M3U8" || format === "MPD" || format === "ISM";
+  const isArtifactSmall = !isStreamFormat && size > 0 && size < 1024 * 1024;
+
   return [
     video.downloadable ? 1 : 0,
     fullVideoPriority(video),
-    numericVideoSize(video),
+    isArtifactSmall ? 0 : size,
     finiteNumber(video.height),
     finiteNumber(video.tbr || video.bitrate),
     formatPriority(video.format),
@@ -513,10 +518,20 @@ function mergeVariant(existing, next) {
 }
 
 function groupedVideoSortKey(video) {
+  // Penalize videos that look like artifacts — very small size for a non-playlist format
+  // that should be larger. This prevents init segments, thumbnails, and other tiny
+  // detections from sorting above real full-length videos.
+  const size = numericVideoSize(video);
+  const format = String(video.format || "").toUpperCase();
+  const isStreamFormat = format === "M3U8" || format === "MPD" || format === "ISM";
+  const isArtifactSmall = !isStreamFormat && size > 0 && size < 1024 * 1024;
+
   return [
     video.downloadable ? 1 : 0,
     fullVideoPriority(video),
-    numericVideoSize(video),
+    // For non-playlist videos with very small sizes (likely artifacts), use size=0
+    // so they sort below videos with unknown or realistic sizes.
+    isArtifactSmall ? 0 : size,
     finiteNumber(video.height),
     finiteNumber(video.tbr || video.bitrate),
     formatPriority(video.format),
