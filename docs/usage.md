@@ -11,11 +11,127 @@ Qwin can detect:
 - Reusable MP4/WebM/M3U8/MPD/ISM URLs embedded in visible player pages or inline player configuration scripts.
 - Video-like media requests based on response `Content-Type` and common video CDN URL patterns.
 - Real HTML5 video players on the page. A small in-player Download overlay appears when the video area looks like a real player instead of a tiny clip or GIF-style animation.
-- Real YouTube video pages from the visible YouTube player. Qwin sends the YouTube watch/embed/shorts page URL to `yt-dlp`, then the helper saves the selected version as MP4.
+- Real YouTube video pages from the visible YouTube player. Qwin sends the YouTube watch/embed/shorts/live page URL to `yt-dlp`, then the helper saves the selected version as MP4.
 - Manual video page links pasted in settings. This is a fallback for extractor-supported sites such as YouTube, Instagram, TikTok, X, Threads, and other URLs the helper tools can access.
 - Video titles from page metadata, video element labels, `yt-dlp` metadata, or filename fallback.
 
 The extension filters obvious ad/tracker media URLs, GIF/GIFV previews, common GIF-preview hosts such as Giphy and Tenor, tiny hidden media, short muted looping autoplay clips, and HLS/DASH fragment URLs such as `.ts`, `.m4s`, `segment-*`, `chunk-*`, and `frag-*`. Download the M3U8/MPD playlist or master URL, not individual segment URLs.
+
+## uBlock Origin Filter Integration
+
+Qwin integrates with uBlock Origin's community-maintained filter lists to improve ad URL blocking and video CDN whitelisting.
+
+### How It Works
+
+1. **At startup**, the extension loads cached filter patterns from `chrome.storage.local`.
+2. **Exception domains** from filter lists (especially uBO's Unbreak list) are applied to `isBlockedMediaUrlWithExceptions()` — URLs from known video CDNs that match ad patterns are unblocked.
+3. **Every 5 days**, the extension downloads fresh filter lists from uBO's GitHub repository and EasyList/EasyPrivacy and extracts video-relevant domain patterns.
+4. **Ad domains** discovered from filter lists are added to the blocking set alongside the built-in `AD_RE` regex.
+
+### Supported Filter Lists
+
+| List | URL | Refresh |
+|---|---|---|
+| uBlock filters | `filters.txt` | 5 days |
+| uBlock Unbreak | `unbreak.txt` | 5 days |
+| uBlock Resource abuse | `resource-abuse.txt` | 5 days |
+| uBlock Privacy | `privacy.txt` | 5 days |
+| EasyList | `easylist.txt` | 1 day |
+| EasyPrivacy | `easyprivacy.txt` | 1 day |
+
+The **Unbreak** list is the most valuable — it contains exception rules that restore video player functionality on sites where aggressive blocking would break playback.
+
+### Exception-Aware Blocking
+
+When a URL matches both ad patterns and an exception domain (e.g., `akamaihd.net` is both a known ad CDN but also essential for streaming), the exception takes priority. This prevents false positives on legitimate video CDNs.
+
+### Recompiling Patterns
+
+If patterns are empty at startup (first install), the extension triggers an immediate refresh so filter-based exceptions are available right away.
+
+## Widevine CDM Pipeline (DRM Content)
+
+Qwin includes experimental support for downloading DRM-protected content protected by Widevine, using a companion Go binary (`qwin-capture`) for CDM initialization, license key extraction, and segment decryption.
+
+### Architecture
+
+The CDM pipeline consists of:
+
+1. **CDP Network Interception** (`cdm_network_intercept.js`) — Captures Widevine license request/response exchanges via `chrome.debugger`.
+2. **CDM Init** (`go/cdm.go`) — Initializes the Widevine CDM from a local `widevinecdm.dll`.
+3. **Key Extraction** (`go/cdm.go`) — Parses the license response protobuf to extract decryption keys (KIDs + wrapped keys).
+4. **Segment Decryption** (`go/decrypt.go`) — Decrypts fMP4 segments using AES-128 CTR with extracted keys.
+5. **Segment Assembly** (`go/decrypt.go`) — Concatenates decrypted segments into a playable MP4 file.
+
+### Limitations
+
+- **L3 (software) only** — If the content requires hardware-backed L1 keys, the pipeline reports `l1Only=true` and falls through to screen recording.
+- **CDM version dependent** — Only specific Widevine CDM versions are compatible. The installer (`install-cdm.ps1`) detects Chrome's bundled CDM and copies it to `tools/cdm/`.
+- **Experimental** — This is an early-stage feature. Many streaming services use additional encryption or tokenization beyond the basic CENC scheme.
+
+### CDM Installation
+
+The CDM pipeline requires the Widevine CDM binary (`widevinecdm.dll`) installed at `tools/cdm/`. Run:
+
+```bat
+cd /d C:\Users\Qwenzy\Desktop\qwin
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-cdm.ps1
+```
+
+The installer:
+1. Searches for Chrome's bundled Widevine CDM in Chrome, Edge, Brave, and Yandex Browser user data directories.
+2. Copies it to `tools/cdm/` if the version is compatible.
+3. Falls back to downloading a known-compatible standalone CDM.
+4. Writes `tools/cdm/status.json` for the native host to read.
+
+### Capture Binary Installation
+
+The Go companion binary (`qwin-capture`) is installed separately:
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-capture.ps1
+```
+
+The installer downloads the latest release from GitHub and places it at `tools/capture/qwin-capture.exe`.
+
+## Screen Recording
+
+Qwin supports tab screen recording as a fallback for content that cannot be extracted or decrypted directly.
+
+### How To Record
+
+1. Open the Qwin popup on a tab with playing video.
+2. Click the **Record** button in the popup.
+3. The recording starts and appears as a download entry with live duration/size estimates.
+4. Click **Stop recording** to finalize the capture.
+5. The recorded file is saved to the download folder.
+
+### Recording Progress
+
+During recording, the popup display updates every 5 seconds with:
+- Elapsed duration (mm:ss)
+- Estimated file size (based on ~2.5 MB/s estimate)
+
+### MSE/Blob Capture
+
+For custom video players that use MediaSource Extensions (MSE) or Blob URLs, the extension captures segments through `content/media_source_intercept.js`. These segments can be forwarded to the native host for reassembly into a playable file.
+
+## CDP-Based Video Extraction
+
+Qwin uses Chrome DevTools Protocol (CDP) to extract video sources from players that don't expose them through standard DOM or network APIs.
+
+### CDP Relay Chain
+
+The relay allows the native host to execute CDP commands synchronously:
+
+```
+Python Host → Go Binary → Extension → chrome.debugger → Extension → Go → Python
+```
+
+### Extraction Methods
+
+1. **Runtime.evaluate** — Executes JavaScript in the page context to find video elements, sources, and player configurations.
+2. **Network instrumentation** — Captures license exchanges for CDM key extraction.
 
 ## Download A Video
 
