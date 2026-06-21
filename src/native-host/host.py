@@ -60,6 +60,7 @@ from yt_dlp_adapter import (
 from yt_dlp_command import (
     MAX_FAST_CONNECTIONS,
     MAX_ARIA2_CONNECTIONS,
+    build_flat_playlist_command,
     build_formats_command,
     build_yt_dlp_command,
     summarize_formats,
@@ -292,6 +293,15 @@ def run_format_list(message):
     )
 
 
+def run_playlist_enumeration(message):
+    return _format_list.run_playlist_enumeration(
+        message,
+        send=send_native_message,
+        yt_dlp_command_resolver=resolve_yt_dlp_command,
+        ffmpeg_location_resolver=resolve_ffmpeg_location,
+    )
+
+
 def run_choose_folder(message):
     selected = choose_download_folder(message.get("initialFolder"))
     send_native_message(folder_response(message, selected))
@@ -343,6 +353,7 @@ def _dispatch_deps(include_dispatch=True):
         "run_choose_torrent_file": run_choose_torrent_file,
         "run_download": run_download,
         "run_format_list": run_format_list,
+        "run_playlist_enumeration": run_playlist_enumeration,
         "run_magnet_download": run_magnet_download,
         "run_torrent_download": run_torrent_download,
         "run_resolve_media_candidates": run_resolve_media_candidates,

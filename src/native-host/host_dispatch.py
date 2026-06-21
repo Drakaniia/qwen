@@ -48,6 +48,8 @@ def handle_message(message, deps):
             deps.delete_download_artifacts(message)
         case "formats":
             deps.run_format_list(message)
+        case "enumeratePlaylist":
+            deps.run_playlist_enumeration(message)
         case "resolveMediaCandidates":
             deps.run_resolve_media_candidates(message)
         case "chooseFolder":

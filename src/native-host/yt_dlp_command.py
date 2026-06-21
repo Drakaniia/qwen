@@ -84,6 +84,7 @@ def build_yt_dlp_command(
     nocheckcertificate=False,
     extract_audio=False,
     audio_format="mp3",
+    download_subtitles=True,
 ):
     download_root = str(Path(download_dir))
     output_template = "%(title).180B/%(title).180B [%(id)s].%(ext)s"
@@ -144,6 +145,17 @@ def build_yt_dlp_command(
                 output_template,
             ]
         )
+    if not extract_audio and download_subtitles:
+        command.extend(
+            [
+                "--write-subs",
+                "--write-auto-subs",
+                "--sub-langs",
+                "all",
+                "--embed-subs",
+            ]
+        )
+
     if nocheckcertificate:
         command.append("--no-check-certificate")
     append_youtube_ejs_options(command, url)
@@ -179,6 +191,54 @@ def build_yt_dlp_command(
                 f"aria2c:{aria2_args}",
             ]
         )
+    append_browser_context_options(
+        command,
+        referer=referer,
+        user_agent=user_agent,
+        request_headers=request_headers,
+        cookies_file=cookies_file,
+    )
+
+    command.append(url)
+    return command
+
+
+def build_flat_playlist_command(
+    url,
+    referer=None,
+    user_agent=None,
+    request_headers=None,
+    cookies_file=None,
+    yt_dlp_command=None,
+    ffmpeg_location=None,
+    nocheckcertificate=False,
+):
+    """Build a yt-dlp command to enumerate playlist items via --flat-playlist.
+
+    Unlike build_formats_command which uses ``--no-playlist`` and returns
+    a single JSON blob for one video, this command uses ``--flat-playlist``
+    and returns one JSON line per playlist item. This allows the caller
+    to enumerate all items in a playlist.
+
+    Returns a list of command arguments suitable for subprocess.Popen.
+    """
+    command = [
+        *(yt_dlp_command or ["yt-dlp"]),
+        "--ignore-config",
+        "--flat-playlist",
+        "--dump-json",
+        "--no-warnings",
+        "--no-color",
+        "--skip-download",
+        "--no-check-formats",
+    ]
+    if nocheckcertificate:
+        command.append("--no-check-certificate")
+    append_youtube_ejs_options(command, url)
+    append_generic_impersonation_options(command)
+
+    if ffmpeg_location:
+        command.extend(["--ffmpeg-location", str(ffmpeg_location)])
     append_browser_context_options(
         command,
         referer=referer,
@@ -336,10 +396,20 @@ def summarize_formats(info):
             }
         )
 
+    # Check if subtitles are available from yt-dlp metadata
+    raw_subtitles = info.get("subtitles") or {}
+    raw_auto_captions = info.get("automatic_captions") or {}
+    has_subtitles = bool(raw_subtitles) or bool(raw_auto_captions)
+    # Count unique subtitle languages (subtitles keys + auto_captions keys)
+    subtitle_langs = set(raw_subtitles.keys()) | set(raw_auto_captions.keys())
+    subtitle_language_count = len(subtitle_langs) if has_subtitles else 0
+
     return {
         "title": title,
         "webpageUrl": webpage_url,
         "thumbnailUrl": thumbnail_url,
+        "hasSubtitles": has_subtitles,
+        "subtitleLanguages": subtitle_language_count,
         "formats": choices,
     }
 
