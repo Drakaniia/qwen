@@ -186,6 +186,55 @@ function getSegmentCaptureStatus(tabId) {
   return runtimeMessage({ type: "getSegmentCaptureStatus", tabId });
 }
 
+// ─── Batch/Playlist downloads ───────────────────────────────────────────
+
+/**
+ * Enumerate items in a playlist URL via the native host.
+ * @param {string} url - Playlist URL to enumerate
+ * @param {number} tabId - Current tab ID
+ */
+function enumeratePlaylist(url, tabId) {
+  return runtimeMessage({ type: "enumeratePlaylist", url, tabId, pageUrl: url });
+}
+
+/**
+ * Start batch downloading a list of videos.
+ * @param {number} tabId - Active tab ID
+ * @param {Array} videos - Array of video objects to download
+ */
+function startBatchDownload(tabId, videos) {
+  return runtimeMessage({ type: "batchDownload", tabId, videos });
+}
+
+/**
+ * Download a selected set of videos by ID.
+ * @param {number} tabId - Active tab ID
+ * @param {Array<string>} videoIds - Array of video IDs to download
+ */
+function batchDownloadSelected(tabId, videoIds) {
+  return runtimeMessage({ type: "batchDownloadSelected", tabId, videoIds });
+}
+
+/** Get current batch status. */
+function batchStatus() {
+  return runtimeMessage({ type: "batchStatus" });
+}
+
+/** Pause the current batch download. */
+function batchPause() {
+  return runtimeMessage({ type: "batchPause" });
+}
+
+/** Resume the paused batch download. */
+function batchResume() {
+  return runtimeMessage({ type: "batchResume" });
+}
+
+/** Cancel the current batch download. */
+function batchCancel() {
+  return runtimeMessage({ type: "batchCancel" });
+}
+
 // ─── CDM Key Extraction ───────────────────────────────────────────────────
 
 /** @param {string} cdmPath */
@@ -236,6 +285,15 @@ export {
   startSegmentCapture,
   stopSegmentCapture,
   getSegmentCaptureStatus,
+  // Batch/playlist
+  enumeratePlaylist,
+  startBatchDownload,
+  batchDownloadSelected,
+  batchStatus,
+  batchPause,
+  batchResume,
+  batchCancel,
+  // CDM
   cdmInit,
   extractCdmKeys,
   decryptCdmSegments,
