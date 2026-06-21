@@ -328,8 +328,4 @@ function cleanup() {
   }
 }
 
-export {
-  getExtractionScript,
-  extractVideosFromTab,
-  cleanup,
-};
+export { getExtractionScript, extractVideosFromTab, cleanup };

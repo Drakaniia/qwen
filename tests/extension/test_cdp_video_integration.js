@@ -86,11 +86,7 @@ const MOCK_CDP_RESULTS = {
 
     for (const { url, label, expected } of tests) {
       const format = videoFilters.classifyVideoUrl(url);
-      assert.equal(
-        format,
-        expected,
-        `classifyVideoUrl("${label}") must return "${expected}", got "${format}"`,
-      );
+      assert.equal(format, expected, `classifyVideoUrl("${label}") must return "${expected}", got "${format}"`);
     }
     console.log("✓ Test 1: classifyVideoUrl correctly identifies CDP-extracted video formats");
   }
@@ -229,8 +225,10 @@ const MOCK_CDP_RESULTS = {
     const isHttp = mediaCandidates.isHttpUrl(blobUrl);
     assert.ok(isHttp, "pipeline treats blob: URLs as valid HTTP URLs");
     const downloadable = videoFilters.isDownloadableUrl(blobUrl);
-    assert.ok(downloadable === false || downloadable === true,
-      "blob: URLs pass through isDownloadableUrl without error");
+    assert.ok(
+      downloadable === false || downloadable === true,
+      "blob: URLs pass through isDownloadableUrl without error",
+    );
 
     // But CDP extraction's own script filters them:
     // getExtractionScript() has: if (url.startsWith('blob:') || url.startsWith('data:')) return;
@@ -242,13 +240,13 @@ const MOCK_CDP_RESULTS = {
 
   {
     const extractionOrigins = [
-      "video-src",       // From <video> element
-      "video-source",    // From <source> inside <video>
-      "media-source",    // From <source> inside <audio>
-      "inline-script",   // From <script> content
-      "js-config-next",  // From __NEXT_DATA__
-      "js-config-nuxt",  // From __NUXT__
-      "js-config-file",  // From js-config (player config)
+      "video-src", // From <video> element
+      "video-source", // From <source> inside <video>
+      "media-source", // From <source> inside <audio>
+      "inline-script", // From <script> content
+      "js-config-next", // From __NEXT_DATA__
+      "js-config-nuxt", // From __NUXT__
+      "js-config-file", // From js-config (player config)
     ];
 
     for (const origin of extractionOrigins) {

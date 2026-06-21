@@ -26,7 +26,7 @@ const mockDebugger = {
   lastCommand: null,
   onEventListener: null,
   onDetachListener: null,
-  networkEvents: {},      // tabId → array of CDP events to fire
+  networkEvents: {}, // tabId → array of CDP events to fire
   getResponseBodyResult: null,
   getResponseBodyError: null,
   commandErrors: new Map(),
@@ -218,10 +218,7 @@ async function flushMicrotasks() {
     );
 
     // Edge cases
-    assert.ok(
-      !cdmNetworkIntercept.isWidevineUrl("", "POST"),
-      "empty URL should not be Widevine",
-    );
+    assert.ok(!cdmNetworkIntercept.isWidevineUrl("", "POST"), "empty URL should not be Widevine");
     assert.ok(
       !cdmNetworkIntercept.isWidevineUrl("https://example.com/wv/license", "GET"),
       "GET to /license should not be considered Widevine (need POST)",

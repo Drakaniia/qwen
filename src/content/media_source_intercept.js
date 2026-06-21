@@ -59,7 +59,7 @@ const CONFIG = {
 // ─── Batch sender ──────────────────────────────────────────────────────────
 
 let batchSendTimer = null;
-let pendingSegments = [];
+const pendingSegments = [];
 
 function scheduleBatchSend() {
   if (batchSendTimer) {
@@ -210,10 +210,7 @@ function createInterceptedMediaSource() {
   };
 
   // Intercept duration setter to capture final duration
-  const durationDescriptor = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(ms),
-    "duration",
-  );
+  const durationDescriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(ms), "duration");
   if (durationDescriptor && durationDescriptor.set) {
     const originalSetDuration = durationDescriptor.set.bind(ms);
     Object.defineProperty(ms, "duration", {
@@ -335,11 +332,6 @@ function init() {
   });
 }
 
-export {
-  init,
-  cleanup,
-  getCapturedStreamsSummary,
-  capturedStreams,
-};
+export { init, cleanup, getCapturedStreamsSummary, capturedStreams };
 
 export default { init, cleanup, getCapturedStreamsSummary };

@@ -184,7 +184,10 @@ assert.ok(css.includes("@keyframes recording-pulse"), "CSS must define @keyframe
 assert.ok(css.includes(".recording-badge"), "CSS must define .recording-badge for recording status badge");
 assert.ok(css.includes(".recording-progress"), "CSS must define .recording-progress for progress display");
 assert.ok(css.includes(".recording-duration"), "CSS must define .recording-duration for recording time display");
-assert.ok(css.includes("border-top:") && css.includes(".settings-divider"), "CSS must define .settings-divider with border-top");
+assert.ok(
+  css.includes("border-top:") && css.includes(".settings-divider"),
+  "CSS must define .settings-divider with border-top",
+);
 
 // ─── HTML Structure Tests ──────────────────────────────────────────────────
 
@@ -200,10 +203,7 @@ assert.ok(
   html.includes('value="auto"') && html.includes("Automatic"),
   "popup.html must have 'Auto' recording mode option",
 );
-assert.ok(
-  html.includes("Qwin can record the tab's video output"),
-  "popup.html must include recording mode hint text",
-);
+assert.ok(html.includes("Qwin can record the tab's video output"), "popup.html must include recording mode hint text");
 assert.ok(
   html.includes('class="settings-divider"') && html.includes('for="recordingMode"'),
   "popup.html must place recording mode settings behind a settings-divider",
@@ -214,14 +214,8 @@ assert.ok(
 import * as DownloadList from "../../src/popup/download_list.js";
 
 {
-  assert.ok(
-    downloadListJs.includes("function formatDuration"),
-    "download_list.js must define formatDuration helper",
-  );
-  assert.ok(
-    downloadListJs.includes("function formatFileSize"),
-    "download_list.js must define formatFileSize helper",
-  );
+  assert.ok(downloadListJs.includes("function formatDuration"), "download_list.js must define formatDuration helper");
+  assert.ok(downloadListJs.includes("function formatFileSize"), "download_list.js must define formatFileSize helper");
 
   assert.ok(
     downloadListJs.includes('"recording-item"'),
@@ -235,18 +229,9 @@ import * as DownloadList from "../../src/popup/download_list.js";
     downloadListJs.includes('"recording-badge"'),
     "download_list.js must use recording-badge class for recording status badge",
   );
-  assert.ok(
-    downloadListJs.includes('"recording-progress"'),
-    "download_list.js must create recording-progress element",
-  );
-  assert.ok(
-    downloadListJs.includes("Recording: "),
-    "download_list.js must show 'Recording: ' duration label",
-  );
-  assert.ok(
-    downloadListJs.includes("Stop recording"),
-    "download_list.js must provide a Stop recording button",
-  );
+  assert.ok(downloadListJs.includes('"recording-progress"'), "download_list.js must create recording-progress element");
+  assert.ok(downloadListJs.includes("Recording: "), "download_list.js must show 'Recording: ' duration label");
+  assert.ok(downloadListJs.includes("Stop recording"), "download_list.js must provide a Stop recording button");
 }
 
 // ─── Popup Interactive Tests ────────────────────────────────────────────────
@@ -344,11 +329,7 @@ function createHarness({ videos = [], downloads = [], settings = {} } = {}) {
     (child) => child.className && child.className.includes("record-page-button"),
   );
   assert.ok(recordPageBtn, 'A "Record this page" button must appear when no videos are detected');
-  assert.equal(
-    recordPageBtn.textContent,
-    "Record this page",
-    '"Record this page" button must have correct label',
-  );
+  assert.equal(recordPageBtn.textContent, "Record this page", '"Record this page" button must have correct label');
 
   // ─── Test 2: Recording mode saved from refresh response ───────────────────
 
@@ -378,10 +359,7 @@ function createHarness({ videos = [], downloads = [], settings = {} } = {}) {
   await flushPromises();
 
   const savesAfterChange = changeHarness.messages.filter((m) => m.type === "saveSettings").length;
-  assert.ok(
-    savesAfterChange > initialSaveCount,
-    "Changing recording mode must call saveSettings",
-  );
+  assert.ok(savesAfterChange > initialSaveCount, "Changing recording mode must call saveSettings");
   const lastSave = changeHarness.messages.filter((m) => m.type === "saveSettings").pop();
   assert.equal(lastSave.settings.recordingMode, "auto", "saveSettings must include recordingMode: auto");
 
@@ -461,19 +439,16 @@ function createHarness({ videos = [], downloads = [], settings = {} } = {}) {
     };
 
     const preStopCount = recJobHarness.messages.filter((m) => m.type === "stopRecording").length;
-    
+
     // Simulate event delegation by calling the download list's click listener
     const dlListeners = recJobHarness.element("downloadList").listeners.click || [];
     for (const listener of dlListeners) {
       await listener({ target: stopButton });
     }
     await flushPromises();
-    
+
     const postStopCount = recJobHarness.messages.filter((m) => m.type === "stopRecording").length;
-    assert.ok(
-      postStopCount > preStopCount,
-      "Clicking Stop recording must call stopRecording API",
-    );
+    assert.ok(postStopCount > preStopCount, "Clicking Stop recording must call stopRecording API");
   }
 
   // ─── Test 7: Completed recording job shows in list ────────────────────────
@@ -546,10 +521,7 @@ function createHarness({ videos = [], downloads = [], settings = {} } = {}) {
 
   // ─── Test 9: formatDuration and formatFileSize code coverage ──────────────
 
-  assert.ok(
-    downloadListJs.includes("formatDuration(seconds)"),
-    "formatDuration must take a seconds parameter",
-  );
+  assert.ok(downloadListJs.includes("formatDuration(seconds)"), "formatDuration must take a seconds parameter");
 
   console.log("recording UI tests passed");
 })().catch((error) => {

@@ -78,36 +78,48 @@ class DownloadLogger:
 
     # ── High-level helpers ─────────────────────────────────────────────────
 
-    def init(self, download_id: str, url: str, page_url: str = "", fmt: str = "",
-             selected_format: str = "best", backend: str = "auto",
-             extract_audio: bool = False, audio_format: str = "",
-             title: str = "", download_folder: str = "") -> None:
+    def init(
+        self,
+        download_id: str,
+        url: str,
+        page_url: str = "",
+        fmt: str = "",
+        selected_format: str = "best",
+        backend: str = "auto",
+        extract_audio: bool = False,
+        audio_format: str = "",
+        title: str = "",
+        download_folder: str = "",
+    ) -> None:
         """Log that a new download was initiated."""
         self._output_lines[download_id] = []
-        self._write({
-            "event": "DOWNLOAD_INIT",
-            "downloadId": download_id,
-            "url": url,
-            "pageUrl": page_url,
-            "format": fmt,
-            "selectedFormat": selected_format,
-            "backend": backend,
-            "extractAudio": extract_audio,
-            "audioFormat": audio_format,
-            "title": title,
-            "downloadFolder": download_folder,
-        })
+        self._write(
+            {
+                "event": "DOWNLOAD_INIT",
+                "downloadId": download_id,
+                "url": url,
+                "pageUrl": page_url,
+                "format": fmt,
+                "selectedFormat": selected_format,
+                "backend": backend,
+                "extractAudio": extract_audio,
+                "audioFormat": audio_format,
+                "title": title,
+                "downloadFolder": download_folder,
+            }
+        )
 
-    def attempt_start(self, download_id: str, attempt_num: int,
-                      label: str, command: list[str]) -> None:
+    def attempt_start(self, download_id: str, attempt_num: int, label: str, command: list[str]) -> None:
         """Log that a new subprocess attempt is starting."""
-        self._write({
-            "event": "ATTEMPT_START",
-            "downloadId": download_id,
-            "attemptNumber": attempt_num,
-            "label": label,
-            "command": command,
-        })
+        self._write(
+            {
+                "event": "ATTEMPT_START",
+                "downloadId": download_id,
+                "attemptNumber": attempt_num,
+                "label": label,
+                "command": command,
+            }
+        )
 
     def attempt_line(self, download_id: str, line: str) -> None:
         """Log a single output line from the running process.
@@ -119,8 +131,7 @@ class DownloadLogger:
         if lines is not None:
             lines.append(line)
 
-    def attempt_end(self, download_id: str, attempt_num: int,
-                    exit_code: int) -> None:
+    def attempt_end(self, download_id: str, attempt_num: int, exit_code: int) -> None:
         """Log that a subprocess attempt finished with an exit code.
 
         Also flushes the buffered output lines as a single entry so they
@@ -138,55 +149,68 @@ class DownloadLogger:
             entry["output"] = "\n".join(lines)
         self._write(entry)
 
-    def fallback(self, download_id: str, attempt_num: int,
-                 from_label: str, to_label: str) -> None:
+    def fallback(self, download_id: str, attempt_num: int, from_label: str, to_label: str) -> None:
         """Log a fallback from one strategy to another."""
-        self._write({
-            "event": "FALLBACK",
-            "downloadId": download_id,
-            "attemptNumber": attempt_num,
-            "fromLabel": from_label,
-            "toLabel": to_label,
-        })
+        self._write(
+            {
+                "event": "FALLBACK",
+                "downloadId": download_id,
+                "attemptNumber": attempt_num,
+                "fromLabel": from_label,
+                "toLabel": to_label,
+            }
+        )
 
-    def complete(self, download_id: str, filepath: str = "",
-                 artifact_root: str = "", duration_seconds: float = 0.0,
-                 message: str = "") -> None:
+    def complete(
+        self,
+        download_id: str,
+        filepath: str = "",
+        artifact_root: str = "",
+        duration_seconds: float = 0.0,
+        message: str = "",
+    ) -> None:
         """Log a successful download."""
-        self._write({
-            "event": "DOWNLOAD_COMPLETE",
-            "downloadId": download_id,
-            "filepath": filepath,
-            "artifactRoot": artifact_root,
-            "durationSeconds": round(duration_seconds, 1),
-            "message": message,
-        })
+        self._write(
+            {
+                "event": "DOWNLOAD_COMPLETE",
+                "downloadId": download_id,
+                "filepath": filepath,
+                "artifactRoot": artifact_root,
+                "durationSeconds": round(duration_seconds, 1),
+                "message": message,
+            }
+        )
 
-    def error(self, download_id: str, error_text: str,
-              duration_seconds: float = 0.0) -> None:
+    def error(self, download_id: str, error_text: str, duration_seconds: float = 0.0) -> None:
         """Log a failed download with the full error text."""
-        self._write({
-            "event": "DOWNLOAD_ERROR",
-            "downloadId": download_id,
-            "error": error_text,
-            "durationSeconds": round(duration_seconds, 1),
-        })
+        self._write(
+            {
+                "event": "DOWNLOAD_ERROR",
+                "downloadId": download_id,
+                "error": error_text,
+                "durationSeconds": round(duration_seconds, 1),
+            }
+        )
 
     def cancel(self, download_id: str, message: str = "") -> None:
         """Log a cancelled download."""
-        self._write({
-            "event": "DOWNLOAD_CANCEL",
-            "downloadId": download_id,
-            "message": message,
-        })
+        self._write(
+            {
+                "event": "DOWNLOAD_CANCEL",
+                "downloadId": download_id,
+                "message": message,
+            }
+        )
 
     def pause(self, download_id: str, message: str = "") -> None:
         """Log a paused download."""
-        self._write({
-            "event": "DOWNLOAD_PAUSE",
-            "downloadId": download_id,
-            "message": message,
-        })
+        self._write(
+            {
+                "event": "DOWNLOAD_PAUSE",
+                "downloadId": download_id,
+                "message": message,
+            }
+        )
 
     # ── Low-level writer ───────────────────────────────────────────────────
 

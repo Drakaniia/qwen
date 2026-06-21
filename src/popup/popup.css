@@ -864,7 +864,8 @@ footer {
 }
 
 @keyframes recording-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.4);
   }

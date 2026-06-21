@@ -224,8 +224,8 @@ async function handleLoadingFinished(params, tabId) {
   const exchange = {
     ...tracked,
     status: response.ok ? "completed" : "error",
-    responseBody: response.ok ? (response.result?.body || "") : "",
-    responseError: response.ok ? "" : (response.error || "Failed to get response body"),
+    responseBody: response.ok ? response.result?.body || "" : "",
+    responseError: response.ok ? "" : response.error || "Failed to get response body",
     completedAt: Date.now(),
   };
 
@@ -480,14 +480,17 @@ async function extractKeysFromExchange(exchange, nativeRequestFn) {
   const sessionId = `${exchange.tabId || 0}_${exchange.requestId || Date.now()}`;
 
   try {
-    const response = await nativeRequestFn({
-      type: "extractKeys",
-      id: `extract_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      sessionId,
-      responseB64: exchange.responseBody,
-      challengeB64: exchange.postData || "",
-      initDataB64: "",
-    }, 60000);
+    const response = await nativeRequestFn(
+      {
+        type: "extractKeys",
+        id: `extract_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        sessionId,
+        responseB64: exchange.responseBody,
+        challengeB64: exchange.postData || "",
+        initDataB64: "",
+      },
+      60000,
+    );
 
     return {
       ok: response?.ok !== false,

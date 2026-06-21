@@ -291,6 +291,7 @@ class TestCaptureManager(unittest.TestCase):
     def test_capture_available_function(self):
         """The module-level capture_available() should match binary detection."""
         from capture_manager import capture_available
+
         self.assertEqual(capture_available(), self._has_binary)
 
 

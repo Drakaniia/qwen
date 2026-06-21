@@ -250,10 +250,4 @@ function stopAll() {
   }
 }
 
-export {
-  startCapture,
-  stopCapture,
-  addSegments,
-  getStatus,
-  stopAll,
-};
+export { startCapture, stopCapture, addSegments, getStatus, stopAll };

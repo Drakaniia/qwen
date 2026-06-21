@@ -136,6 +136,7 @@ def run_cdm_init(message):
     """Initialize the Widevine CDM with the path from the message."""
     cdm_path = message.get("cdmPath", "")
     import time as _t
+
     request_id = f"cdm_init_{int(_t.time() * 1000)}"
     try:
         result = _capture_manager.cdm_init(cdm_path)
@@ -160,6 +161,7 @@ def run_cdm_init(message):
 def run_extract_keys(message):
     """Extract decryption keys from a captured Widevine license response."""
     import time as _t
+
     request_id = f"extract_keys_{int(_t.time() * 1000)}"
     try:
         result = _capture_manager.extract_keys(
@@ -189,6 +191,7 @@ def run_extract_keys(message):
 def run_decrypt_segments(message):
     """Decrypt encrypted media segments with the provided keys."""
     import time as _t
+
     request_id = f"decrypt_seg_{int(_t.time() * 1000)}"
     try:
         result = _capture_manager.decrypt_segments(
@@ -218,6 +221,7 @@ def run_decrypt_segments(message):
 def run_assemble_segments(message):
     """Assemble decrypted segments into a single output file."""
     import time as _t
+
     request_id = f"assemble_{int(_t.time() * 1000)}"
     try:
         result = _capture_manager.assemble_segments(

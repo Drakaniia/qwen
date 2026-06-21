@@ -218,9 +218,7 @@ function createMockSegment(streamId, index, data = "dGVzdF9zZWdtZW50") {
     assert.equal(stopResult.segmentCount, 2, "stopCapture must report segment count");
 
     // Should have sent an assembleSegments message to native host
-    const assembleMsg = mockRuntime.sendMessageCalls.find(
-      (m) => m.type === "assembleSegments",
-    );
+    const assembleMsg = mockRuntime.sendMessageCalls.find((m) => m.type === "assembleSegments");
     assert.ok(assembleMsg, "must send an assembleSegments message to native host");
     assert.equal(assembleMsg.tabId, 42, "assembleSegments must include tabId");
     assert.equal(assembleMsg.title, "Test video", "assembleSegments must include title");
@@ -249,9 +247,7 @@ function createMockSegment(streamId, index, data = "dGVzdF9zZWdtZW50") {
     assert.equal(stopResult.jobId, "", "stopCapture with no segments must not create a job");
 
     // Should NOT have sent assembleSegments message
-    const assembleMsg = mockRuntime.sendMessageCalls.find(
-      (m) => m.type === "assembleSegments",
-    );
+    const assembleMsg = mockRuntime.sendMessageCalls.find((m) => m.type === "assembleSegments");
     assert.ok(!assembleMsg, "stopCapture with no segments must not send assembleSegments");
 
     console.log("✓ Test 5: stopCapture without segments returns early");
@@ -332,9 +328,30 @@ function createMockSegment(streamId, index, data = "dGVzdF9zZWdtZW50") {
     await segmentCapture.startCapture(42, {});
 
     const segments = [
-      { streamId: "video", mimeType: 'video/mp4; codecs="avc1"', data: "dmlkZW8w", index: 0, timestamp: 0, isLast: false },
-      { streamId: "video", mimeType: 'video/mp4; codecs="avc1"', data: "dmlkZW8x", index: 1, timestamp: 2, isLast: false },
-      { streamId: "video", mimeType: 'video/mp4; codecs="avc1"', data: "dmlkZW8y", index: 2, timestamp: 4, isLast: true },
+      {
+        streamId: "video",
+        mimeType: 'video/mp4; codecs="avc1"',
+        data: "dmlkZW8w",
+        index: 0,
+        timestamp: 0,
+        isLast: false,
+      },
+      {
+        streamId: "video",
+        mimeType: 'video/mp4; codecs="avc1"',
+        data: "dmlkZW8x",
+        index: 1,
+        timestamp: 2,
+        isLast: false,
+      },
+      {
+        streamId: "video",
+        mimeType: 'video/mp4; codecs="avc1"',
+        data: "dmlkZW8y",
+        index: 2,
+        timestamp: 4,
+        isLast: true,
+      },
     ];
 
     segmentCapture.addSegments(42, segments);
@@ -346,9 +363,7 @@ function createMockSegment(streamId, index, data = "dGVzdF9zZWdtZW50") {
     mockRuntime.sendMessageResult = { ok: true, jobId: "seg_job" };
     const stopResult = await segmentCapture.stopCapture(42);
 
-    const assembleMsg = mockRuntime.sendMessageCalls.find(
-      (m) => m.type === "assembleSegments",
-    );
+    const assembleMsg = mockRuntime.sendMessageCalls.find((m) => m.type === "assembleSegments");
     assert.ok(assembleMsg, "assembleSegments must be called");
     assert.equal(assembleMsg.segments.length, 3, "all 3 segments must be forwarded");
 

@@ -21,8 +21,8 @@ const mockDebugger = {
   attachedTabs: new Set(),
   lastCommand: null,
   evaluateResults: new Map(), // expression → result
-  evaluateError: null,        // if set, Runtime.evaluate will fail
-  attachError: null,          // if set, attach will fail
+  evaluateError: null, // if set, Runtime.evaluate will fail
+  attachError: null, // if set, attach will fail
 
   attach(target, version, callback) {
     const tabId = target.tabId;
@@ -124,11 +124,7 @@ try {
 
   {
     assert.ok(cdpExtraction, "cdp_extraction module should be importable");
-    assert.equal(
-      typeof cdpExtraction.getExtractionScript,
-      "function",
-      "module must export getExtractionScript()",
-    );
+    assert.equal(typeof cdpExtraction.getExtractionScript, "function", "module must export getExtractionScript()");
     assert.equal(
       typeof cdpExtraction.extractVideosFromTab,
       "function",
@@ -249,10 +245,7 @@ try {
     // With detachAfter: false, tab stays attached
     const resultKeep = await cdpExtraction.extractVideosFromTab(77, { detachAfter: false });
     assert.ok(resultKeep.ok, "extraction with detachAfter:false should succeed");
-    assert.ok(
-      mockDebugger.attachedTabs.has(77),
-      "with detachAfter: false, CDP should stay attached after extraction",
-    );
+    assert.ok(mockDebugger.attachedTabs.has(77), "with detachAfter: false, CDP should stay attached after extraction");
 
     // Cleanup should detach
     cdpExtraction.cleanup();

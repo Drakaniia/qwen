@@ -167,8 +167,7 @@ class TestYouTubePremiumCommandBuild(unittest.TestCase):
 
         # Cookie header should NOT appear as --add-header
         cookie_add_header = [
-            command[i] for i in range(len(command) - 1)
-            if command[i] == "--add-header" and "Cookie:" in command[i + 1]
+            command[i] for i in range(len(command) - 1) if command[i] == "--add-header" and "Cookie:" in command[i + 1]
         ]
         self.assertEqual(len(cookie_add_header), 0, "Raw Cookie header must not appear when --cookies is used")
 
@@ -217,12 +216,9 @@ class TestYouTubePremiumCommandBuild(unittest.TestCase):
         )
 
         command_str = " ".join(command)
-        self.assertNotIn("--remote-components", command_str,
-                         "Non-YouTube URLs must NOT include --remote-components")
-        self.assertIn("--extractor-args", command_str,
-                      "Non-YouTube URLs must still include --extractor-args")
-        self.assertIn("generic:impersonate", command_str,
-                      "Non-YouTube URLs must still include impersonation")
+        self.assertNotIn("--remote-components", command_str, "Non-YouTube URLs must NOT include --remote-components")
+        self.assertIn("--extractor-args", command_str, "Non-YouTube URLs must still include --extractor-args")
+        self.assertIn("generic:impersonate", command_str, "Non-YouTube URLs must still include impersonation")
 
 
 class TestCookieParsing(unittest.TestCase):
@@ -239,12 +235,7 @@ class TestCookieParsing(unittest.TestCase):
 
     def test_parses_multiple_youtube_cookies(self):
         """YouTube Premium session sends multiple cookies."""
-        cookie_header = (
-            "__Secure-3PSID=abc123; "
-            "__Secure-3PAPISID=def456; "
-            "SAPISID=ghi789; "
-            "PREF=fz=value"
-        )
+        cookie_header = "__Secure-3PSID=abc123; __Secure-3PAPISID=def456; SAPISID=ghi789; PREF=fz=value"
         cookies = parse_cookie_header(cookie_header)
         cookie_names = {name for name, _ in cookies}
         self.assertIn("__Secure-3PSID", cookie_names)
@@ -274,10 +265,8 @@ class TestCookieParsing(unittest.TestCase):
         ]
         cleaned = clean_request_headers(headers)
         self.assertTrue(len(cleaned) > 0)
-        self.assertNotIn("\r\n", cleaned[0]["value"],
-                         "CRLF characters must be stripped from header values")
-        self.assertIn("valid=yes", cleaned[0]["value"],
-                      "Valid part of the header must be preserved")
+        self.assertNotIn("\r\n", cleaned[0]["value"], "CRLF characters must be stripped from header values")
+        self.assertIn("valid=yes", cleaned[0]["value"], "Valid part of the header must be preserved")
 
 
 if __name__ == "__main__":

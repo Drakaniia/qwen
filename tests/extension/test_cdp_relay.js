@@ -18,8 +18,8 @@ import assert from "node:assert/strict";
 
 const mockDebugger = {
   attachedTabs: new Set(),
-  attachErrors: new Map(),   // tabId → error message (to simulate failures)
-  commandErrors: new Map(),  // method → error message
+  attachErrors: new Map(), // tabId → error message (to simulate failures)
+  commandErrors: new Map(), // method → error message
   commandResults: new Map(), // method → result
   lastCommand: null,
 

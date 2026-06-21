@@ -185,6 +185,7 @@ class CaptureManager:
         # Small delay to ensure the reader thread is actively reading stdout
         # before any commands are sent (avoids race conditions on Windows).
         import time as _time
+
         _time.sleep(0.05)
 
         # Auto-initialize the CDM from the install-cdm.ps1 status file
@@ -376,9 +377,7 @@ class CaptureManager:
                 continue
 
             if incoming is None:
-                raise HostError(
-                    f"qwin-capture process exited while waiting for '{command_type}' response."
-                )
+                raise HostError(f"qwin-capture process exited while waiting for '{command_type}' response.")
 
             msg_id = incoming.get("id", "")
             msg_type = incoming.get("type", "")
