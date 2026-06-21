@@ -25,7 +25,6 @@ function formatFileSize(bytes) {
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-
 function hasDownloadPercent(job) {
   return typeof job?.percent === "number" && Number.isFinite(job.percent);
 }
@@ -97,7 +96,8 @@ function downloadProgressLabel(job) {
   }
 
   if (hasDownloadPercent(job) && !isProcessingStage(job)) {
-    return `${formatDownloadPercent(job.percent)} downloaded`;
+    const sizeInfo = job.totalSize ? ` of ${job.totalSize}` : "";
+    return `${formatDownloadPercent(job.percent)} downloaded${sizeInfo}`;
   }
 
   if (stage === "download") {
@@ -341,7 +341,8 @@ function renderDownloads(container, downloads, options = {}) {
     const title = doc.createElement("div");
     title.className = "download-title";
     const isAudio = String(job.format || "").toUpperCase() === "AUDIO" || String(job.title || "").includes(" - ");
-    title.textContent = job.title || shortenUrl(job.url) || (isAudio ? "Music" : isRecording ? "Screen recording" : "Video");
+    title.textContent =
+      job.title || shortenUrl(job.url) || (isAudio ? "Music" : isRecording ? "Screen recording" : "Video");
 
     const messageText = downloadMessageText(job);
     const message = doc.createElement("div");

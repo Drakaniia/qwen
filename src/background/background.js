@@ -1010,6 +1010,10 @@ async function notifyContentStatus(tabId, text) {
   await browserApi.tabs.sendMessage(tabId, { type: "updateLoadingStatus", text });
 }
 
+function notifyPopupQualityStatus(text) {
+  browserApi.runtime.sendMessage({ type: "updateQualityLoadingStatus", text }).catch(() => {});
+}
+
 async function getNativeFormatsForVideo(tabId, video) {
   await tabState.load();
 
@@ -1023,7 +1027,12 @@ async function getNativeFormatsForVideo(tabId, video) {
   let nativeError = "";
   let firstNativeError = "";
 
-  await notifyContentStatus(tabId, "Checking link with yt-dlp...");
+  const status = (text) => {
+    notifyContentStatus(tabId, text).catch(() => {});
+    notifyPopupQualityStatus(text);
+  };
+
+  await status("Checking link with yt-dlp...");
   try {
     response = await requestNativeFormats(formatLookupVideo);
   } catch (error) {
@@ -1033,7 +1042,7 @@ async function getNativeFormatsForVideo(tabId, video) {
       ? pageFallbackVideoForSource(lookupVideo, new Set([normalizeUrl(lookupVideo.url || "")]))
       : null;
     if (pageFallback) {
-      await notifyContentStatus(tabId, "Checking page fallback...");
+      await status("Checking page fallback...");
       try {
         response = await requestNativeFormats(pageFallback);
         formatLookupVideo =
@@ -1059,10 +1068,13 @@ async function getNativeFormatsForVideo(tabId, video) {
         new Set([normalizeUrl(lookupVideo.url || "")]),
       );
       if (resolvedCandidates.length > 0) {
-        await notifyContentStatus(tabId, `Checking ${resolvedCandidates.length} resolved source(s)...`);
+        await status(`Checking ${resolvedCandidates.length} resolved source(s)...`);
       }
       for (const candidate of resolvedCandidates) {
         try {
+          await status(
+            `Checking source ${resolvedCandidates.indexOf(candidate) + 1} of ${resolvedCandidates.length}...`,
+          );
           response = await requestNativeFormats(candidate);
           formatLookupVideo = candidate;
           nativeError = "";
@@ -1072,6 +1084,12 @@ async function getNativeFormatsForVideo(tabId, video) {
         }
       }
     }
+  }
+
+  if (!response) {
+    await status("Waiting for video size information...");
+  } else if (response && response.formats && response.formats.length) {
+    await status("Processing available formats...");
   }
 
   const nativeFormats =
@@ -1854,7 +1872,7 @@ messageRouter.handle("cdpExtractVideos", async (message, sender) => {
 
   // Feed extracted videos into the detection pipeline so they appear
   // in the popup and can be downloaded like any other detected video.
-  const pageUrl = message.pageUrl || (sender?.tab?.url) || "";
+  const pageUrl = message.pageUrl || sender?.tab?.url || "";
   let integratedCount = 0;
 
   if (extractionResult.ok && Array.isArray(extractionResult.videos)) {
@@ -1936,10 +1954,7 @@ messageRouter.handle("cdmInit", async (message) => {
     return { ok: false, error: "cdmPath is required." };
   }
   try {
-    const response = await nativeRequest(
-      { type: "cdmInit", id: `cdm_init_${Date.now()}`, cdmPath },
-      30000,
-    );
+    const response = await nativeRequest({ type: "cdmInit", id: `cdm_init_${Date.now()}`, cdmPath }, 30000);
     return {
       ok: response?.ok !== false,
       cdmVersion: response?.cdmVersion || "",

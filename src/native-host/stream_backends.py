@@ -8,7 +8,8 @@ STREAM_URL_RE = re.compile(r"(?:\.m3u8|\.mpd|\.ism(?:/Manifest)?)(?:$|[?#])", re
 RETRYABLE_BACKEND_ERROR_RE = re.compile(
     r"Unsupported URL|did not find any downloadable video formats|No video formats|"
     r"Requested format is not available|Invalid data found when processing input|"
-    r"HTTP Error\s+(?:401|403|404|410|451)|CERTIFICATE_VERIFY_FAILED",
+    r"HTTP Error\s+(?:401|403|404|410|451)|CERTIFICATE_VERIFY_FAILED|"
+    r"ConnectionResetError|TransportError|RemoteDisconnected|Connection aborted|connection.*reset|10054",
     re.IGNORECASE,
 )
 

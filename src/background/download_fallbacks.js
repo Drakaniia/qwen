@@ -3,7 +3,7 @@
 const HARD_ACCESS_ERROR_RE =
   /\bHTTP Error\s+(?:401|403|404|410|451)\b|\b(?:Unauthorized|Forbidden|Gone|Not Found|Unavailable For Legal Reasons)\b|Invalid data found when processing input/i;
 const RETRYABLE_SOURCE_ERROR_RE =
-  /Unsupported URL|did not find any downloadable video formats|No video formats|Requested format is not available|Invalid data found when processing input|HTTP Error 5\d{2}/i;
+  /Unsupported URL|did not find any downloadable video formats|No video formats|Requested format is not available|Invalid data found when processing input|HTTP Error 5\d{2}|ConnectionResetError|TransportError|RemoteDisconnected|Connection aborted|connection.*reset/i;
 
 function isHardAccessError(error) {
   return HARD_ACCESS_ERROR_RE.test(String(error || ""));
@@ -33,13 +33,17 @@ function userFriendlyDownloadError(error) {
   // HTTP 5xx (other server errors)
   if (/HTTP Error 5\d{2}|HTTPError 5\d{2}/i.test(text)) {
     const codeMatch = text.match(/HTTP Error (5\d{2})|HTTPError (5\d{2})/i);
-    const code = codeMatch ? (codeMatch[1] || codeMatch[2]) : "5xx";
+    const code = codeMatch ? codeMatch[1] || codeMatch[2] : "5xx";
     return `The video server returned an HTTP ${code} server error. The site may be temporarily unavailable or overloaded.`;
   }
 
-  // Connection / timeout errors
-  if (/timed? out|timeout|ConnectionError|connection.*refused|no route to host/i.test(text)) {
-    return "Could not connect to the video server. The site may be down, blocking the request, or your network may be unstable.";
+  // Connection / timeout / transport errors
+  if (
+    /timed? out|timeout|ConnectionError|connection.*refused|no route to host|ConnectionResetError|TransportError|RemoteDisconnected|connection.*reset|10054/i.test(
+      text,
+    )
+  ) {
+    return 'Could not connect to the video server. The site may be down, blocking the request, or your network may be unstable.';
   }
 
   return "";
@@ -50,9 +54,7 @@ function exhaustedSourcesError(error, attemptedUrls) {
   const details = String(error || "The helper could not download this source.").trim();
   const friendly = userFriendlyDownloadError(details);
   const prefix = friendly ? `${friendly}\n\nTechnical details: ` : "";
-  return count > 1
-    ? `${prefix}${details}\nTried ${count} sources.`
-    : `${prefix}${details}`;
+  return count > 1 ? `${prefix}${details}\nTried ${count} sources.` : `${prefix}${details}`;
 }
 
 function downloadableVariants(video, attemptedUrls, deps) {

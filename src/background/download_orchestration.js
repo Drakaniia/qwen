@@ -1,5 +1,17 @@
 "use strict";
 
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+
 function create(deps) {
   function settings() {
     return deps.getSettings();
@@ -89,6 +101,27 @@ function create(deps) {
     let port;
     let finished = false;
 
+    // Determine the initial total size for the download list.
+    // If the video has a known size that looks realistic (≥ 1 MB), show it immediately.
+    // If the size is suspiciously small (likely an artifact/init segment), try to
+    // estimate from duration × bitrate. Otherwise leave empty for yt-dlp to report.
+    const rawSizeBytes = video.sizeBytes || video.filesize || 0;
+    const MIN_REALISTIC_BYTES = 1024 * 1024;
+    let initialTotalSize = "";
+    if (rawSizeBytes >= MIN_REALISTIC_BYTES) {
+      initialTotalSize = formatBytes(rawSizeBytes);
+    } else if (rawSizeBytes > 0) {
+      // Suspiciously small — try to estimate from duration × bitrate
+      const duration = video.duration || 0;
+      const bitrate = video.tbr || video.bitrate || 0;
+      if (duration > 0 && bitrate > 0) {
+        const estimatedBytes = (duration * bitrate * 1000) / 8;
+        if (estimatedBytes >= MIN_REALISTIC_BYTES) {
+          initialTotalSize = `~${formatBytes(estimatedBytes)}`;
+        }
+      }
+    }
+
     deps.updateDownload(jobId, {
       id: jobId,
       tabId,
@@ -107,6 +140,7 @@ function create(deps) {
       status: "connecting",
       message: options.resume ? "Reconnecting to native helper..." : "Connecting to native helper...",
       ...deps.resetDownloadProgressDetails(),
+      totalSize: initialTotalSize,
       percent: options.resume && typeof existingJob.percent === "number" ? existingJob.percent : null,
       createdAt: existingJob.createdAt || Date.now(),
     });
