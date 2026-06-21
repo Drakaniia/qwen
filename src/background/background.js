@@ -14,6 +14,7 @@ import * as cdmNetworkIntercept from "./cdm_network_intercept.js";
 import * as segmentCapture from "./segment_capture.js";
 import * as batchOrchestration from "./batch_orchestration.js";
 import * as playlistDetection from "../shared/playlist_detection.js";
+import * as downloadSync from "../shared/download_sync.js";
 import { create as createMessageRouter } from "./message_router.js";
 import { create as createDownloadOrchestration } from "./download_orchestration.js";
 
@@ -2453,6 +2454,30 @@ messageRouter.handle("downloadTorrent", async (message) => {
   });
 
   return { ok: true, jobId };
+});
+
+// ─── Download History Sync handlers ───────────────────────────────────────
+
+messageRouter.handle("getDownloadSyncHistory", async () => {
+  const history = downloadSync.getSyncedHistory();
+  const syncInfo = downloadSync.getSyncInfo();
+  return { ok: true, history, syncInfo };
+});
+
+messageRouter.handle("setDownloadSyncEnabled", async (message) => {
+  const enabled = message.enabled !== false;
+  downloadSync.setSyncEnabled(enabled);
+  // Persist sync setting
+  const currentSettings = tabState.getSettings();
+  await tabState.setSettings(Object.assign({}, currentSettings, { downloadSyncEnabled: enabled }));
+  return { ok: true, enabled };
+});
+
+messageRouter.handle("clearDownloadSyncHistory", async () => {
+  downloadSync.clearSyncedHistory();
+  // Persist the cleared state
+  await tabState.persistSyncHistoryToStorage();
+  return { ok: true };
 });
 
 messageRouter.handle("pingNativeHost", async () => {

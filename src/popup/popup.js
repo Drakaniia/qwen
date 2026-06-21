@@ -79,6 +79,9 @@ const elements = {
   audioFormat: document.getElementById("audioFormat"),
   recordingMode: document.getElementById("recordingMode"),
   downloadSubtitles: document.getElementById("downloadSubtitles"),
+  // Sync elements
+  syncHistoryToggle: document.getElementById("syncHistoryToggle"),
+  syncStatus: document.getElementById("syncStatus"),
   // Batch/playlist elements
   batchBar: document.getElementById("batchBar"),
   batchLabel: document.getElementById("batchLabel"),
@@ -644,6 +647,20 @@ async function refresh(options = {}) {
   if (elements.downloadSubtitles) {
     elements.downloadSubtitles.checked = response.settings && response.settings.downloadSubtitles !== false;
   }
+  // Set sync toggle from settings
+  const syncEnabled = response.settings && response.settings.downloadSyncEnabled !== false;
+  if (elements.syncHistoryToggle) {
+    elements.syncHistoryToggle.checked = syncEnabled;
+  }
+  // Load synced history from storage.sync
+  PopupApi.getDownloadSyncHistory().then(function (syncResponse) {
+    if (syncResponse && syncResponse.ok) {
+      PopupState.update({
+        syncedHistory: syncResponse.history || [],
+        syncInfo: syncResponse.syncInfo || { totalCount: 0, isSyncing: false, syncEnabled: syncEnabled },
+      });
+    }
+  }).catch(function () {});
   return true;
 }
 
@@ -918,6 +935,119 @@ async function downloadAllPlaylist() {
   await refresh();
 }
 
+// ─── Synced History ───────────────────────────────────────────────────────
+
+/**
+ * Render the synced download history section below the local download list.
+ * Shows a summary of synced downloads from other browser instances.
+ */
+function renderSyncedHistory() {
+  const state = PopupState.getState();
+  const isDownloadView = state.viewMode === "downloads";
+
+  if (!isDownloadView) {
+    return;
+  }
+
+  const syncedHistory = state.syncedHistory || [];
+  const syncInfo = state.syncInfo || {};
+
+  // Remove previous synced section if it exists
+  const existingSection = document.getElementById("syncedHistorySection");
+  if (existingSection) {
+    existingSection.remove();
+  }
+
+  if (!syncedHistory.length) {
+    return;
+  }
+
+  const section = document.createElement("div");
+  section.id = "syncedHistorySection";
+  section.className = "synced-section";
+
+  const header = document.createElement("div");
+  header.className = "synced-header";
+
+  const title = document.createElement("span");
+  title.className = "synced-title";
+  title.textContent = "Synced History";
+  header.append(title);
+
+  if (syncInfo.totalCount > 0) {
+    const count = document.createElement("span");
+    count.className = "synced-count";
+    count.textContent = syncInfo.syncEnabled
+      ? String(syncInfo.totalCount) + " entries"
+      : "Syncing paused";
+    header.append(count);
+  }
+
+  section.append(header);
+
+  // Show a sample of recent synced entries (up to 5)
+  const maxShow = Math.min(5, syncedHistory.length);
+  for (let i = 0; i < maxShow; i++) {
+    const entry = syncedHistory[i];
+    const item = document.createElement("div");
+    item.className = "synced-item";
+
+    const entryTitle = document.createElement("div");
+    entryTitle.className = "synced-item-title";
+    entryTitle.textContent = entry.title || "Unknown";
+    entryTitle.title = entry.url || "";
+    item.append(entryTitle);
+
+    const meta = document.createElement("div");
+    meta.className = "synced-item-meta";
+
+    if (entry.format) {
+      const formatBadge = document.createElement("span");
+      formatBadge.className = "badge";
+      formatBadge.textContent = entry.format;
+      meta.append(formatBadge);
+    }
+
+    const statusBadge = document.createElement("span");
+    statusBadge.className = "badge " + (entry.status === "error" ? "warning" : "");
+    statusBadge.textContent = (entry.status || "").toUpperCase();
+    meta.append(statusBadge);
+
+    if (entry.sourceHost) {
+      const source = document.createElement("span");
+      source.className = "synced-source";
+      source.textContent = entry.sourceHost;
+      meta.append(source);
+    }
+
+    if (entry.completedAt) {
+      const time = document.createElement("span");
+      time.className = "synced-time";
+      time.textContent = new Date(entry.completedAt).toLocaleDateString();
+      meta.append(time);
+    }
+
+    if (entry.totalSize) {
+      const size = document.createElement("span");
+      size.className = "synced-size";
+      size.textContent = entry.totalSize;
+      meta.append(size);
+    }
+
+    item.append(meta);
+    section.append(item);
+  }
+
+  if (syncedHistory.length > maxShow) {
+    const more = document.createElement("div");
+    more.className = "synced-more";
+    more.textContent = "+ " + String(syncedHistory.length - maxShow) + " more";
+    section.append(more);
+  }
+
+  elements.downloadList.parentNode.insertBefore(section, elements.downloadList.nextSibling);
+}
+
 // ─── Orchestrator ───────────────────────────────────────────────────────────
 
 function render() {
@@ -939,7 +1069,11 @@ function render() {
   }
 
   renderVideos(filteredVideos, state.currentDownloads);
+  // Render local downloads
   DownloadList.renderDownloads(elements.downloadList, state.currentDownloads, { shortenUrl });
+
+  // After local downloads, render synced history section
+  renderSyncedHistory();
   updateIndicatorFromVideos(state.currentVideos);
   setVideoLayoutMode(state.videoLayoutMode);
   setViewMode(mode);
@@ -1114,11 +1248,17 @@ elements.recordingMode.addEventListener("change", async () => {
   }
 });
 
-elements.saveSettings.addEventListener("click", async () => {    const response = await PopupApi.saveSettings({
+elements.saveSettings.addEventListener("click", async () => {    const syncEnabled = elements.syncHistoryToggle ? elements.syncHistoryToggle.checked : true;
+
+  // Apply sync setting immediately
+  PopupApi.setDownloadSyncEnabled(syncEnabled);
+
+  const response = await PopupApi.saveSettings({
       downloadFolder: elements.downloadFolder.value.trim(),
       audioFormat: elements.audioFormat.value,
       recordingMode: elements.recordingMode.value,
       downloadSubtitles: elements.downloadSubtitles ? elements.downloadSubtitles.checked : true,
+      downloadSyncEnabled: syncEnabled,
     });
   if (!response || !response.ok) {
     setSettingsStatus(response && response.error ? response.error : "Could not save settings.", true);

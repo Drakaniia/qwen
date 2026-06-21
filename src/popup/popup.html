@@ -102,6 +102,15 @@
         Download subtitles (CC) when available
       </label>
 
+      <label class="checkbox-label">
+        <input id="syncHistoryToggle" type="checkbox" checked />
+        Sync download history across browsers
+      </label>
+      <p class="hint">
+        When signed into Chrome, completed downloads are synced via your Google
+        Account so you can view them on other devices.
+      </p>
+
       <label for="downloadFolder">Download folder</label>
       <div class="folder-picker">
         <input id="downloadFolder" type="text" spellcheck="false" placeholder="Default: Windows Downloads" />
@@ -110,6 +119,7 @@
       <button id="saveSettings" class="settings-button" type="button">Save</button>
       <p class="hint">Use a Windows path such as C:\Users\You\Downloads\Videos.</p>
       <p id="settingsStatus" class="settings-status" role="status" aria-live="polite" hidden></p>
+      <p id="syncStatus" class="settings-status sync-status" role="status" aria-live="polite" hidden></p>
     </section>
 
     <nav id="viewToggle" class="view-toggle" aria-label="Popup view">

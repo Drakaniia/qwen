@@ -48,7 +48,7 @@ function registerListener(target, handler, filter, extras) {
   }
 }
 
-// --- Storage ---
+// --- Storage (local) ---
 function storageGet(keys) {
   return promisify((cb) => api.storage.local.get(keys, cb));
 }
@@ -59,6 +59,28 @@ function storageSet(items) {
 
 function storageRemove(keys) {
   return promisify((cb) => api.storage.local.remove(keys, cb));
+}
+
+// --- Storage (sync) ---
+function storageSyncGet(keys) {
+  if (!api.storage.sync) {
+    return Promise.resolve({});
+  }
+  return promisify((cb) => api.storage.sync.get(keys, cb));
+}
+
+function storageSyncSet(items) {
+  if (!api.storage.sync) {
+    return Promise.resolve();
+  }
+  return promisify((cb) => api.storage.sync.set(items, cb));
+}
+
+function storageSyncRemove(keys) {
+  if (!api.storage.sync) {
+    return Promise.resolve();
+  }
+  return promisify((cb) => api.storage.sync.remove(keys, cb));
 }
 
 // --- Tabs ---
@@ -186,6 +208,11 @@ const browserApi = {
     get: storageGet,
     set: storageSet,
     remove: storageRemove,
+    sync: {
+      get: storageSyncGet,
+      set: storageSyncSet,
+      remove: storageSyncRemove,
+    },
   },
 
   tabs: {

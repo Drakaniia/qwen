@@ -958,6 +958,100 @@ footer {
   min-height: 30px;
 }
 
+/* ─── Synced History ──────────────────────────────────────────────────── */
+
+.synced-section {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f0f9ff 0%, var(--surface) 100%);
+}
+
+.synced-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.synced-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #0369a1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.synced-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.synced-item {
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.synced-item:last-child {
+  margin-bottom: 0;
+}
+
+.synced-item-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.synced-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.synced-item-meta .badge {
+  min-height: 16px;
+  padding: 1px 5px;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.synced-source {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.synced-time {
+  color: var(--muted);
+}
+
+.synced-size {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.synced-more {
+  margin-top: 6px;
+  padding: 4px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sync-status {
+  margin-top: 8px;
+}
+
 /* ─── Recording styles ──────────────────────────────────────────────────── */
 
 .record-button {

@@ -10,6 +10,8 @@ const state = {
   videoLayoutMode: "list",
   musicMode: false,
   qualityRequestSerial: 0,
+  syncedHistory: [],
+  syncInfo: { totalCount: 0, isSyncing: false, syncEnabled: true },
 };
 
 /** @type {Array<function(Object): void>} */

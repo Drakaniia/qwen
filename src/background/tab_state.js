@@ -2,6 +2,7 @@
 
 import { browserApi } from "../shared/browser_api.js";
 import * as videoFilters from "../shared/video_filters.js";
+import * as downloadSync from "../shared/download_sync.js";
 
 const STORAGE_VIDEOS = "qwinVideosByTab";
 const STORAGE_SETTINGS = "qwinSettings";
@@ -9,7 +10,7 @@ const STORAGE_DOWNLOADS = "qwinDownloadsById";
 
 let videosByTab = {};
 let downloadsById = {};
-let settings = { downloadFolder: "", musicMode: false, audioFormat: "mp3", recordingMode: "ask" };
+let settings = { downloadFolder: "", musicMode: false, audioFormat: "mp3", recordingMode: "ask", downloadSyncEnabled: true };
 let stateLoaded = false;
 let stateLoadPromise = null;
 const subscribers = [];
@@ -39,7 +40,11 @@ function load() {
     return Promise.resolve();
   }
   if (!stateLoadPromise) {
-    stateLoadPromise = callStorageGet([STORAGE_VIDEOS, STORAGE_SETTINGS, STORAGE_DOWNLOADS]).then(function (items) {
+    stateLoadPromise = Promise.all([
+      callStorageGet([STORAGE_VIDEOS, STORAGE_SETTINGS, STORAGE_DOWNLOADS]),
+      loadSyncHistoryFromStorage(),
+    ]).then(function (results) {
+      const items = results[0];
       videosByTab = cleanStoredVideos(items[STORAGE_VIDEOS] || {});
       settings = Object.assign({}, settings, items[STORAGE_SETTINGS] || {});
       downloadsById = items[STORAGE_DOWNLOADS] || {};
@@ -142,10 +147,65 @@ function setAllDownloads(downloads) {
 
 function updateDownload(jobId, patch) {
   const existing = downloadsById[jobId] || { id: jobId };
-  downloadsById[jobId] = Object.assign({}, existing, patch, { updatedAt: Date.now() });
+  const merged = Object.assign({}, existing, patch, { updatedAt: Date.now() });
+  downloadsById[jobId] = merged;
+
+  // Sync completed/failed/canceled downloads to storage.sync history.
+  // This runs asynchronously — does not block the download update.
+  if (downloadSync.isSyncEnabled() && isFinalStatus(merged.status)) {
+    downloadSync.addSyncedDownload(merged);
+    persistSyncHistoryToStorage();
+  }
+
   return persistDownloads().then(function () {
     notify("downloadUpdated", { job: downloadsById[jobId] });
   });
+}
+
+/**
+ * Check if a status is a final/completed status that should be synced.
+ * @param {string} status
+ * @returns {boolean}
+ */
+function isFinalStatus(status) {
+  return status === "done" || status === "error" || status === "canceled";
+}
+
+// ─── Sync history persistence ──────────────────────────────────────────────
+
+/**
+ * Persist the current sync history to chrome.storage.sync.
+ * This saves history across browser instances.
+ */
+function persistSyncHistoryToStorage() {
+  const json = downloadSync.persistSyncHistory();
+  if (browserApi && browserApi.storage && browserApi.storage.sync) {
+    browserApi.storage.sync.set({ qwinDownloadHistory: json }).catch(function () {
+      // Sync persistence is best-effort
+    });
+  }
+}
+
+/**
+ * Load sync history from storage.sync on startup.
+ * Merges the loaded data with any in-memory state.
+ */
+function loadSyncHistoryFromStorage() {
+  return callStorageSyncGet(["qwinDownloadHistory"]).then(function (items) {
+    const stored = items.qwinDownloadHistory;
+    if (stored) {
+      downloadSync.loadSyncHistory(stored);
+    }
+  }).catch(function () {
+    // Loading sync history is best-effort
+  });
+}
+
+function callStorageSyncGet(keys) {
+  if (browserApi && browserApi.storage && browserApi.storage.sync) {
+    return browserApi.storage.sync.get(keys);
+  }
+  return Promise.resolve({});
 }
 
 // --- Settings state ---
@@ -220,6 +280,9 @@ export {
   persistVideos,
   persistSettings,
   persistDownloads,
+
+  // Sync history persistence
+  persistSyncHistoryToStorage,
 
   // Exposed for testing
   cleanStoredVideos as _cleanStoredVideos,

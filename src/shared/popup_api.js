@@ -235,6 +235,33 @@ function batchCancel() {
   return runtimeMessage({ type: "batchCancel" });
 }
 
+// ─── Download History Sync ────────────────────────────────────────────────
+
+/**
+ * Get the synced download history from storage.sync.
+ * @returns {Promise<{ok: boolean, history: Array, syncInfo: Object}>}
+ */
+function getDownloadSyncHistory() {
+  return runtimeMessage({ type: "getDownloadSyncHistory" });
+}
+
+/**
+ * Set whether download history syncing is enabled.
+ * @param {boolean} enabled
+ * @returns {Promise<{ok: boolean}>}
+ */
+function setDownloadSyncEnabled(enabled) {
+  return runtimeMessage({ type: "setDownloadSyncEnabled", enabled });
+}
+
+/**
+ * Clear the synced download history.
+ * @returns {Promise<{ok: boolean}>}
+ */
+function clearDownloadSyncHistory() {
+  return runtimeMessage({ type: "clearDownloadSyncHistory" });
+}
+
 // ─── CDM Key Extraction ───────────────────────────────────────────────────
 
 /** @param {string} cdmPath */
@@ -298,4 +325,8 @@ export {
   extractCdmKeys,
   decryptCdmSegments,
   assembleDecryptedSegments,
+  // Download History Sync
+  getDownloadSyncHistory,
+  setDownloadSyncEnabled,
+  clearDownloadSyncHistory,
 };
