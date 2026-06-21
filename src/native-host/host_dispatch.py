@@ -7,6 +7,7 @@ def dependency_status(deps):
         "ytDlp": deps.has_yt_dlp(),
         "ffmpeg": deps.has_ffmpeg(),
         "aria2c": deps.has_aria2c(),
+        "gopeed": deps.has_gopeed(),
         "nM3u8DlRe": deps.has_n_m3u8dl_re(),
         "streamlink": deps.has_streamlink(),
     }
@@ -38,6 +39,10 @@ def handle_message(message, deps):
             deps.run_magnet_download(message)
         case "torrentFile":
             deps.run_torrent_download(message)
+        case "gopeedMagnet":
+            deps.run_gopeed_magnet_download(message)
+        case "gopeedTorrent":
+            deps.run_gopeed_torrent_download(message)
         case "pause" | "resume" | "cancel":
             deps.control_download(message, message_type)
         case "openFile":

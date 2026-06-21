@@ -66,6 +66,13 @@ if %ERRORLEVEL% neq 0 (
 )
 
 :InstallAria2
+echo Installing or checking Gopeed download manager for BitTorrent and magnet downloads...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-gopeed.ps1" -RootDir "%ROOT_DIR%"
+if %ERRORLEVEL% neq 0 (
+  echo gopeed could not be installed.
+  echo BitTorrent and magnet downloads will use aria2c instead.
+)
+
 echo Installing or checking portable aria2 fast downloader...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-aria2.ps1" -RootDir "%ROOT_DIR%"
 if %ERRORLEVEL% neq 0 (

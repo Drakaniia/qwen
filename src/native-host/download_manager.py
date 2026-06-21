@@ -13,6 +13,7 @@ from browser_context import write_cookie_file_from_headers
 from download_task import DownloadTask
 from native_paths import resolve_download_dir, validate_download_url, validate_magnet_url, validate_torrent_file
 from native_protocol import HostError, send_native_message
+from gopeed_adapter import build_gopeed_magnet_command, build_gopeed_torrent_command
 from stream_backends import (
     build_n_m3u8dl_re_command,
     build_streamlink_command,
@@ -22,6 +23,7 @@ from stream_backends import (
 from yt_dlp_command import build_yt_dlp_command, build_yt_dlp_fallback_variants
 from yt_dlp_dependencies import (
     require_aria2c_location,
+    require_gopeed_location,
     resolve_ffmpeg_location,
     resolve_n_m3u8dl_re_location,
     resolve_streamlink_command,
@@ -369,6 +371,91 @@ def run_torrent_download(
         torrent_path=torrent_path,
         download_dir=download_dir,
         aria2c_location=aria2c_location,
+    )
+
+    task = task_class(
+        message=message,
+        command=command,
+        fallback_command=None,
+        fallback_commands=[],
+        download_dir=download_dir,
+        temp_files=[],
+    )
+    with _active_downloads_lock():
+        ACTIVE_DOWNLOADS[request_id] = task
+    task.start()
+
+
+def run_gopeed_magnet_download(
+    message,
+    task_class=DownloadTask,
+    gopeed_location_resolver=require_gopeed_location,
+):
+    """Run a magnet link download through Gopeed.
+
+    Gopeed handles BitTorrent (including magnet links) natively with built-in
+    DHT, PEX, uTP, and WebTorrent support. This function validates the magnet
+    URL, builds the Gopeed CLI command, and creates a DownloadTask that reports
+    progress just like other downloads.
+    """
+    request_id = str(message.get("id") or message.get("requestId") or "")
+    url = str(message.get("url") or "").strip()
+    validate_magnet_url(url)
+
+    gopeed_location = gopeed_location_resolver()
+    if not gopeed_location:
+        raise HostError(
+            "gopeed is not installed. It is required for magnet link downloads. "
+            "Run scripts\\install.bat, then restart your browser."
+        )
+
+    download_dir = resolve_download_dir(message.get("downloadFolder"))
+
+    command = build_gopeed_magnet_command(
+        url=url,
+        download_dir=download_dir,
+        gopeed_location=gopeed_location,
+    )
+
+    task = task_class(
+        message=message,
+        command=command,
+        fallback_command=None,
+        fallback_commands=[],
+        download_dir=download_dir,
+        temp_files=[],
+    )
+    with _active_downloads_lock():
+        ACTIVE_DOWNLOADS[request_id] = task
+    task.start()
+
+
+def run_gopeed_torrent_download(
+    message,
+    task_class=DownloadTask,
+    gopeed_location_resolver=require_gopeed_location,
+):
+    """Run a download from a local .torrent file through Gopeed.
+
+    Gopeed accepts a local .torrent file path directly as the download URL,
+    handling the BitTorrent metainfo and peer discovery natively.
+    """
+    request_id = str(message.get("id") or message.get("requestId") or "")
+    torrent_path = validate_torrent_file(message.get("path"))
+
+    gopeed_location = gopeed_location_resolver()
+    if not gopeed_location:
+        raise HostError(
+            "gopeed is not installed. It is required for .torrent file downloads. "
+            "Run scripts\\install.bat, then restart your browser."
+        )
+
+    download_dir = resolve_download_dir(message.get("downloadFolder"))
+
+    command = build_gopeed_torrent_command(
+        torrent_path=torrent_path,
+        download_dir=download_dir,
+        gopeed_location=gopeed_location,
     )
 
     task = task_class(

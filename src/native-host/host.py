@@ -109,6 +109,10 @@ def has_aria2c():
     return bool(resolve_aria2c_location())
 
 
+def has_gopeed():
+    return _yt_dlp_adapter.has_gopeed()
+
+
 def has_n_m3u8dl_re():
     return bool(resolve_n_m3u8dl_re_location())
 
@@ -340,6 +344,7 @@ def _dispatch_deps(include_dispatch=True):
         "has_aria2c": has_aria2c,
         "has_capture_binary": has_capture_binary,
         "has_ffmpeg": has_ffmpeg,
+        "has_gopeed": has_gopeed,
         "has_n_m3u8dl_re": has_n_m3u8dl_re,
         "has_streamlink": has_streamlink,
         "has_yt_dlp": has_yt_dlp,
@@ -356,6 +361,8 @@ def _dispatch_deps(include_dispatch=True):
         "run_playlist_enumeration": run_playlist_enumeration,
         "run_magnet_download": run_magnet_download,
         "run_torrent_download": run_torrent_download,
+        "run_gopeed_magnet_download": _download_manager.run_gopeed_magnet_download,
+        "run_gopeed_torrent_download": _download_manager.run_gopeed_torrent_download,
         "run_resolve_media_candidates": run_resolve_media_candidates,
         "run_cdm_init": run_cdm_init,
         "run_extract_keys": run_extract_keys,

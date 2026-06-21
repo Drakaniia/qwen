@@ -125,6 +125,36 @@ def has_n_m3u8dl_re(local_n_m3u8dl_re=None):
     return bool(resolve_n_m3u8dl_re_location(local_n_m3u8dl_re=local_n_m3u8dl_re))
 
 
+def resolve_gopeed_location(extra_paths=None):
+    """Locate the gopeed binary.
+
+    Checks environment variable QWIN_GOPEED, PATH, and extra paths.
+    Returns the path as a string or None.
+    """
+    from gopeed_adapter import resolve_gopeed_command
+
+    result = resolve_gopeed_command(extra_paths=extra_paths, _which=shutil.which)
+    if result:
+        return result[0]
+    return None
+
+
+def require_gopeed_location(extra_paths=None):
+    """Resolve gopeed location or raise HostError if not found."""
+    location = resolve_gopeed_location(extra_paths=extra_paths)
+    if not location:
+        raise HostError(
+            "gopeed is not installed. It is required for BitTorrent and magnet downloads. "
+            "Run scripts\\install.bat, then restart your browser."
+        )
+    return location
+
+
+def has_gopeed():
+    """Check whether gopeed is available."""
+    return resolve_gopeed_location() is not None
+
+
 def resolve_gallery_dl_command():
     """Locate the gallery-dl executable (binary or python -m module)."""
     executable = shutil.which("gallery-dl")
