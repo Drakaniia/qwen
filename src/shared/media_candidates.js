@@ -9,6 +9,17 @@ const GIF_RE = /\.(gif|gifv)(?:$|[?#])/i;
 const WEB_APP_MANIFEST_RE = /(?:\.webmanifest|(?:^|[/?#._-])manifest\.(?:json|webm)(?:$|[?#]))/i;
 const STATIC_PLAYER_ASSET_RE = /\.(?:hlsjs|js|mjs|cjs|css|map)(?:$|[?#])/i;
 const STATIC_PAGE_ASSET_RE = /\/(?:stylesheet|theme-color|browserconfig|X-UA-Compatible|overflow-y-hidden)(?:$|[?#])/i;
+
+// Domain-scoped static asset blocking: .js/.css from known ad/analytics domains.
+// This is a refinement of STATIC_PLAYER_ASSET_RE — when that pattern is relaxed,
+// this ensures ad-domain assets are still blocked.
+const AD_STATIC_ASSET_RE = /(?:doubleclick|googlesyndication|googleads|adservice|adserver|adnxs|clmbtech|chartbeat|scorecardresearch)\.(?:net|com)\/.*\.(?:js|css)$/i;
+
+// Ad SDK path patterns: block player SDK files from ad SDK paths.
+const AD_SDK_RE = /(?:\/vast\.js|\/ad-plugin\/|ad-manager|admanager)\/[^/]+\.js/i;
+
+// Anti-adblock scripts (info-level, not used for blocking).
+const ANTIBLOCK_RE = /(?:fuckadblock|blockadblock|wp-adblock)/i;
 const MUSIC_CDN_RE = /(?:spotifycdn|audio-ak|audio-fa|audio-[\w-]+\.spotify|cadenas\.|audio-pa\.spotifycdn)/i;
 const AUDIO_ONLY_HOST_RE = /(?:audio[-.])/i;
 const GIF_VIDEO_RE =
@@ -25,6 +36,22 @@ const AD_RE =
 // the actual download URL. Actual stream URLs from their CDNs still pass through.
 const STREAMING_PAGE_HOST_RE = /(?:^|[/.])vidfast\.pro(?:$|[/?#])/i;
 const EMBED_PLAYER_HOST_RE = /(?:^|[/.])player\.hanime\.tv(?:$|[/?#])/i;
+
+// Video hosting sites whose page URLs are not real yt-dlp sources
+// Actual CDN stream URLs from these sites still pass through with video extensions.
+const VIDEO_HOSTING_SITES_RE = /(?:^|[\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone)\.(?:pw|tv|to|net|pro)(?:$|[\/?#])/i;
+
+// P2P streaming platforms (Chinese streaming — douyu, huya)
+const P2P_STREAMING_HOSTS_RE = /(?:^|[\/.])(?:douyu|huya)\.(?:com|cn)(?:$|[\/?#])/i;
+
+// Streaming platforms whose page URLs are not video sources
+const LIVE_STREAMING_HOSTS_RE = /(?:^|[\/.])(?:twitch|trovo|dlive|kick)\.(?:tv|com|live)(?:$|[\/?#])/i;
+
+// Chinese streaming P2P CDN URLs (block individual segment URLs, not the player).
+const CHINESE_STREAMING_CDN_RE = /(?:douyucdn\.cn|msstatic\.com|huya\.com\/.*p2p)/i;
+
+// P2P SDK path used by Chinese streaming platforms.
+const CHINESE_STREAMING_P2P_RE = /\/front-publish\/stream-sdk-lib-master\//i;
 const CDN_HINT_RE =
   /(videoplayback|video[-_/]?cdn|\/video\/|\/videos\/|hls|dash|manifest|playlist|master\.m3u8|akamaihd|akamaized|cloudfront|mux\.com|jwplatform|brightcove|kaltura|fastly|edgekey|edgesuite|msavideo|hdliveextra|espncdn|turner\.com|cbsistatic|cbsnews|gotraffic|litix\.io|ooyala|jwpcdn|streamroot|msstatic|douyucdn|qbrick|embed-cdn|flashx|vidoza)/i;
 const YOUTUBE_PAGE_PATH_RE = /^\/(?:embed|shorts|live)\/([^/?#]+)/i;
@@ -146,10 +173,15 @@ function isBlockedMediaUrl(url, contentType = "") {
   if (isEphemeralMediaUrl(text)) {
     return true;
   }
-  if (STATIC_PLAYER_ASSET_RE.test(text)) {
+  if (STATIC_PLAYER_ASSET_RE.test(text) || AD_SDK_RE.test(text)) {
     return true;
   }
   if (STATIC_PAGE_ASSET_RE.test(text)) {
+    return true;
+  }
+  // Domain-scoped static asset blocking (redundant with STATIC_PLAYER_ASSET_RE now,
+  // but ensures ad-domain JS/CSS remain blocked if the player asset pattern is relaxed).
+  if (AD_STATIC_ASSET_RE.test(text)) {
     return true;
   }
   if (type.includes("manifest+json") || type.includes("webmanifest") || WEB_APP_MANIFEST_RE.test(text)) {
@@ -173,6 +205,29 @@ function isBlockedMediaUrl(url, contentType = "") {
   // These sites embed HLS/DASH streams — the page URL is not a direct video URL.
   // Stream URLs from their CDNs (with actual video extensions) are still allowed.
   if (STREAMING_PAGE_HOST_RE.test(text) && !VIDEO_EXTENSION_RE.test(text) && !SEGMENT_EXTENSION_RE.test(text)) {
+    return true;
+  }
+  // Video hosting sites (flashx, vidoza, etc.): block page URLs without video extensions
+  if (VIDEO_HOSTING_SITES_RE.test(text) && !VIDEO_EXTENSION_RE.test(text) && !SEGMENT_EXTENSION_RE.test(text)) {
+    return true;
+  }
+  // P2P Chinese streaming platforms: block page URLs without video extensions
+  if (P2P_STREAMING_HOSTS_RE.test(text) && !VIDEO_EXTENSION_RE.test(text) && !SEGMENT_EXTENSION_RE.test(text)) {
+    return true;
+  }
+  // Live streaming platforms (twitch, trovo, dlive, kick): block page URLs
+  if (LIVE_STREAMING_HOSTS_RE.test(text) && !VIDEO_EXTENSION_RE.test(text) && !SEGMENT_EXTENSION_RE.test(text)) {
+    return true;
+  }
+  // Chinese streaming P2P CDN URLs — block segment/P2P URLs, allow manifests
+  if (
+    CHINESE_STREAMING_CDN_RE.test(text) &&
+    (!VIDEO_EXTENSION_RE.test(text) || SEGMENT_EXTENSION_RE.test(text))
+  ) {
+    return true;
+  }
+  // Chinese streaming P2P SDK paths
+  if (CHINESE_STREAMING_P2P_RE.test(text)) {
     return true;
   }
   return AD_RE.test(text);
@@ -311,4 +366,9 @@ export {
   CDN_HINT_RE,
   SEGMENT_EXTENSION_RE,
   DIRECT_VIDEO_EXTENSION_RE,
+  AD_SDK_RE,
+  AD_STATIC_ASSET_RE,
+  ANTIBLOCK_RE,
+  CHINESE_STREAMING_CDN_RE,
+  CHINESE_STREAMING_P2P_RE,
 };

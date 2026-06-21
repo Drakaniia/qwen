@@ -10,8 +10,20 @@ const RESOLUTION_RE = /(?:^|[^\d])([1-9]\d{2,3})p(?:[^\d]|$)/i;
 const DIMENSION_RE = /(?:^|[^\d])([1-9]\d{2,4})x([1-9]\d{2,4})(?:[^\d]|$)/i;
 const MBPS_RE = /(?:^|[^\d])(\d+(?:\.\d+)?)\s?mbps(?:[^\d]|$)/i;
 const KBPS_RE = /(?:^|[^\d])(\d{3,6})\s?kbps?(?:[^\d]|$)/i;
+// ── Video player SDK patterns (from uBO unbreak lists, Phase A.5) ──
+
+// Google IMA SDK paths — video ad framework needed for playback.
+const VIDEO_PLAYER_SDK_RE = /\/js\/sdkloader\/(?:ima3|ima3_dai|ima3_debug)\.js/i;
+
+// Video-specific analytics (not generic tracking).
+const VIDEO_ANALYTICS_RE = /(?:comscore\.streaming|mux\.js|mux\.min\.js)/i;
+
+// Video player frameworks.
+const VIDEO_FRAMEWORK_RE = /(?:akamaihtml5|ooyala|jwplayer|brightcove|kaltura|shaka)/i;
+
 const QUALITY_WORD_RE =
   /\b(?:144|240|360|480|540|576|720|900|1080|1440|2160|4320)p\b|\b(?:8k|4k|uhd|qhd|fhd|hd|sd|low|medium|high|best|source|copy)\b/gi;
+
 const FORMAT_WORD_RE = /\b(?:mp4|m4v|webm|m3u8|mpd|hls|dash)\b/gi;
 const GENERIC_WORDS = [
   "video",
@@ -604,6 +616,13 @@ function groupUniqueFullVideos(videos) {
   return groups.map(buildGroupedVideo).sort(compareGroupedVideos);
 }
 
+function isVideoPlayerSdkUrl(url) {
+  if (!url) {
+    return false;
+  }
+  return VIDEO_PLAYER_SDK_RE.test(url) || VIDEO_ANALYTICS_RE.test(url) || VIDEO_FRAMEWORK_RE.test(url);
+}
+
 function sourceLabel(video) {
   if (video && video.source === "manual-url") {
     return "manual link";
@@ -631,7 +650,12 @@ export {
   isLikelyRealVideoElement,
   isLikelyVideoRequest,
   isSameFullVideo,
+  isVideoPlayerSdkUrl,
   isYouTubeVideoPageUrl,
   normalizeYouTubeVideoPageUrl,
   sourceLabel,
+  // Exported regex constants for video player SDK detection
+  VIDEO_PLAYER_SDK_RE,
+  VIDEO_ANALYTICS_RE,
+  VIDEO_FRAMEWORK_RE,
 };

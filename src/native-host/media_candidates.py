@@ -1,6 +1,9 @@
 import re
 from urllib.parse import urlparse
 
+VIDEO_EXTENSION_RE = re.compile(
+    r"(?:\.(?:mp4|m4v|webm|m3u8|mpd)(?:$|[?#])|\.ism(?:/manifest)?(?:$|[?#]))", re.IGNORECASE
+)
 HLS_RE = re.compile(r"\.m3u8(?:$|[?#])", re.IGNORECASE)
 DASH_RE = re.compile(r"\.mpd(?:$|[?#])", re.IGNORECASE)
 ISM_RE = re.compile(r"\.ism(?:/manifest)?(?:$|[?#])", re.IGNORECASE)
@@ -19,6 +22,27 @@ WEB_APP_MANIFEST_RE = re.compile(
     r"(?:\.webmanifest|(?:^|[/?#._-])manifest\.(?:json|webm)(?:$|[?#]))",
     re.IGNORECASE,
 )
+
+# Phase A.3 — Streaming platform host patterns (block page URLs, allow stream URLs)
+VIDEO_HOSTING_SITES_RE = re.compile(
+    r"(?:^|[\\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone)\.(?:pw|tv|to|net|pro)(?:$|[\\/?#])",
+    re.IGNORECASE,
+)
+P2P_STREAMING_HOSTS_RE = re.compile(
+    r"(?:^|[\\/.])(?:douyu|huya)\.(?:com|cn)(?:$|[\\/?#])",
+    re.IGNORECASE,
+)
+LIVE_STREAMING_HOSTS_RE = re.compile(
+    r"(?:^|[\\/.])(?:twitch|trovo|dlive|kick)\.(?:tv|com|live)(?:$|[\\/?#])",
+    re.IGNORECASE,
+)
+
+# Phase A.4 — STATIC_ASSET refinements
+AD_SDK_RE = re.compile(r"(?:/vast\\.js|/ad-plugin/|ad-manager|admanager)/[^/]+\\.js", re.IGNORECASE)
+
+# Phase A.6 — P2P / Chinese streaming patterns
+CHINESE_STREAMING_CDN_RE = re.compile(r"(?:douyucdn\\.cn|msstatic\\.com|huya\\.com/.*p2p)", re.IGNORECASE)
+CHINESE_STREAMING_P2P_RE = re.compile(r"/front-publish/stream-sdk-lib-master/", re.IGNORECASE)
 
 
 def is_ephemeral_media_url(url):
@@ -70,6 +94,22 @@ def is_reusable_media_url(url, content_type=""):
     media_type = str(content_type or "").lower()
     if text.startswith(("blob:", "data:", "file:")):
         return False
+    # Check ad SDK paths
+    if AD_SDK_RE.search(text):
+        return False
+
+    # Check Chinese streaming P2P SDK paths
+    if CHINESE_STREAMING_P2P_RE.search(text):
+        return False
+
+    # Check video hosting page URLs (block if no video extension)
+    if VIDEO_HOSTING_SITES_RE.search(text) and not VIDEO_EXTENSION_RE.search(text):
+        return False
+
+    # Check Chinese streaming CDN segment URLs (block segments, allow manifests)
+    if CHINESE_STREAMING_CDN_RE.search(text) and (not VIDEO_EXTENSION_RE.search(text) or SEGMENT_RE.search(text)):
+        return False
+
     if (
         AD_RE.search(text)
         or GIF_RE.search(text)

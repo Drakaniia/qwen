@@ -242,30 +242,30 @@ assert.equal(
   "embed-cdn should be detected as video embed CDN",
 );
 
-// Chinese streaming CDNs
+// Chinese streaming CDNs — use manifest URLs (not blocked by A.6)
 assert.equal(
-  mediaCandidates.isLikelyVideoRequest("https://msstatic.com/huya/p2plib", "media", ""),
+  mediaCandidates.isLikelyVideoRequest("https://msstatic.com/huya/live/playlist.m3u8", "media", ""),
   true,
-  "msstatic should be detected as Chinese streaming CDN",
+  "msstatic manifest should be detected as Chinese streaming CDN",
 );
 
 assert.equal(
-  mediaCandidates.isLikelyVideoRequest("https://douyucdn.cn/front-publish/sdk", "media", ""),
+  mediaCandidates.isLikelyVideoRequest("https://douyucdn.cn/live/stream.m3u8", "media", ""),
   true,
-  "douyucdn should be detected as Douyu streaming CDN",
+  "douyucdn manifest should be detected as Douyu streaming CDN",
 );
 
-// Video hosting platforms
+// Video hosting platforms — use CDN-level media URLs (not page URLs which are blocked by A.3)
 assert.equal(
-  mediaCandidates.isLikelyVideoRequest("https://flashx.pw/player/embed", "media", ""),
+  mediaCandidates.isLikelyVideoRequest("https://cdn.flashx.pw/hls/stream.m3u8", "media", ""),
   true,
-  "flashx should be detected as video hosting platform",
+  "flashx CDN with .m3u8 should be detected via CDN_HINT_RE",
 );
 
 assert.equal(
-  mediaCandidates.isLikelyVideoRequest("https://vidoza.net/player/embed", "media", ""),
+  mediaCandidates.isLikelyVideoRequest("https://cdn.vidoza.net/stream.mp4", "media", ""),
   true,
-  "vidoza should be detected as video hosting platform",
+  "vidoza CDN with .mp4 should be detected via VIDEO_EXTENSION_RE and CDN_HINT_RE",
 );
 
 // Negative tests: non-media resource types should NOT trigger CDN_HINT_RE
@@ -377,6 +377,280 @@ assert.equal(
   ),
   true,
   "domain prefix should not cause false exception match",
+);
+
+// ── Phase A.3 — Streaming platform host patterns (block page URLs, allow stream URLs) ──
+
+// Video hosting sites: page URLs should be blocked
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://flashx.pw/player/embed"),
+  true,
+  "flashx.pw page URL should be blocked (not a real download source)",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://vidoza.net/video/12345"),
+  true,
+  "vidoza.net page URL should be blocked (not a real download source)",
+);
+
+// Video hosting sites: actual stream CDN URLs with video extensions should NOT be blocked
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://cdn.flashx.pw/hls/master.m3u8"),
+  false,
+  "flashx.pw CDN with .m3u8 should NOT be blocked (real stream URL)",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://cdn.vidoza.net/stream.mp4"),
+  false,
+  "vidoza.net CDN with .mp4 should NOT be blocked (real stream URL)",
+);
+
+// Streaming platforms: page URLs should be blocked
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://streamplay.to/video/abc123"),
+  true,
+  "streamplay.to page URL should be blocked",
+);
+
+// Live streaming: page URLs should be blocked (not direct video sources)
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://twitch.tv/example"),
+  true,
+  "twitch.tv page URL should be blocked (not a direct video source)",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://trovo.live/example"),
+  true,
+  "trovo.live page URL should be blocked",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://kick.com/example"),
+  true,
+  "kick.com page URL should be blocked",
+);
+
+// Live streaming: actual CDN stream URLs with video extensions should NOT be blocked
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://video.twitch.tv/hls/stream.m3u8"),
+  false,
+  "twitch.tv CDN with .m3u8 should NOT be blocked",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://cdn.kick.com/stream.m3u8"),
+  false,
+  "kick.com CDN with .m3u8 should NOT be blocked",
+);
+
+// P2P streaming platforms: page URLs should be blocked
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://www.douyu.com/room/12345"),
+  true,
+  "douyu.com page URL should be blocked (not a direct video source)",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://www.huya.com/room/12345"),
+  true,
+  "huya.com page URL should be blocked",
+);
+
+// P2P streaming: actual CDN stream URLs should NOT be blocked
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://hdliplive.douyucdn.cn/live/stream.m3u8"),
+  false,
+  "douyucdn.cn CDN with .m3u8 should NOT be blocked",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://msstatic.com/huya/live/stream.m3u8"),
+  false,
+  "msstatic.com CDN with .m3u8 should NOT be blocked",
+);
+
+// Negative: dlive (not in any pattern but should work too)
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://dlive.tv/example"),
+  true,
+  "dlive.tv page URL should be blocked",
+);
+
+// ── Phase A.4 — STATIC_ASSET refinements ──
+
+// AD_SDK_RE: ad SDK paths should be blocked
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://cdn.example.com/vast.js"),
+  true,
+  "vast.js should be blocked as ad SDK",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://cdn.example.com/ad-plugin/tracker.js"),
+  true,
+  "ad-plugin path should be blocked",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://cdn.example.com/ad-manager/loader.js"),
+  true,
+  "ad-manager path should be blocked",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://cdn.example.com/admanager/init.js"),
+  true,
+  "admanager path should be blocked",
+);
+
+// AD_STATIC_ASSET_RE: JS/CSS from known ad domains should be blocked
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://adnxs.com/assets/tracker.js"),
+  true,
+  "adnxs.com JS should be blocked via AD_STATIC_ASSET_RE",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://clmbtech.com/loader.css"),
+  true,
+  "clmbtech.com CSS should be blocked via AD_STATIC_ASSET_RE",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://chartbeat.com/ping.js"),
+  true,
+  "chartbeat.com JS should be blocked via AD_STATIC_ASSET_RE",
+);
+
+// Negative: non-ad-domain JS passes through (STATIC_PLAYER_ASSET_RE blocks it)
+// AD_STATIC_ASSET_RE targets only ad domains; non-ad .js is still caught by STATIC_PLAYER_ASSET_RE.
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://cdn.example.com/player.js"),
+  true,
+  "non-ad-domain JS should still be blocked by STATIC_PLAYER_ASSET_RE",
+);
+
+// ── Phase A.5 — Video Player SDK Patterns (from video_filters.js) ──
+
+import * as videoFilters from "../../src/shared/video_filters.js";
+
+// Video player SDK paths should be recognized as video-related
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://imasdk.googleapis.com/js/sdkloader/ima3.js"),
+  true,
+  "ima3.js should be recognized as video player SDK",
+);
+
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://imasdk.googleapis.com/js/sdkloader/ima3_dai.js"),
+  true,
+  "ima3_dai.js should be recognized as video player SDK",
+);
+
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://imasdk.googleapis.com/js/sdkloader/ima3_debug.js"),
+  true,
+  "ima3_debug.js should be recognized as video player SDK",
+);
+
+// Video analytics patterns should be recognized
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://cbsistatic.com/comscore.streaming/metrics"),
+  true,
+  "comscore.streaming should be recognized as video analytics",
+);
+
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://src.litix.io/core/player/mux.js"),
+  true,
+  "mux.js should be recognized as video analytics",
+);
+
+// Video framework URLs should be recognized
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://analytics.edgesuite.net/html5/akamaihtml5-min.js"),
+  true,
+  "akamaihtml5 should be recognized as video framework",
+);
+
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://player.ooyala.com/static/ooyala-player.min.js"),
+  true,
+  "ooyala should be recognized as video framework",
+);
+
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://p.jwpcdn.com/player/jwplayer.core.js"),
+  true,
+  "jwplayer should be recognized as video framework",
+);
+
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://cdn.brightcove.com/player/brightcove-player.min.js"),
+  true,
+  "brightcove should be recognized as video framework",
+);
+
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://cdn.kaltura.com/p/123/sp/123/player.js"),
+  true,
+  "kaltura should be recognized as video framework",
+);
+
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://cdn.shaka-player.org/shaka-player.compiled.js"),
+  true,
+  "shaka should be recognized as video framework",
+);
+
+// Non-video URLs should not be recognized
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://doubleclick.net/ddm/ad.js"),
+  false,
+  "doubleclick ad URLs should not be recognized as video SDK",
+);
+
+assert.equal(
+  videoFilters.isVideoPlayerSdkUrl("https://cdn.example.com/analytics.js"),
+  false,
+  "generic analytics should not be recognized as video SDK",
+);
+
+// ── Phase A.6 — P2P / Chinese Streaming Patterns ──
+
+// Chinese streaming CDN segment URLs should be blocked
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://douyucdn.cn/stream/segment-001.ts"),
+  true,
+  "douyucdn.cn segment URL should be blocked",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://msstatic.com/huya/p2plib-001.m4s"),
+  true,
+  "msstatic.com P2P segment URL should be blocked",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://www.huya.com/front-publish/stream-sdk-lib-master/sdk.js"),
+  true,
+  "huya P2P SDK path should be blocked",
+);
+
+// Chinese streaming CDN stream manifest URLs should NOT be blocked
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://hdliplive.douyucdn.cn/live/stream.m3u8"),
+  false,
+  "douyucdn.cn manifest .m3u8 should NOT be blocked",
+);
+
+assert.equal(
+  mediaCandidates.isBlockedMediaUrl("https://msstatic.com/huya/live/playlist.m3u8"),
+  false,
+  "msstatic.com manifest .m3u8 should NOT be blocked",
 );
 
 console.log("filter integration tests passed");
