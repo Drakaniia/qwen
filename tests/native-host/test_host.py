@@ -177,6 +177,33 @@ class HostHelperTests(unittest.TestCase):
         format_index = command.index("-f")
         self.assertEqual(command[format_index + 1], "137+bestaudio/best")
 
+    def test_build_yt_dlp_command_includes_subtitle_flags(self):
+        command = host.build_yt_dlp_command(
+            url="https://www.youtube.com/watch?v=Aa89MC8jX2c",
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            yt_dlp_command=["yt-dlp"],
+        )
+
+        self.assertIn("--write-subs", command)
+        self.assertIn("--write-auto-subs", command)
+        self.assertIn("--sub-langs", command)
+        self.assertEqual(command[command.index("--sub-langs") + 1], "all")
+        self.assertIn("--embed-subs", command)
+
+    def test_build_yt_dlp_command_skips_subtitle_flags_for_audio_extraction(self):
+        command = host.build_yt_dlp_command(
+            url="https://www.youtube.com/watch?v=Aa89MC8jX2c",
+            download_dir=Path(r"C:\Users\Viewer\Downloads"),
+            yt_dlp_command=["yt-dlp"],
+            extract_audio=True,
+            audio_format="mp3",
+        )
+
+        self.assertNotIn("--write-subs", command)
+        self.assertNotIn("--write-auto-subs", command)
+        self.assertNotIn("--sub-langs", command)
+        self.assertNotIn("--embed-subs", command)
+
     def test_build_yt_dlp_command_defaults_to_safe_aria2_parallel_downloads_when_available(self):
         command = host.build_yt_dlp_command(
             url="https://cdn.example.com/video.mp4",
@@ -348,6 +375,38 @@ class HostHelperTests(unittest.TestCase):
         self.assertEqual(summarized["formats"][1]["id"], "137")
         self.assertEqual(summarized["formats"][1]["label"], "1080p MP4")
         self.assertEqual(summarized["formats"][2]["id"], "18")
+        self.assertIs(summarized["hasSubtitles"], False, "No subtitles in test data")
+
+    def test_summarize_formats_includes_subtitle_data(self):
+        info = {
+            "title": "Video With Subs",
+            "formats": [
+                {
+                    "format_id": "18",
+                    "ext": "mp4",
+                    "width": 640,
+                    "height": 360,
+                    "fps": 30,
+                    "vcodec": "avc1",
+                    "acodec": "mp4a",
+                    "tbr": 700,
+                },
+            ],
+            "subtitles": {
+                "en": [{"url": "https://example.com/sub/en.vtt", "ext": "vtt"}],
+                "es": [{"url": "https://example.com/sub/es.vtt", "ext": "vtt"}],
+                "fr": [{"url": "https://example.com/sub/fr.vtt", "ext": "vtt"}],
+            },
+            "automatic_captions": {
+                "en": [{"url": "https://example.com/auto/en.vtt", "ext": "vtt"}],
+                "de": [{"url": "https://example.com/auto/de.vtt", "ext": "vtt"}],
+            },
+        }
+
+        summarized = host.summarize_formats(info)
+
+        self.assertIs(summarized["hasSubtitles"], True, "Subtitles present in data")
+        self.assertEqual(summarized["subtitleLanguages"], 4, "en, es, fr, de = 4 unique languages")
 
     def test_summarize_formats_hides_segmented_hls_and_dash_choices(self):
         info = {
