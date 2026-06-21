@@ -5,7 +5,7 @@ HLS_RE = re.compile(r"\.m3u8(?:$|[?#])", re.IGNORECASE)
 DASH_RE = re.compile(r"\.mpd(?:$|[?#])", re.IGNORECASE)
 ISM_RE = re.compile(r"\.ism(?:/manifest)?(?:$|[?#])", re.IGNORECASE)
 AD_RE = re.compile(
-    r"(?:doubleclick|googlesyndication|googleads|imasdk|adservice|adserver|/ads?/|[._-]ads?[._-]|vast|vpaid|prebid|preroll|midroll|postroll|companionad|moatads|scorecardresearch|outbrain|taboola)",
+    r"(?:doubleclick|googlesyndication|googleads|imasdk|adservice|adserver|/ads?/|[._-]ads?[._-]|vast|vpaid|prebid|preroll|midroll|postroll|companionad|moatads|scorecardresearch|outbrain|taboola|adnxs|clmbtech|crwdcntrl|chartbeat|adobedtm|ensighten|fwmrm\.net|spotx(?:cdn)?\.(?:tv|com)|smartclip|adaptv\.advertising|2mdn\.net|youbora(?:nqs01)?\.com|popads\.net)",
     re.IGNORECASE,
 )
 GIF_RE = re.compile(r"\.(?:gif|gifv)(?:$|[?#])", re.IGNORECASE)
