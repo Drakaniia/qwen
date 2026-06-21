@@ -59,6 +59,19 @@ build: register shared components in extension manifests
 
 Branch naming: `type/description` (e.g., `feat/download-retry`, `fix/popup-refresh`).
 
+## Troubleshooting Skills
+
+This repo has agent skills for common debugging tasks. Invoke them with `@skill-name` or load them via the `skill` tool:
+
+- **`failed-download-troubleshooting`** — General-purpose workflow for diagnosing failed downloads. Start here when a download fails, the wrong URL was sent to backends, or a video plays in the browser but the extension can't download it. Covers false-positive URL detection and missing real-stream detection.
+- **`chrome-extension-development`** — Expert guidelines for Chrome extension development with Manifest V3.
+
+When debugging a failed download, always:
+1. Read the log (`logs/downloads.jsonl`) to see what URL was sent
+2. Classify the URL — is it a false positive or a missing real stream?
+3. Apply TDD (skill: `tdd`) to add block patterns or improve detection
+4. Run tests and rebuild before verifying in the browser
+
 ## Non-Obvious Rules
 
 - **Rebuild dist after src changes**: the browser loads `dist/<target>/src/`, not `src/` directly. After editing any file under `src/`, run `npm run build` (or `npm run build:chromium` for just one target) before testing or loading the extension.
