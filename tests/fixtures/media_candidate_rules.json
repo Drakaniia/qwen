@@ -117,6 +117,24 @@
     "reusable": false
   },
   {
+    "name": "beeg CSS property path X-UA-Compatible",
+    "url": "https://beeg.com/X-UA-Compatible",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": true,
+    "downloadable": false,
+    "reusable": false
+  },
+  {
+    "name": "beeg CSS property path overflow-y-hidden",
+    "url": "https://beeg.com/overflow-y-hidden",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": true,
+    "downloadable": false,
+    "reusable": false
+  },
+  {
     "name": "legitimate webm video",
     "url": "https://cdn.example.com/videos/movie.webm",
     "contentType": "",
