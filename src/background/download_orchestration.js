@@ -319,6 +319,7 @@ function create(deps) {
       backend,
       musicMode: settings().musicMode || false,
       audioFormat: settings().audioFormat || "mp3",
+      downloadSubtitles: settings().downloadSubtitles !== false,
     });
 
     deps.updateDownload(jobId, {

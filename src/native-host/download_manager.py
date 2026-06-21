@@ -172,6 +172,7 @@ def run_download(
     temp_files = [cookies_file] if cookies_file else []
     extract_audio = bool(message.get("musicMode") or message.get("extractAudio") or False)
     audio_format = str(message.get("audioFormat") or "mp3").strip().lower() if extract_audio else None
+    download_subtitles = bool(message.get("downloadSubtitles", True))
 
     # ---- Spotify YouTube fallback ------------------------------------------------
     # When the URL is a Spotify track, yt-dlp cannot download it directly (DRM).
@@ -205,6 +206,7 @@ def run_download(
             selected_format=message.get("formatId"),
             extract_audio=extract_audio,
             audio_format=audio_format,
+            download_subtitles=download_subtitles,
         )
         if extra:
             kwargs.update(extra)
