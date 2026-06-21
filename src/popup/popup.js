@@ -78,6 +78,17 @@ const elements = {
   downloadMusicLink: document.getElementById("downloadMusicLink"),
   audioFormat: document.getElementById("audioFormat"),
   recordingMode: document.getElementById("recordingMode"),
+  downloadSubtitles: document.getElementById("downloadSubtitles"),
+  // Batch/playlist elements
+  batchBar: document.getElementById("batchBar"),
+  batchLabel: document.getElementById("batchLabel"),
+  batchProgress: document.getElementById("batchProgress"),
+  batchProgressFill: document.getElementById("batchProgressFill"),
+  batchStatus: document.getElementById("batchStatus"),
+  batchCancelBtn: document.getElementById("batchCancelBtn"),
+  playlistPrompt: document.getElementById("playlistPrompt"),
+  playlistTitle: document.getElementById("playlistTitle"),
+  downloadAllBtn: document.getElementById("downloadAllBtn"),
 };
 
 // ─── Quality chooser ────────────────────────────────────────────────────────
@@ -413,6 +424,14 @@ function renderVideos(videos, downloads) {
     const source = document.createElement("span");
     source.textContent = video.variantCount > 1 ? `${video.variantCount} versions` : sourceLabel(video);
     meta.append(badge, source);
+    if (video.hasSubtitles) {
+      const subBadge = document.createElement("span");
+      subBadge.className = "subtitle-badge";
+      const langCount = video.subtitleLanguages || 0;
+      subBadge.textContent = langCount > 0 ? `CC ${langCount}` : "CC";
+      subBadge.title = langCount > 0 ? `${langCount} subtitle language${langCount === 1 ? "" : "s"} available` : "Subtitles available";
+      meta.append(subBadge);
+    }
     const size = videoSizeLabel(video);
     if (size) {
       const sizeEl = document.createElement("span");
@@ -458,11 +477,12 @@ function isCurrentQualityRequest(requestToken) {
   return requestToken === PopupState.get("qualityRequestSerial");
 }
 
-function chooseQuality({ title, formats, nativeError }) {
+function chooseQuality({ title, formats, nativeError, hasSubtitles }) {
   return qualityChooser.showChoices({
     choiceTitle: title,
     formats,
     nativeError,
+    hasSubtitles,
   });
 }
 
@@ -621,6 +641,9 @@ async function refresh(options = {}) {
   } else {
     elements.recordingMode.value = "ask";
   }
+  if (elements.downloadSubtitles) {
+    elements.downloadSubtitles.checked = response.settings && response.settings.downloadSubtitles !== false;
+  }
   return true;
 }
 
@@ -741,6 +764,160 @@ async function clearActiveTabVideos() {
   }
 }
 
+// ─── Batch/playlist UI ─────────────────────────────────────────────────────
+
+/**
+ * Update the batch download progress bar in the UI.
+ * Shows/hides the batch bar based on batch state.
+ */
+function updateBatchUI() {
+  if (!elements.batchBar) {
+    return;
+  }
+
+  // Check if there's an active batch
+  const batchInfo = PopupState.get("batchInfo");
+  if (!batchInfo || batchInfo.status === "idle" || batchInfo.status === "completed" || batchInfo.status === "canceled") {
+    elements.batchBar.hidden = true;
+    return;
+  }
+
+  elements.batchBar.hidden = false;
+
+  // Update label
+  if (elements.batchLabel) {
+    elements.batchLabel.textContent = batchInfo.label || "";
+  }
+
+  // Update progress bar
+  if (elements.batchProgressFill) {
+    const percent = batchInfo.percent || 0;
+    elements.batchProgressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+  }
+
+  // Update status text
+  if (elements.batchStatus) {
+    const completed = batchInfo.completedItems || 0;
+    const total = batchInfo.totalItems || 0;
+    const failed = (batchInfo.failedItems && batchInfo.failedItems.length) || 0;
+
+    if (batchInfo.status === "paused") {
+      elements.batchStatus.textContent = `Paused — ${completed}/${total} complete`;
+    } else if (failed > 0) {
+      elements.batchStatus.textContent = `Downloading — ${completed}/${total} (${failed} failed)`;
+    } else {
+      elements.batchStatus.textContent = `Downloading — ${completed}/${total}`;
+    }
+  }
+
+  // Cancel button visibility
+  if (elements.batchCancelBtn) {
+    elements.batchCancelBtn.hidden = batchInfo.status === "completed" || batchInfo.status === "canceled";
+  }
+}
+
+/**
+ * Check if the current page has a playlist and show the playlist prompt.
+ */
+function updatePlaylistPrompt() {
+  if (!elements.playlistPrompt) {
+    return;
+  }
+
+  const activeTabUrl = PopupState.get("activeTabUrl");
+  if (!activeTabUrl) {
+    elements.playlistPrompt.hidden = true;
+    return;
+  }
+
+  // Check if the current page URL is a playlist
+  if (!playlistDetection.isPlaylistPage(activeTabUrl)) {
+    elements.playlistPrompt.hidden = true;
+    return;
+  }
+
+  // Don't show if a batch is already active
+  const batchInfo = PopupState.get("batchInfo");
+  if (batchInfo && (batchInfo.status === "running" || batchInfo.status === "paused")) {
+    elements.playlistPrompt.hidden = true;
+    return;
+  }
+
+  const playlistTitle = playlistDetection.getPlaylistTitle(activeTabUrl);
+  const source = playlistDetection.getPlaylistSource(activeTabUrl);
+
+  elements.playlistPrompt.hidden = false;
+  if (elements.playlistTitle) {
+    elements.playlistTitle.textContent = playlistTitle || `${source.charAt(0).toUpperCase() + source.slice(1)} Playlist Detected`;
+  }
+}
+
+/**
+ * Start downloading all items in the current playlist.
+ */
+async function downloadAllPlaylist() {
+  const activeTabUrl = PopupState.get("activeTabUrl");
+  const tabId = PopupState.get("activeTabId");
+
+  if (!activeTabUrl || !tabId) {
+    setMessage("No active tab found.", true);
+    return;
+  }
+
+  elements.downloadAllBtn.disabled = true;
+  elements.downloadAllBtn.textContent = "Enumerating...";
+
+  // Enumerate playlist items via background script
+  const enumerateResponse = await PopupApi.enumeratePlaylist(activeTabUrl, tabId);
+
+  if (!enumerateResponse || !enumerateResponse.ok) {
+    setMessage(
+      enumerateResponse && enumerateResponse.error
+        ? `Playlist enumeration failed: ${enumerateResponse.error}`
+        : "Could not enumerate playlist items.",
+      true,
+    );
+    elements.downloadAllBtn.disabled = false;
+    elements.downloadAllBtn.textContent = "Download All";
+    return;
+  }
+
+  const items = enumerateResponse.items || [];
+  if (items.length === 0) {
+    setMessage("No items found in this playlist.", true);
+    elements.downloadAllBtn.disabled = false;
+    elements.downloadAllBtn.textContent = "Download All";
+    return;
+  }
+
+  // Start batch download
+  const videos = items.map((item) => ({
+    id: item.id || `playlist_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    url: item.url,
+    title: item.title || "Untitled",
+    format: "",
+    source: "playlist",
+    pageUrl: activeTabUrl,
+    downloadable: true,
+  }));
+
+  const batchResponse = await PopupApi.startBatchDownload(tabId, videos);
+
+  if (!batchResponse || !batchResponse.ok) {
+    setMessage(
+      batchResponse && batchResponse.error ? batchResponse.error : "Could not start batch download.",
+      true,
+    );
+    elements.downloadAllBtn.disabled = false;
+    elements.downloadAllBtn.textContent = "Download All";
+    return;
+  }
+
+  elements.playlistPrompt.hidden = true;
+  setViewMode("downloads");
+  await refresh();
+}
+
 // ─── Orchestrator ───────────────────────────────────────────────────────────
 
 function render() {
@@ -766,6 +943,8 @@ function render() {
   updateIndicatorFromVideos(state.currentVideos);
   setVideoLayoutMode(state.videoLayoutMode);
   setViewMode(mode);
+  updateBatchUI();
+  updatePlaylistPrompt();
 }
 
 PopupState.subscribe(render);
@@ -935,12 +1114,12 @@ elements.recordingMode.addEventListener("change", async () => {
   }
 });
 
-elements.saveSettings.addEventListener("click", async () => {
-  const response = await PopupApi.saveSettings({
-    downloadFolder: elements.downloadFolder.value.trim(),
-    audioFormat: elements.audioFormat.value,
-    recordingMode: elements.recordingMode.value,
-  });
+elements.saveSettings.addEventListener("click", async () => {    const response = await PopupApi.saveSettings({
+      downloadFolder: elements.downloadFolder.value.trim(),
+      audioFormat: elements.audioFormat.value,
+      recordingMode: elements.recordingMode.value,
+      downloadSubtitles: elements.downloadSubtitles ? elements.downloadSubtitles.checked : true,
+    });
   if (!response || !response.ok) {
     setSettingsStatus(response && response.error ? response.error : "Could not save settings.", true);
     return;
@@ -1223,6 +1402,20 @@ elements.clear.addEventListener("click", async () => {
   await clearActiveTabVideos();
 });
 
+// ─── Batch event handlers ─────────────────────────────────────────────────--
+
+elements.downloadAllBtn.addEventListener("click", async () => {
+  await downloadAllPlaylist();
+});
+
+elements.batchCancelBtn.addEventListener("click", async () => {
+  const response = await PopupApi.batchCancel();
+  if (response && response.ok) {
+    PopupState.update({ batchInfo: response.batchInfo });
+    await refresh();
+  }
+});
+
 // ─── Background message listener ────────────────────────────────────────────
 
 api.runtime.onMessage.addListener((message) => {
@@ -1255,6 +1448,17 @@ api.runtime.onMessage.addListener((message) => {
   if (message.type === "downloadRemoved" && message.jobId) {
     const currentDownloads = PopupState.get("currentDownloads");
     PopupState.update({ currentDownloads: currentDownloads.filter((job) => job.id !== message.jobId) });
+  }
+
+  // Batch progress updates from background
+  if (message.type === "batchUpdated") {
+    PopupState.update({ batchInfo: message.batchInfo });
+  }
+
+  if (message.type === "batchComplete") {
+    PopupState.update({ batchInfo: message.batchInfo });
+    setMessage(message.message || "Batch download complete.");
+    elements.message.hidden = false;
   }
 });
 

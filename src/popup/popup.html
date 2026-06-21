@@ -97,6 +97,11 @@
         <option value="ogg">OGG (Vorbis)</option>
       </select>
 
+      <label class="checkbox-label">
+        <input id="downloadSubtitles" type="checkbox" checked />
+        Download subtitles (CC) when available
+      </label>
+
       <label for="downloadFolder">Download folder</label>
       <div class="folder-picker">
         <input id="downloadFolder" type="text" spellcheck="false" placeholder="Default: Windows Downloads" />
@@ -133,6 +138,31 @@
         <span class="more-platforms">+ more</span>
       </div>
     </section>
+
+    <!-- Batch download bar -->
+    <div id="batchBar" class="batch-bar" hidden>
+      <div class="batch-info">
+        <span id="batchLabel" class="batch-label"></span>
+        <div id="batchProgress" class="batch-progress-bar">
+          <span id="batchProgressFill" class="batch-progress-fill"></span>
+        </div>
+        <span id="batchStatus" class="batch-status-text"></span>
+      </div>
+      <div class="batch-actions">
+        <button id="batchCancelBtn" type="button" class="batch-cancel-button">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Playlist download prompt -->
+    <div id="playlistPrompt" class="playlist-prompt" hidden>
+      <div class="playlist-info">
+        <span class="playlist-icon">💿</span>
+        <span id="playlistTitle" class="playlist-title-text">Playlist detected</span>
+      </div>
+      <div class="playlist-actions">
+        <button id="downloadAllBtn" type="button" class="primary">Download All</button>
+      </div>
+    </div>
 
     <main id="contentView">
       <div id="message" class="message">Scanning for videos...</div>

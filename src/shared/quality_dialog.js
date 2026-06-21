@@ -190,10 +190,11 @@ function createChooser(options) {
     }
   }
 
-  function showChoices({ choiceTitle = "", formats = [], nativeError = "", hasBack = false } = {}) {
+  function showChoices({ choiceTitle = "", formats = [], nativeError = "", hasBack = false, hasSubtitles = false } = {}) {
     return new Promise((resolve) => {
       pendingResolve = resolve;
-      title.textContent = choiceTitle ? `Compare versions: ${choiceTitle}` : "Compare versions";
+      const titleSuffix = hasSubtitles ? " — CC" : "";
+      title.textContent = choiceTitle ? `Compare versions: ${choiceTitle}${titleSuffix}` : "Compare versions";
       list.textContent = "";
       loadingElement = null;
       resetActions();

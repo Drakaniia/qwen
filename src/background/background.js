@@ -12,6 +12,8 @@ import * as cdpRelay from "./cdp_relay.js";
 import * as cdpExtraction from "./cdp_extraction.js";
 import * as cdmNetworkIntercept from "./cdm_network_intercept.js";
 import * as segmentCapture from "./segment_capture.js";
+import * as batchOrchestration from "./batch_orchestration.js";
+import * as playlistDetection from "../shared/playlist_detection.js";
 import { create as createMessageRouter } from "./message_router.js";
 import { create as createDownloadOrchestration } from "./download_orchestration.js";
 
@@ -1222,23 +1224,35 @@ async function getNativeFormatsForVideo(tabId, video) {
   // The user wants the "site tile" (page title) over "random metadata texts" (generic server titles).
   // If the server provides a GOOD, non-generic title, we should use it as it's most accurate for the stream.
   // Otherwise, fallback to the page title.
-  const finalTitle = serverTitle || pageTitle;
+  const finalTitle = serverTitle || pageTitle;    // If native response has subtitle availability info, update video state
+    if (response && response.hasSubtitles) {
+      await tabState.patchVideo(
+        tabId,
+        (item) => item.id === refreshedVideo.id || variantsForVideo(item).some((v) => v.id === refreshedVideo.id),
+        {
+          hasSubtitles: true,
+          subtitleLanguages: (response.subtitleLanguages) || 0,
+        },
+      );
+    }
 
-  return {
-    videoId: refreshedVideo.id || formatLookupVideo.id || lookupVideo.id,
-    title: finalTitle,
-    thumbnailUrl: serverThumbnail || refreshedVideo.thumbnailUrl || "",
-    formats: formats.length
-      ? formats
-      : [
-          normalizeNativeFormatOption(
-            { id: "best", label: "Best available MP4", ext: "mp4", note: "Recommended" },
-            lookupVideo,
-          ),
-        ],
-    nativeError,
-  };
-}
+    return {
+        videoId: refreshedVideo.id || formatLookupVideo.id || lookupVideo.id,
+        title: finalTitle,
+        thumbnailUrl: serverThumbnail || refreshedVideo.thumbnailUrl || "",
+        formats: formats.length
+          ? formats
+          : [
+              normalizeNativeFormatOption(
+                { id: "best", label: "Best available MP4", ext: "mp4", note: "Recommended" },
+                lookupVideo,
+              ),
+            ],
+        nativeError,
+        hasSubtitles: response && response.hasSubtitles ? true : false,
+        subtitleLanguages: (response && response.subtitleLanguages) || 0,
+      };
+    }
 
 function pingNativeHost() {
   return new Promise((resolve) => {
@@ -1916,6 +1930,84 @@ messageRouter.handle("cdpDetach", async (message) => {
 
 messageRouter.handle("cdpStatus", async () => {
   return cdpRelay.handleCdpStatus();
+});
+
+// ─── Batch orchestration init ──────────────────────────────────────────────
+
+function initBatchOrchestration() {
+  batchOrchestration.init({
+    nativeRequest,
+    startNativeDownload: (tabId, videoId, formatId, variantId, backend) =>
+      getDownloadOrchestration().startNativeDownload(tabId, videoId, formatId, variantId, backend),
+    startNativeDownloadForUrl: (tabId, input) =>
+      getDownloadOrchestration().startNativeDownloadForUrl(tabId, input),
+    addDetectedVideo,
+    notifyPopup,
+    normalizeUrl,
+    getTabVideos,
+    updateDownload,
+    nativeRequestHeadersForVideo,
+    userAgent: navigator.userAgent || "",
+  });
+}
+
+initBatchOrchestration();
+
+// ─── Batch/playlist message handlers ───────────────────────────────────────
+
+messageRouter.handle("enumeratePlaylist", async (message, sender) => {
+  const url = String(message.url || "").trim();
+  if (!url) {
+    return { ok: false, error: "No URL provided for playlist enumeration." };
+  }
+
+  const pageUrl = message.pageUrl || (sender.tab && sender.tab.url) || url;
+  return batchOrchestration.enumeratePlaylist(url, { pageUrl });
+});
+
+messageRouter.handle("batchDownload", async (message, sender) => {
+  const tabId = message.tabId || (sender.tab && sender.tab.id);
+  const videos = Array.isArray(message.videos) ? message.videos : [];
+
+  if (!tabId) {
+    return { ok: false, error: "No tab ID provided for batch download." };
+  }
+
+  return batchOrchestration.startBatchDownload(tabId, videos);
+});
+
+messageRouter.handle("batchDownloadSelected", async (message, sender) => {
+  const tabId = message.tabId || (sender.tab && sender.tab.id);
+  const videoIds = Array.isArray(message.videoIds) ? message.videoIds : [];
+
+  if (!tabId) {
+    return { ok: false, error: "No tab ID provided." };
+  }
+
+  if (!videoIds.length) {
+    return { ok: false, error: "No videos selected for batch download." };
+  }
+
+  return batchOrchestration.startSelectedDownload(tabId, videoIds);
+});
+
+messageRouter.handle("batchStatus", async () => {
+  return { ok: true, batchInfo: batchOrchestration.getBatchInfo() };
+});
+
+messageRouter.handle("batchPause", async () => {
+  batchOrchestration.pauseBatch();
+  return { ok: true, batchInfo: batchOrchestration.getBatchInfo() };
+});
+
+messageRouter.handle("batchResume", async () => {
+  batchOrchestration.resumeBatch();
+  return { ok: true, batchInfo: batchOrchestration.getBatchInfo() };
+});
+
+messageRouter.handle("batchCancel", async () => {
+  batchOrchestration.cancelBatch();
+  return { ok: true, batchInfo: batchOrchestration.getBatchInfo() };
 });
 
 // ─── CDP extraction (Phase 1a) ────────────────────────────────────────────
