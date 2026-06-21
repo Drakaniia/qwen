@@ -1,6 +1,16 @@
 # Qwin Video Downloader
 
-Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser extension that detects playable video URLs on the current page and sends selected URLs to a local Python native messaging host. It can also detect real YouTube video pages from the visible player. The helper uses `yt-dlp`, `ffmpeg`, and `aria2c` fast mode to save supported videos as MP4. Qwin also supports BitTorrent downloads via `aria2c` (magnet links and `.torrent` files).
+Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser extension that detects playable video URLs on the current page and sends selected URLs to a local Python native messaging host. It can also detect real YouTube video pages from the visible player. The helper uses `yt-dlp`, `ffmpeg`, and `aria2c` fast mode to save supported videos as MP4.
+
+## Features
+
+- **Video detection** — MP4/WebM/M4V, HLS M3U8, DASH MPD, Smooth Streaming ISM, YouTube shorts/live/embed, and manual page links.
+- **Ad filtering** — Built-in ad/tracker URL patterns (AD_RE, CDN_HINT_RE) plus **uBlock Origin filter list integration** for community-maintained ad blocking and video CDN exception whitelisting.
+- **Widevine CDM Pipeline** — Experimental Go companion binary (`qwin-capture`) for CDM initialization, license key extraction, and AES-128 CTR segment decryption.
+- **CDP Relay** — Chrome DevTools Protocol commands relayed through Go → Python → Extension → `chrome.debugger` for advanced video source extraction.
+- **Screen recording** — Tab capture with live progress updates and MSE/Blob segment capture for custom players.
+- **BitTorrent** — Magnet links and `.torrent` files via `aria2c`.
+- **Fast downloads** — Concurrent fragments, segmented byte-range connections, and stream fallback tools.
 
 ## Quickstart
 
@@ -19,6 +29,7 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
 4. Visit a page with a playing video, open the Qwin popup, choose a detected video/quality, and download.
 5. If a page is not detected, open settings and paste the video page link into `Download from link`.
 6. To download a magnet or .torrent file, open settings and use the `Download from magnet link` or `Download .torrent file` options.
+7. For DRM content, install the CDM and capture binary (see docs).
 
 ## Full Documentation
 
@@ -27,3 +38,5 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
 - [Usage, supported detection, and speed behavior](docs/usage.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Project structure and tests](docs/project-structure.md)
+- [uBlock Origin integration specification](docs/uBlock-integration-spec.md)
+- [Go companion binary](go/README.md)
