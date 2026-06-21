@@ -3,6 +3,7 @@
 import { browserApi } from "../shared/browser_api.js";
 import * as mediaCandidates from "../shared/media_candidates.js";
 import * as videoFilters from "../shared/video_filters.js";
+import * as filterListLoader from "../shared/filter_list_loader.js";
 import * as downloadState from "./download_state.js";
 import { nativeRequest as nativeRequestFn } from "./native_requests.js";
 import * as downloadFallbacks from "./download_fallbacks.js";
@@ -51,6 +52,11 @@ const downloadPortsById = {};
 const sizeProbePromises = {};
 const requestHeadersByUrl = {};
 const pageTitlesByTab = {};
+
+// Filter list integration — populated by initFilterIntegration() at startup
+let videoExceptionDomains = new Set();
+let filterRefreshTimer = null;
+const FILTER_REFRESH_INTERVAL_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 function normalizeUrl(url) {
   try {
@@ -121,7 +127,7 @@ function pruneCapturedRequestHeaders() {
 }
 
 function rememberRequestHeaders(details) {
-  if (!details || !details.url || videoFilters.isBlockedVideoUrl(details.url)) {
+  if (!details || !details.url || isBlockedUrlWithFilters(details.url)) {
     return;
   }
 
@@ -218,6 +224,59 @@ function lower(value) {
 
 function detectFormat(url, contentType = "") {
   return videoFilters.classifyVideoUrl(url, contentType);
+}
+
+// ── Filter list integration ──────────────────────────────────────────────
+
+/**
+ * Initialise the filter list integration at extension startup.
+ * 1. Loads compiled patterns from cache (exception domains)
+ * 2. Schedules periodic refresh of all filter lists
+ */
+async function initFilterIntegration() {
+  try {
+    const patterns = await filterListLoader.getActivePatterns();
+    if (patterns && patterns.exceptionDomains && patterns.exceptionDomains.length > 0) {
+      videoExceptionDomains = new Set(patterns.exceptionDomains);
+    } else {
+      // Cache is empty (first install) — trigger an immediate refresh so
+      // filter-based exceptions are available right away, not after 5 days.
+      try {
+        await filterListLoader.refreshAllLists();
+        const updated = await filterListLoader.getActivePatterns();
+        if (updated && updated.exceptionDomains) {
+          videoExceptionDomains = new Set(updated.exceptionDomains);
+        }
+      } catch (_error) {
+        // First refresh is best-effort
+      }
+    }
+  } catch (_error) {
+    // Filter integration is best-effort — failure should not block startup
+  }
+
+  // Schedule background refresh every 5 days
+  if (filterRefreshTimer) {
+    clearInterval(filterRefreshTimer);
+  }
+  filterRefreshTimer = setInterval(async () => {
+    try {
+      await filterListLoader.refreshAllLists();
+      const updated = await filterListLoader.getActivePatterns();
+      if (updated && updated.exceptionDomains) {
+        videoExceptionDomains = new Set(updated.exceptionDomains);
+      }
+    } catch (_error) {
+      // Refresh failure is non-critical
+    }
+  }, FILTER_REFRESH_INTERVAL_MS);
+}
+
+/**
+ * Check if a URL is blocked, with filter-list exception domains applied.
+ */
+function isBlockedUrlWithFilters(url, contentType = "") {
+  return mediaCandidates.isBlockedMediaUrlWithExceptions(url, contentType, videoExceptionDomains);
 }
 
 function isDownloadableUrl(url, contentType = "") {
@@ -376,7 +435,9 @@ async function addDetectedVideo(tabId, input, notify = true) {
   await tabState.load();
 
   const normalizedUrl = normalizeUrl(input.url);
-  if (videoFilters.isBlockedVideoUrl(normalizedUrl, input.contentType)) {
+  // Use exception-aware blocking so whitelisted video CDN domains
+  // (from uBO filter lists) are not filtered out as ads.
+  if (isBlockedUrlWithFilters(normalizedUrl, input.contentType)) {
     return null;
   }
 
@@ -2367,3 +2428,7 @@ browserApi.onTabUpdated((tabId, changeInfo) => {
 });
 
 tabState.load();
+
+// Start filter list integration — loads cached exception domains,
+// then schedules periodic refresh every 5 days.
+initFilterIntegration();
