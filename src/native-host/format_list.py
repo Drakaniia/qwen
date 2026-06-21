@@ -8,7 +8,12 @@ from browser_context import remove_temp_files, write_cookie_file_from_headers
 from native_paths import validate_download_url
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
-from yt_dlp_command import build_flat_playlist_command, build_formats_command, summarize_audio_formats, summarize_formats
+from yt_dlp_command import (
+    build_flat_playlist_command,
+    build_formats_command,
+    summarize_audio_formats,
+    summarize_formats,
+)
 from yt_dlp_dependencies import resolve_ffmpeg_location, resolve_yt_dlp_command
 
 

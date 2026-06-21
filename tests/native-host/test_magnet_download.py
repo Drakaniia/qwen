@@ -90,7 +90,8 @@ class MagnetCommandTests(unittest.TestCase):
 
         self.assertIn("--bt-max-peers", command)
         peers_index = command.index("--bt-max-peers")
-        self.assertEqual(command[peers_index + 1], "50")
+        # Optimized from 50 to 100 for faster swarm discovery
+        self.assertEqual(command[peers_index + 1], "100")
 
     def test_build_magnet_command_console_output(self):
         command = build_aria2c_magnet_command(

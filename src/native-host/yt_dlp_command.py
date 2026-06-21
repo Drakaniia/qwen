@@ -19,8 +19,8 @@ DEFAULT_FORMAT_SELECTOR = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b"
 AUDIO_FORMAT_SELECTOR = "ba[ext=m4a]/ba[ext=mp3]/ba/best"
 YOUTUBE_REMOTE_COMPONENTS = "ejs:github"
 GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
-MAX_FAST_CONNECTIONS = 32
-MAX_ARIA2_CONNECTIONS = 16
+MAX_FAST_CONNECTIONS = 48
+MAX_ARIA2_CONNECTIONS = 24
 DEFAULT_CONCURRENT_FRAGMENTS = MAX_FAST_CONNECTIONS
 DEFAULT_ARIA2_CONNECTIONS = MAX_ARIA2_CONNECTIONS
 
@@ -179,6 +179,8 @@ def build_yt_dlp_command(
                 "--max-tries=8",
                 "--retry-wait=2",
                 "--summary-interval=1",
+                "--async-dns=true",
+                "--dns-timeout=3",
             ]
         )
         command.extend(
@@ -608,6 +610,20 @@ def build_yt_dlp_fallback_variants(**build_kwargs):
         {
             "command": generic_cmd,
             "label": "yt-dlp (generic extractor)",
+        }
+    )
+
+    # 7 — Throttled-rate detection (when the server throttles the connection)
+    # yt-dlp monitors the download rate and detects when the server is
+    # artificially throttling the connection. When detected, it reconnects
+    # to bypass the throttle. 100K is a conservative threshold that catches
+    # most throttling without false positives on slow connections.
+    throttle_cmd = build_yt_dlp_command(**build_kwargs)
+    throttle_cmd.extend(["--throttled-rate", "100K"])
+    variants.append(
+        {
+            "command": throttle_cmd,
+            "label": "yt-dlp (throttle detect)",
         }
     )
 

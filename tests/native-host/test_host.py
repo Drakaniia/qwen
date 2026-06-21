@@ -235,8 +235,10 @@ class HostHelperTests(unittest.TestCase):
 
         args = command[command.index("--downloader-args") + 1]
         self.assertTrue(args.startswith("aria2c:"))
-        self.assertIn(f"--max-connection-per-server={host.MAX_ARIA2_CONNECTIONS}", args)
-        self.assertIn(f"--split={host.MAX_ARIA2_CONNECTIONS}", args)
+        # When aria2_connections=20 is passed and MAX_ARIA2_CONNECTIONS=24,
+        # bounded_int returns 20 (not capped). Verify the passed value is respected.
+        self.assertIn(f"--max-connection-per-server=20", args)
+        self.assertIn(f"--split=20", args)
         self.assertIn("--continue=true", args)
 
     def test_build_yt_dlp_command_keeps_hls_and_dash_on_native_fragment_downloader(self):

@@ -252,7 +252,7 @@ def download_direct(
     output_path,
     cancel_event=None,
     progress_callback=None,
-    chunk_size=65536,
+    chunk_size=1048576,
 ):
     """Download a direct media URL to a local file using Python urllib.
 
