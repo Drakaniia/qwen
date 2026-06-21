@@ -178,6 +178,45 @@ function isBlockedMediaUrl(url, contentType = "") {
   return AD_RE.test(text);
 }
 
+function isBlockedMediaUrlWithExceptions(url, contentType = "", exceptionDomains) {
+  // First check if the URL would normally be blocked.
+  if (!isBlockedMediaUrl(url, contentType)) {
+    return false;
+  }
+
+  // If no exception domains provided, the URL is blocked.
+  if (!exceptionDomains || typeof exceptionDomains !== "object" || exceptionDomains.size === 0) {
+    return true;
+  }
+
+  // Extract the hostname from the URL.
+  let hostname = "";
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch (_error) {
+    return true;
+  }
+
+  if (!hostname) {
+    return true;
+  }
+
+  // Check if the hostname matches any exception domain (exact or subdomain).
+  for (const domain of exceptionDomains) {
+    const normalized = String(domain || "")
+      .toLowerCase()
+      .replace(/^\.+/, "");
+    if (!normalized) {
+      continue;
+    }
+    if (hostname === normalized || hostname.endsWith("." + normalized)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function classifyMediaUrl(url, contentType = "") {
   const text = lower(url);
   const type = lower(contentType);
@@ -254,6 +293,7 @@ const DIRECT_VIDEO_EXTENSION_RE = /\.(mp4|m4v|webm)(?:$|[?#])/i;
 export {
   classifyMediaUrl,
   isBlockedMediaUrl,
+  isBlockedMediaUrlWithExceptions,
   isDownloadableMediaUrl,
   isEphemeralMediaUrl,
   isHttpUrl,
