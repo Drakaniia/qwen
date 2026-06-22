@@ -7,12 +7,13 @@ import * as DownloadList from "./download_list.js";
 import * as videoFilters from "../shared/video_filters.js";
 import * as qualityFormat from "../shared/quality_format.js";
 import * as qualityDialog from "../shared/quality_dialog.js";
-import * as VideoPicker from "../shared/video_picker.js";
+import * as PopupUI from "./popup-ui.js";
+import * as PopupStateHelpers from "./popup-state.js";
 
 const api = typeof browser !== "undefined" ? browser : chrome;
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const ACTIVE_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
+const { ACTIVE_DOWNLOAD_STATUSES } = PopupStateHelpers;
 const RESCAN_IDLE_LABEL = "Rescan";
 const RESCAN_BUSY_LABEL = "Refreshing";
 
@@ -153,9 +154,7 @@ function setRescanRefreshing(refreshing) {
   elements.rescan.title = label;
 }
 
-function activeDownloadJobs(downloads) {
-  return downloads.filter((job) => ACTIVE_DOWNLOAD_STATUSES.has(job.status || "queued"));
-}
+const activeDownloadJobs = PopupStateHelpers.activeDownloadJobs;
 
 function setMessage(text, isError) {
   elements.message.textContent = text;
@@ -169,9 +168,7 @@ function setSettingsStatus(text, isError) {
   elements.settingsStatus.classList.toggle("error", isError);
 }
 
-function isUnknownMessageTypeError(response) {
-  return /unknown message type/i.test(String(response?.error || ""));
-}
+const isUnknownMessageTypeError = PopupStateHelpers.isUnknownMessageTypeError;
 
 function setHelperStatus(text, className) {
   elements.helperStatus.textContent = text;
@@ -246,53 +243,13 @@ function setMusicMode(enabled) {
 
 // ─── URL / video helpers ────────────────────────────────────────────────────
 
-function shortenUrl(url) {
-  try {
-    const parsed = new URL(url);
-    const path = `${parsed.hostname}${parsed.pathname}`;
-    const suffix = parsed.search ? "?..." : "";
-    return path.length > 74 ? `${path.slice(0, 34)}...${path.slice(-30)}${suffix}` : `${path}${suffix}`;
-  } catch (_error) {
-    return String(url || "").slice(0, 95);
-  }
-}
+const shortenUrl = PopupUI.shortenUrl;
 
-function videoTitle(video) {
-  if (video.title) {
-    return video.title;
-  }
-  const isAudio = String(video.format || "").toUpperCase() === AUDIO_FORMAT;
-  return shortenUrl(video.url) || (isAudio ? "Music" : "Video");
-}
-
-function displayFormat(video) {
-  return VideoPicker.displayFormat(video, videoFilters);
-}
-
-function sourceLabel(video) {
-  return VideoPicker.sourceLabel(video, videoFilters);
-}
-
-function videoSizeLabel(video) {
-  return VideoPicker.videoSizeLabel(video, videoFilters);
-}
-
-function videoThumbnailUrl(video) {
-  const value = video && (video.thumbnailUrl || video.poster || video.image || "");
-  if (!value) {
-    return "";
-  }
-
-  try {
-    const parsed = new URL(value);
-    if (!["http:", "https:", "blob:", "data:"].includes(parsed.protocol)) {
-      return "";
-    }
-    return parsed.href;
-  } catch (_error) {
-    return "";
-  }
-}
+const videoTitle = PopupUI.videoTitle;
+const displayFormat = PopupUI.displayFormat;
+const sourceLabel = PopupUI.sourceLabel;
+const videoSizeLabel = PopupUI.videoSizeLabel;
+const videoThumbnailUrl = PopupUI.videoThumbnailUrl;
 
 // ─── Video rendering ────────────────────────────────────────────────────────
 
@@ -491,22 +448,7 @@ function chooseQuality({ title, formats, nativeError, hasSubtitles }) {
 
 // ─── URL helpers ────────────────────────────────────────────────────────────
 
-function normalizeManualUrl(value) {
-  const text = String(value || "").trim();
-  if (!text) {
-    return "";
-  }
-
-  try {
-    const parsed = new URL(text);
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      return "";
-    }
-    return parsed.href;
-  } catch (_error) {
-    return "";
-  }
-}
+const normalizeManualUrl = PopupUI.normalizeManualUrl;
 
 // ─── Recording flow ────────────────────────────────────────────────────────
 
