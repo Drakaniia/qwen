@@ -20,7 +20,7 @@ function Invoke-ExtensionTests {
   Push-Location $root
   try {
     node scripts/build-test-bundles.js
-    Get-ChildItem tests\extension -Filter test_*.js | Sort-Object Name | ForEach-Object {
+    Get-ChildItem tests\extension -Filter test_*.js -Recurse | Sort-Object Name | ForEach-Object {
       node $_.FullName
     }
   } finally {
