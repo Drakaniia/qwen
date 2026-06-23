@@ -1124,6 +1124,23 @@ footer {
   }
 }
 
+/* ─── Content fade-out (used when transitioning normal → setup screen) ─ */
+
+@keyframes content-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.content-fade-out {
+  animation: content-fade-out 180ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content-fade-out {
+    animation: none;
+  }
+}
+
 .setup-icon {
   font-size: 32px;
   line-height: 1;
