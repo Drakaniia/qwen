@@ -164,7 +164,6 @@ function isCacheExpired(cacheEntry, refreshDays) {
 }
 
 export {
-  getConfiguredLists,
   loadFromCache,
   saveToCache,
   serializeRules,

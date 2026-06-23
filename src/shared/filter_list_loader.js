@@ -25,22 +25,17 @@ import {
   RULE_EXCEPTION,
   RULE_REGEX,
   FILTER_LISTS,
+  getConfiguredLists,
 } from "./filter_list_config.js";
 
 import {
   parseFilterList,
-  parseOptions,
   extractVideoRelevantRules,
-  isKnownAdDomain,
-  isKnownVideoDomain,
-  isKnownStreamingDomain,
 } from "./filter_list_parser.js";
 
 import {
-  getConfiguredLists,
   loadFromCache,
   saveToCache,
-  serializeRules,
   deserializeRules,
   loadCompiledPatterns,
   saveCompiledPatterns,
