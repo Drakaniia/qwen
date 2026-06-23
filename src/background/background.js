@@ -409,117 +409,10 @@ async function clearDownloads() {
   return getDownloadOrchestration().clearDownloads();
 }
 
-// ── Cached helper status ────────────────────────────────────────────────
+// ── Imported helper-ping module ────────────────────────────────────────
+import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, startHelperPing, pingNativeHost } from "./background-helper-ping.js";
 
-/**
- * @type {{ connected: boolean, version: string, dependencies: Object, lastChecked: number }}
- */
-let cachedHelperStatus = {
-  connected: false,
-  version: "",
-  dependencies: {},
-  lastChecked: 0,
-};
-
-const HELPER_PING_INTERVAL_MS = 30000; // 30 seconds
-let helperPingTimer = null;
-
-/**
- * Run a ping check and update the cached status.
- * If the status changed from the previous check, broadcast to popups.
- */
-async function refreshCachedHelperStatus() {
-  const result = await pingNativeHost();
-  const previousConnected = cachedHelperStatus.connected;
-
-  if (result && result.ok) {
-    cachedHelperStatus = {
-      connected: true,
-      version: result.version || "",
-      dependencies: result.dependencies || {},
-      lastChecked: Date.now(),
-    };
-  } else {
-    cachedHelperStatus = {
-      connected: false,
-      version: "",
-      dependencies: {},
-      lastChecked: Date.now(),
-    };
-  }
-
-  // Broadcast to popups if status changed
-  if (previousConnected !== cachedHelperStatus.connected) {
-    notifyPopup({ type: "helperStatusChanged", status: { ...cachedHelperStatus } });
-  }
-}
-
-/**
- * Start the periodic helper ping interval.
- * Runs immediately on start, then every HELPER_PING_INTERVAL_MS.
- */
-function startHelperPing() {
-  // Clear any existing timer
-  if (helperPingTimer !== null) {
-    clearInterval(helperPingTimer);
-  }
-
-  // Run immediately
-  refreshCachedHelperStatus();
-
-  // Then run periodically
-  helperPingTimer = setInterval(refreshCachedHelperStatus, HELPER_PING_INTERVAL_MS);
-}
-
-// ── Native host ping ─────────────────────────────────────────────────────
-
-function pingNativeHost() {
-  return new Promise((resolve) => {
-    const id = `ping_${Date.now()}`;
-    let settled = false;
-    const port = browserApi.runtime.connectNative(HOST_NAME);
-
-    const finish = (result) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      resolve(result);
-      try {
-        if (port) {
-          port.disconnect();
-        }
-      } catch (_error) {}
-    };
-
-    if (!port) {
-      finish({ ok: false, error: "Native messaging is not available in this browser." });
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      finish({ ok: false, error: "Native helper did not respond." });
-    }, 5000);
-
-    port.onMessage.addListener((message) => {
-      if (message && message.id === id && message.type === "pong") {
-        clearTimeout(timeout);
-        finish({ ok: true, version: message.version, dependencies: message.dependencies || {} });
-      }
-    });
-
-    port.onDisconnect.addListener(() => {
-      clearTimeout(timeout);
-      const runtimeError = api.runtime.lastError ? api.runtime.lastError.message : "";
-      finish({
-        ok: false,
-        error: runtimeError || "Native helper is not registered or could not start.",
-      });
-    });
-
-    port.postMessage({ type: "ping", id });
-  });
-}
+// ── WebRequest listener registration helper ─────────────────────────────
 
 function registerBeforeSendHeadersListener() {
   browserApi.webRequest.onBeforeSendHeaders.addListener(handleBeforeSendHeaders, { urls: ["<all_urls>"] }, [
@@ -1325,7 +1218,7 @@ messageRouter.handle("getHelperStatus", async () => {
   // If cache is stale (> 30s), refresh it before returning
   const age = Date.now() - cachedHelperStatus.lastChecked;
   if (age > HELPER_PING_INTERVAL_MS || !cachedHelperStatus.lastChecked) {
-    await refreshCachedHelperStatus();
+    await refreshCachedHelperStatus(notifyPopup, HOST_NAME);
   }
   return {
     ok: true,
@@ -1401,5 +1294,5 @@ tabState.load();
 // Start filter list integration
 filterIntegration.initFilterIntegration();
 
-// Start periodic helper ping
-startHelperPing();
+// Start periodic helper ping (pass notifyPopup for status change broadcasts)
+startHelperPing(notifyPopup, HOST_NAME);
