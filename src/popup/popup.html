@@ -20,6 +20,7 @@
           ></span>
         </div>
         <p id="helperStatus" class="helper-status">Checking helper...</p>
+    <button id="helperRetryBtn" class="helper-retry-btn" type="button" hidden title="Retry check">↻</button>
       </div>
       <div class="topbar-actions">
         <button id="rescan" class="icon-button" type="button" aria-label="Rescan" title="Rescan">
@@ -51,6 +52,63 @@
         </button>
       </div>
     </header>
+
+    <!-- ─── Helper not connected: setup screen ────────────────────────── -->
+    <div id="setupScreen" class="setup-screen" hidden>
+      <div class="setup-icon">⚠️</div>
+      <h2 class="setup-title">Helper Not Connected</h2>
+      <p class="setup-desc">
+        Qwin needs the native helper to download videos and music.
+        The helper was not found or could not start.
+      </p>
+
+      <div class="setup-install-area">
+        <button id="setupCopyBtn" class="primary setup-button" type="button">
+          <span class="setup-button-icon">📋</span>
+          <span class="setup-button-text">Copy install command</span>
+        </button>
+        <div class="setup-command-row">
+          <input id="setupCommandInput" type="text" class="setup-command-input" readonly spellcheck="false"
+            value="scripts\install.bat" />
+        </div>
+        <p class="setup-hint">
+          Open a terminal in the <strong>Qwin project directory</strong>, paste this command, and press Enter.
+        </p>
+      </div>
+
+      <div class="setup-whats-installed">
+        <p class="setup-whats-title">The installer will set up:</p>
+        <ul class="setup-whats-list">
+          <li>yt-dlp — downloads videos from 1,000+ sites</li>
+          <li>ffmpeg — merges audio/video and converts formats</li>
+          <li>aria2c — fast segmented downloading</li>
+          <li>Stream fallback tools</li>
+          <li>Native messaging host registration</li>
+        </ul>
+      </div>
+
+      <div class="setup-status-row">
+        <span class="setup-checking-dot"></span>
+        <span id="setupStatusText" class="setup-status-text">Checking for helper...</span>
+      </div>
+    </div>
+
+    <!-- ─── Collapsible dependency warning banner ──────────────────────── -->
+    <div id="depBanner" class="dep-banner" hidden>
+      <button id="depBannerToggle" class="dep-banner-toggle" type="button" aria-expanded="false">
+        <span class="dep-banner-icon">⚠️</span>
+        <span id="depBannerTitle" class="dep-banner-title">Some download tools missing</span>
+        <span class="dep-banner-chevron">▶</span>
+      </button>
+      <div id="depBannerBody" class="dep-banner-body" hidden>
+        <div id="depBannerList" class="dep-banner-list"></div>
+        <p class="dep-banner-cta">Run <code>scripts\install.bat</code> from the Qwin project directory to install missing tools.</p>
+        <button id="depBannerCopyBtn" class="dep-banner-copy-btn" type="button">
+          <span class="setup-button-icon">📋</span>
+          Copy install command
+        </button>
+      </div>
+    </div>
 
     <section id="settingsPanel" class="settings-panel" hidden>
       <label for="manualUrl">Download from link</label>
