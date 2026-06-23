@@ -1,0 +1,181 @@
+/* ─── Animations ─────────────────────────────────────────────────────────── */
+
+@keyframes indicator-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes qwin-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes progress-loop {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes setup-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes setup-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes content-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes content-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes setup-icon-bounce {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes setup-breathe {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.3);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.75);
+    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0);
+  }
+}
+
+@keyframes retry-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes recording-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.4);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 0 6px rgba(185, 28, 28, 0);
+  }
+}
+
+/* ─── Animation utility classes ──────────────────────────────────────────── */
+
+.content-fade-in {
+  animation: content-fade-in 300ms ease both;
+}
+
+.content-fade-out {
+  animation: content-fade-out 180ms ease both;
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .download-indicator[data-status="checking"] {
+    animation: none;
+  }
+
+  .icon-button.is-refreshing svg {
+    animation: none;
+  }
+
+  .progress-bar.indeterminate span {
+    animation: none;
+    width: 100% !important;
+    opacity: 0.5;
+  }
+
+  .setup-screen {
+    animation: none;
+  }
+
+  .setup-screen.fade-out {
+    animation: none;
+  }
+
+  .content-fade-in {
+    animation: none;
+  }
+
+  .content-fade-out {
+    animation: none;
+  }
+
+  .setup-icon {
+    animation: none;
+  }
+
+  .setup-checking-dot {
+    animation: none;
+  }
+
+  .dep-banner-item {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .dep-banner-body {
+    transition: none;
+  }
+
+  .dep-banner-copy-btn,
+  .dep-banner-cta {
+    opacity: 1;
+    transition: none;
+  }
+
+  .helper-retry-btn.spinning {
+    animation: none;
+  }
+
+  .recording-icon {
+    animation: none;
+  }
+}
