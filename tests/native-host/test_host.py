@@ -660,19 +660,19 @@ class HostHelperTests(unittest.TestCase):
 
         self.assertEqual(command, [host.sys.executable, "-m", "yt_dlp"])
 
-    @patch("host.Path.exists", return_value=True)
-    @patch("host.shutil.which", return_value=None)
-    @patch("host.get_imageio_ffmpeg_exe", return_value=r"C:\Python\site-packages\ffmpeg.exe")
-    def test_resolve_ffmpeg_location_uses_imageio_ffmpeg_fallback(self, _imageio, _which, _exists):
+@patch("pathlib.Path.exists", return_value=True)
+@patch("host.shutil.which", return_value=None)
+@patch("host.get_imageio_ffmpeg_exe", return_value=r"C:\Python\site-packages\ffmpeg.exe")
+def test_resolve_ffmpeg_location_uses_imageio_ffmpeg_fallback(self, _imageio, _which, _exists):
+    self.assertEqual(host.resolve_ffmpeg_location(), r"C:\Python\site-packages\ffmpeg.exe")
+
+@patch("pathlib.Path.exists", return_value=True)
+@patch("host.shutil.which", return_value=None)
+def test_resolve_ffmpeg_location_uses_adapter_imageio_without_recursing(self, _which, _exists):
+    import yt_dlp_adapter
+
+    with patch.object(yt_dlp_adapter, "get_imageio_ffmpeg_exe", return_value=r"C:\Python\site-packages\ffmpeg.exe"):
         self.assertEqual(host.resolve_ffmpeg_location(), r"C:\Python\site-packages\ffmpeg.exe")
-
-    @patch("host.Path.exists", return_value=True)
-    @patch("host.shutil.which", return_value=None)
-    def test_resolve_ffmpeg_location_uses_adapter_imageio_without_recursing(self, _which, _exists):
-        import yt_dlp_adapter
-
-        with patch.object(yt_dlp_adapter, "get_imageio_ffmpeg_exe", return_value=r"C:\Python\site-packages\ffmpeg.exe"):
-            self.assertEqual(host.resolve_ffmpeg_location(), r"C:\Python\site-packages\ffmpeg.exe")
 
     @patch("host.shutil.which", return_value=None)
     def test_resolve_aria2c_location_uses_local_portable_fallback(self, _which):
