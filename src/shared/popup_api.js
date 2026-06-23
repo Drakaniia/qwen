@@ -139,6 +139,15 @@ function pingNativeHost() {
   return runtimeMessage({ type: "pingNativeHost" });
 }
 
+/**
+ * Get the cached native helper status from the background.
+ * Returns { connected, version, dependencies, lastChecked }.
+ * @returns {Promise<{ok: boolean, connected: boolean, version: string, dependencies: Object, lastChecked: number}>}
+ */
+function getHelperStatus() {
+  return runtimeMessage({ type: "getHelperStatus" });
+}
+
 /** @param {string} magnetUrl @param {string} [downloadFolder] */
 function downloadMagnet(magnetUrl, downloadFolder) {
   return runtimeMessage({ type: "downloadMagnet", url: magnetUrl, downloadFolder: downloadFolder || "" });
@@ -303,6 +312,7 @@ export {
   saveSettings,
   chooseDownloadFolder,
   pingNativeHost,
+  getHelperStatus,
   downloadMagnet,
   chooseTorrentFile,
   downloadTorrent,
