@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 
 // ─── These imports will fail — the modules don't exist yet (RED phase) ──────
-import * as PopupUI from "../../../src/popup/popup-ui.js";
+import * as PopupUI from "../../src/popup/popup-ui.js";
 
 // ─── shortenUrl ─────────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import * as filters from "../../../src/shared/video_filters.js";
-import * as pageDetection from "../../../src/content/page_detection.js";
+import * as filters from "../../src/shared/video_filters.js";
+import * as pageDetection from "../../src/content/page_detection.js";
 
 function createPageDetection(options = {}) {
   const doc = {

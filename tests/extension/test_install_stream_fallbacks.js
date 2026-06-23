@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const __dirname = import.meta.dirname;
-const script = fs.readFileSync(path.join(__dirname, "../../../scripts/install-stream-fallbacks.ps1"), "utf8");
+const script = fs.readFileSync(path.join(__dirname, "../../scripts/install-stream-fallbacks.ps1"), "utf8");
 
 assert.match(
   script,

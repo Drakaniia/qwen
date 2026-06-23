@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const __dirname = import.meta.dirname;
-const css = fs.readFileSync(path.join(__dirname, "../../../src/popup/popup.css"), "utf8");
+const css = fs.readFileSync(path.join(__dirname, "../../src/popup/popup.css"), "utf8");
 
 assert.match(
   css,

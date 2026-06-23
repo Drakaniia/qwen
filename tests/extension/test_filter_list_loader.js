@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import * as loader from "../../../src/shared/filter_list_loader.js";
+import * as loader from "../../src/shared/filter_list_loader.js";
 
 // ── parseFilterList ────────────────────────────────────────────────────────
 

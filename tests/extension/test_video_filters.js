@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-import * as mediaCandidates from "../../../src/shared/media_candidates.js";
-import * as filters from "../../../src/shared/video_filters.js";
+import * as mediaCandidates from "../../src/shared/media_candidates.js";
+import * as filters from "../../src/shared/video_filters.js";
 
 const __dirname = import.meta.dirname;
 const candidateRules = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../../fixtures/media_candidate_rules.json"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../fixtures/media_candidate_rules.json"), "utf8"),
 );
 
 for (const rule of candidateRules) {

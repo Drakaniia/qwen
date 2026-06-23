@@ -153,7 +153,7 @@ globalThis.chrome = {
 
 let cdmNetworkIntercept;
 try {
-  cdmNetworkIntercept = await import("../../../src/background/cdm_network_intercept.js");
+  cdmNetworkIntercept = await import("../../src/background/cdm_network_intercept.js");
 } catch (err) {
   console.warn("Could not import cdm_network_intercept.js directly:", err.message);
 }

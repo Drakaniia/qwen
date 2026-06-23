@@ -4,11 +4,11 @@ import path from "node:path";
 import vm from "node:vm";
 
 const __dirname = import.meta.dirname;
-const popupDir = path.join(__dirname, "../../../src/popup");
+const popupDir = path.join(__dirname, "../../src/popup");
 const html = fs.readFileSync(path.join(popupDir, "popup.html"), "utf8");
 const css = fs.readFileSync(path.join(popupDir, "popup.css"), "utf8");
 const downloadListJs = fs.readFileSync(path.join(popupDir, "download_list.js"), "utf8");
-const popupBundle = fs.readFileSync(path.join(__dirname, "../../../dist/test/popup.bundle.js"), "utf8");
+const popupBundle = fs.readFileSync(path.join(__dirname, "../../dist/test/popup.bundle.js"), "utf8");
 
 // ─── Element IDs used by the popup (including new recording elements) ───────
 
@@ -223,7 +223,7 @@ assert.ok(
 
 // ─── Download List Helper Tests ─────────────────────────────────────────────
 
-import * as DownloadList from "../../../src/popup/download_list.js";
+import * as DownloadList from "../../src/popup/download_list.js";
 
 {
   assert.ok(downloadListJs.includes("function formatDuration"), "download_list.js must define formatDuration helper");

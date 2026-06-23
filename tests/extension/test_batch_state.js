@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import * as BatchState from "../../../src/shared/batch_state.js";
+import * as BatchState from "../../src/shared/batch_state.js";
 
 // ─── Initial state ──────────────────────────────────────────────────────────
 

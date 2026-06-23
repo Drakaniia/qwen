@@ -5,18 +5,18 @@ import path from "node:path";
 const __dirname = import.meta.dirname;
 
 const source = [
-  fs.readFileSync(path.join(__dirname, "../../../src/background/download_helpers.js"), "utf8"),
-  fs.readFileSync(path.join(__dirname, "../../../src/background/header_utils.js"), "utf8"),
-  fs.readFileSync(path.join(__dirname, "../../../src/background/video_utils.js"), "utf8"),
-  fs.readFileSync(path.join(__dirname, "../../../src/background/filter_integration.js"), "utf8"),
-  fs.readFileSync(path.join(__dirname, "../../../src/background/size_probe.js"), "utf8"),
-  fs.readFileSync(path.join(__dirname, "../../../src/background/format_helpers.js"), "utf8"),
-  fs.readFileSync(path.join(__dirname, "../../../src/background/recording.js"), "utf8"),
-  fs.readFileSync(path.join(__dirname, "../../../src/background/background.js"), "utf8"),
-  fs.readFileSync(path.join(__dirname, "../../../src/background/download_orchestration.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../src/background/download_helpers.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../src/background/header_utils.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../src/background/video_utils.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../src/background/filter_integration.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../src/background/size_probe.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../src/background/format_helpers.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../src/background/recording.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../src/background/background.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../src/background/download_orchestration.js"), "utf8"),
 ].join("\n");
-const downloadStateSource = fs.readFileSync(path.join(__dirname, "../../../src/background/download_state.js"), "utf8");
-const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../manifest.json"), "utf8"));
+const downloadStateSource = fs.readFileSync(path.join(__dirname, "../../src/background/download_state.js"), "utf8");
+const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../manifest.json"), "utf8"));
 
 assert.ok(
   manifest.permissions.includes("cookies"),

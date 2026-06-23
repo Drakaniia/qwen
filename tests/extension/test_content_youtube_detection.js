@@ -3,11 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 
-import * as videoFilters from "../../../src/shared/video_filters.js";
-import * as pageDetectionModule from "../../../src/content/page_detection.js";
+import * as videoFilters from "../../src/shared/video_filters.js";
+import * as pageDetectionModule from "../../src/content/page_detection.js";
 
 const __dirname = import.meta.dirname;
-const contentBundle = fs.readFileSync(path.join(__dirname, "../../../dist/test/content.bundle.js"), "utf8");
+const contentBundle = fs.readFileSync(path.join(__dirname, "../../dist/test/content.bundle.js"), "utf8");
 
 function createContentContext(locationHref) {
   const document = {

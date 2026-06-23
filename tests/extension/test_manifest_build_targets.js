@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const __dirname = import.meta.dirname;
-const root = path.join(__dirname, "../../..");
+const root = path.join(__dirname, "../..");
 const rootManifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 const chromiumManifest = JSON.parse(
   fs.readFileSync(path.join(root, "config/extension/manifest.chromium.json"), "utf8"),

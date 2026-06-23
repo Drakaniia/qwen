@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const __dirname = import.meta.dirname;
-const root = path.join(__dirname, "../../..");
+const root = path.join(__dirname, "../..");
 const installScript = fs.readFileSync(path.join(root, "scripts/install.bat"), "utf8");
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
 const installationDocs = fs.readFileSync(path.join(root, "docs/installation.md"), "utf8");

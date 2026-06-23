@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import * as videoPicker from "../../../src/shared/video_picker.js";
-import * as videoFilters from "../../../src/shared/video_filters.js";
+import * as videoPicker from "../../src/shared/video_picker.js";
+import * as videoFilters from "../../src/shared/video_filters.js";
 
 class TestElement {
   constructor(tagName = "div") {

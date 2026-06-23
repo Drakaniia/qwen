@@ -92,7 +92,7 @@ globalThis.chrome = {
 
 let segmentCapture;
 try {
-  segmentCapture = await import("../../../src/background/segment_capture.js");
+  segmentCapture = await import("../../src/background/segment_capture.js");
 } catch (err) {
   console.warn("Could not import segment_capture.js directly:", err.message);
 }

@@ -4,7 +4,7 @@ import path from "node:path";
 import vm from "node:vm";
 
 const __dirname = import.meta.dirname;
-const popupBundle = fs.readFileSync(path.join(__dirname, "../../../dist/test/popup.bundle.js"), "utf8");
+const popupBundle = fs.readFileSync(path.join(__dirname, "../../dist/test/popup.bundle.js"), "utf8");
 
 const POPUP_ELEMENT_IDS = [
   "helperStatus",

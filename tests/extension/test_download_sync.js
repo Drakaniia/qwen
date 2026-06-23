@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import * as DownloadSync from "../../../src/shared/download_sync.js";
+import * as DownloadSync from "../../src/shared/download_sync.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

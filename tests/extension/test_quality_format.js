@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import * as qualityFormat from "../../../src/shared/quality_format.js";
-import * as videoFilters from "../../../src/shared/video_filters.js";
+import * as qualityFormat from "../../src/shared/quality_format.js";
+import * as videoFilters from "../../src/shared/video_filters.js";
 
 assert.equal(qualityFormat.formatQualityValue({ height: 1080, label: "Fallback" }), "1080p");
 assert.equal(qualityFormat.formatQualityValue({ width: 1920 }), "1920w");

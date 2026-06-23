@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-import * as qualityDialog from "../../../src/shared/quality_dialog.js";
-import * as qualityFormat from "../../../src/shared/quality_format.js";
-import * as videoFilters from "../../../src/shared/video_filters.js";
+import * as qualityDialog from "../../src/shared/quality_dialog.js";
+import * as qualityFormat from "../../src/shared/quality_format.js";
+import * as videoFilters from "../../src/shared/video_filters.js";
 
 const __dirname = import.meta.dirname;
 
-const contentSource = fs.readFileSync(path.join(__dirname, "../../../src/content/content.js"), "utf8");
-const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../manifest.json"), "utf8"));
+const contentSource = fs.readFileSync(path.join(__dirname, "../../src/content/content.js"), "utf8");
+const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../manifest.json"), "utf8"));
 
 class TestElement {
   constructor(tagName = "div") {

@@ -4,8 +4,8 @@ import path from "node:path";
 import vm from "node:vm";
 
 const __dirname = import.meta.dirname;
-const popupBundle = fs.readFileSync(path.join(__dirname, "../../../dist/test/popup.bundle.js"), "utf8");
-const popupCss = fs.readFileSync(path.join(__dirname, "../../../src/popup/popup.css"), "utf8");
+const popupBundle = fs.readFileSync(path.join(__dirname, "../../dist/test/popup.bundle.js"), "utf8");
+const popupCss = fs.readFileSync(path.join(__dirname, "../../src/popup/popup.css"), "utf8");
 
 // Mutable browser mock — set in each VM sandbox before the bundle runs so that
 // popup_api.js (bundled inside) captures `browser` at load time.

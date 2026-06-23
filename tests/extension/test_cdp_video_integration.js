@@ -21,8 +21,8 @@ import assert from "node:assert/strict";
 
 // ─── Imports ──────────────────────────────────────────────────────────────
 
-import * as videoFilters from "../../../src/shared/video_filters.js";
-import * as mediaCandidates from "../../../src/shared/media_candidates.js";
+import * as videoFilters from "../../src/shared/video_filters.js";
+import * as mediaCandidates from "../../src/shared/media_candidates.js";
 
 // ─── Mock CDP extraction results ──────────────────────────────────────────
 

@@ -4,7 +4,7 @@ import path from "node:path";
 import vm from "node:vm";
 
 const __dirname = import.meta.dirname;
-const backgroundBundle = fs.readFileSync(path.join(__dirname, "../../../dist/test/background.bundle.js"), "utf8");
+const backgroundBundle = fs.readFileSync(path.join(__dirname, "../../dist/test/background.bundle.js"), "utf8");
 
 const TAB_ID = 42;
 const PAGE_URL = "https://example.com/watch/movie";

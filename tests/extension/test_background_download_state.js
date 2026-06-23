@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import * as downloadState from "../../../src/background/download_state.js";
+import * as downloadState from "../../src/background/download_state.js";
 
 assert.equal(downloadState.clampDownloadPercent("12.4"), 12.4);
 assert.equal(downloadState.clampDownloadPercent("bad"), null);

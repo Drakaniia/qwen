@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import * as mediaCandidates from "../../../src/shared/media_candidates.js";
-import * as filters from "../../../src/shared/video_filters.js";
+import * as mediaCandidates from "../../src/shared/media_candidates.js";
+import * as filters from "../../src/shared/video_filters.js";
 
 // ─── YouTube Music ─────────────────────────────────────────────────────────
 

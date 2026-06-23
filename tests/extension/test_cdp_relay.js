@@ -83,7 +83,7 @@ globalThis.chrome = {
 // Now import the module after setting up the mock
 let cdpRelay;
 try {
-  cdpRelay = await import("../../../src/background/cdp_relay.js");
+  cdpRelay = await import("../../src/background/cdp_relay.js");
 } catch (err) {
   // The import might fail in test environment due to bundler/module resolution.
   // We'll define the interface contract tests that the source module must satisfy.
