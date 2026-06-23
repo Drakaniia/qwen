@@ -409,6 +409,68 @@ async function clearDownloads() {
   return getDownloadOrchestration().clearDownloads();
 }
 
+// ── Cached helper status ────────────────────────────────────────────────
+
+/**
+ * @type {{ connected: boolean, version: string, dependencies: Object, lastChecked: number }}
+ */
+let cachedHelperStatus = {
+  connected: false,
+  version: "",
+  dependencies: {},
+  lastChecked: 0,
+};
+
+const HELPER_PING_INTERVAL_MS = 30000; // 30 seconds
+let helperPingTimer = null;
+
+/**
+ * Run a ping check and update the cached status.
+ * If the status changed from the previous check, broadcast to popups.
+ */
+async function refreshCachedHelperStatus() {
+  const result = await pingNativeHost();
+  const previousConnected = cachedHelperStatus.connected;
+
+  if (result && result.ok) {
+    cachedHelperStatus = {
+      connected: true,
+      version: result.version || "",
+      dependencies: result.dependencies || {},
+      lastChecked: Date.now(),
+    };
+  } else {
+    cachedHelperStatus = {
+      connected: false,
+      version: "",
+      dependencies: {},
+      lastChecked: Date.now(),
+    };
+  }
+
+  // Broadcast to popups if status changed
+  if (previousConnected !== cachedHelperStatus.connected) {
+    notifyPopup({ type: "helperStatusChanged", status: { ...cachedHelperStatus } });
+  }
+}
+
+/**
+ * Start the periodic helper ping interval.
+ * Runs immediately on start, then every HELPER_PING_INTERVAL_MS.
+ */
+function startHelperPing() {
+  // Clear any existing timer
+  if (helperPingTimer !== null) {
+    clearInterval(helperPingTimer);
+  }
+
+  // Run immediately
+  refreshCachedHelperStatus();
+
+  // Then run periodically
+  helperPingTimer = setInterval(refreshCachedHelperStatus, HELPER_PING_INTERVAL_MS);
+}
+
 // ── Native host ping ─────────────────────────────────────────────────────
 
 function pingNativeHost() {
@@ -1253,10 +1315,25 @@ messageRouter.handle("clearDownloadSyncHistory", async () => {
   return { ok: true };
 });
 
-// ── Ping native host ─────────────────────────────────────────────────────
+// ── Helper status ────────────────────────────────────────────────────────
 
 messageRouter.handle("pingNativeHost", async () => {
   return pingNativeHost();
+});
+
+messageRouter.handle("getHelperStatus", async () => {
+  // If cache is stale (> 30s), refresh it before returning
+  const age = Date.now() - cachedHelperStatus.lastChecked;
+  if (age > HELPER_PING_INTERVAL_MS || !cachedHelperStatus.lastChecked) {
+    await refreshCachedHelperStatus();
+  }
+  return {
+    ok: true,
+    connected: cachedHelperStatus.connected,
+    version: cachedHelperStatus.version,
+    dependencies: { ...cachedHelperStatus.dependencies },
+    lastChecked: cachedHelperStatus.lastChecked,
+  };
 });
 
 // ── Rescan / clear tab ───────────────────────────────────────────────────
@@ -1323,3 +1400,6 @@ tabState.load();
 
 // Start filter list integration
 filterIntegration.initFilterIntegration();
+
+// Start periodic helper ping
+startHelperPing();
