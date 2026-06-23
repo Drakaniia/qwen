@@ -1,12 +1,22 @@
-# Audit Report: qwin
+# Audit Report: Qwin Video Downloader
 
-**Generated:** June 22, 2026
-**Project Type:** Chrome/Firefox/Yandex browser extension (video downloader) with Python native host and Go CDM module
-**Source Files Scanned:** 144 files (excluding `.git/`, `node_modules/`, `dist/`, `__pycache__/`, `.ruff_cache/`, `.opencode/`, `.claude/`)
+Generated: June 23, 2026
 
 ## Executive Summary
 
-The qwin codebase is well-organized with a logical modular structure (background, content, popup, shared, native-host, Go modules). However, it suffers from **significant file bloat** — 20 files exceed the 400-line threshold, with the top three files (`popup.js` at 1606 lines, `background.js` at 1325 lines, `go/main_test.go` at 1301 lines) being critical refactoring targets. There is an **empty dead directory** (`src/adblock/`) suggesting abandoned work, and the `tests/extension/` directory has 31 files — just over the recommended 30-file limit. Naming conventions are largely consistent within domains. Doc files are well-organized into `docs/`.
+Qwin is a cross-browser video downloader extension (Chrome/Firefox/Yandex) with a Python native host and Go CDM companion. At **255 files** across **15 top-level directories**, it is a medium-sized project with healthy structure overall. However, **29 files exceed the 400-line threshold** (some massively), **naming conventions are mixed in the popup layer**, and **33 test files in one directory** are nearing the bloat threshold. The docs are well-organized, nesting depth is shallow (max 3), and there are no deep structural rot issues — the audit focuses on **splitting oversized files** and **naming consistency**.
+
+| Metric | Threshold | Result | Severity |
+|--------|-----------|--------|----------|
+| Folder file count | >30 files/dir | `tests/extension/` — **33 files** | 🔴 Warning |
+| File line count | >400 lines/file | **29 files** exceed threshold (top: 1,837) | 🔴 Warning |
+| Nesting depth | >4 levels | Max **3 levels** | ✅ OK |
+| Naming conventions | Mixed styles at same level | `src/popup/` mixes kebab-case & snake_case | 🟡 Warning |
+| Orphaned/misplaced files | Mismatched purpose | `logs/Readme.md`, `.claude/` empty, `media_candidates.py` duplication | 🟢 Suggestion |
+| Doc sprawl | >5 scattered `.md` files | **21 `.md` files** across 7 locations (well-organized though) | 🟢 Suggestion |
+| Empty/dead directories | Empty dirs | `.claude/` — empty | 🟢 Suggestion |
+
+---
 
 ## Severity Legend
 
@@ -21,337 +31,159 @@ The qwin codebase is well-organized with a logical modular structure (background
 ### Phase 1: Quick Cleanup
 _Low effort, safe changes._
 
-- [ ] **Remove empty/dead `src/adblock/` directory** — appears to be an abandoned ad-blocking feature stub. The empty `dist/chromium/src/adblock/`, `dist/firefox/src/adblock/`, `dist/yandex/src/adblock/` are generated copies that will also disappear after rebuild.
+- [x] **Remove empty `.claude/` directory** — empty directory at project root, removed.
+
+- [x] **Relocate `logs/Readme.md` → `docs/guides/troubleshooting-log.md`** — troubleshooting guide moved to `docs/guides/` with proper naming.
+
+- [x] **`__pycache__` already in `.gitignore`** — both `src/native-host/__pycache__` and `tests/native-host/__pycache__` are already ignored. Verified with `git check-ignore`.
+
+---
+
+### Phase 2: File Refactoring (Split Oversized Files)
+_Medium effort — split the worst offenders. The threshold is **400 lines per file**._
+
+**Before (oversized files flagged):**
+
+```
+29 files exceed 400 lines.
+Top offenders:
+  src/popup/popup.js             1,837 lines  — UI logic, DOM, event handlers, helpers
+  src/popup/popup.css            1,702 lines  — all popup styles in one file
+  src/background/background.js   1,405 lines  — service worker entry, orchestration
+  go/main_test.go                1,301 lines  — comprehensive Go integration tests
+  tests/native-host/test_host.py 1,208 lines  — exhaustive Python host tests
+  benchmarks/speedtest.py        1,050 lines  — standalone speed test script
+  ... and 23 more files >400 lines
+```
+
+#### Recommended splits:
+
+- [x] **Split `src/popup/popup.js`** (1,837→~70 lines) — Extracted into:
+  - `src/popup/popup-elements.js` — DOM element references, constants, qualityChooser
+  - `src/popup/popup-helpers.js` — utility/helper functions (indicator, UI, transitions, batch)
+  - `src/popup/popup-renderer.js` — DOM rendering (video list creation)
+  - `src/popup/popup-events.js` — event listeners, message handler, PopupState subscription
+  - `src/popup/popup.js` — thin bootstrap (imports modules, calls `init()`)
+  - Also fixed: missing `playlistDetection` import in `updatePlaylistPrompt()`
+
+- [x] **Split `src/popup/popup.css`** (1,702→~20 lines) — Extracted into:
+  - `src/popup/popup-base.css` — CSS variables, reset, body, typography, layout containers
+  - `src/popup/popup-components.css` — all component-specific styles (down from 1,702 lines)
+  - `src/popup/popup-theme.css` — all `@keyframes` animations and `prefers-reduced-motion` media queries
+  - `src/popup/popup.css` — entry point with `@import` directives (no HTML changes needed)
+
+- [x] **Split `src/background/background.js`** (1,405→~1,300 lines) — Extracted helper-ping logic:
+  - `src/background/background-helper-ping.js` — `cachedHelperStatus`, `refreshCachedHelperStatus`, `startHelperPing`, `pingNativeHost`
+  - background.js imports from this module; init calls updated to pass `hostName` and `notifyPopup`
+
+- [x] **Split `go/main_test.go`** (1,301 lines) — Split into 4 feature-grouped files:
+  - `go/main_test.go` — IPC protocol tests (echo, status, version, unknown command, stop) + helpers
+  - `go/cdp_relay_test.go` — CDP relay flow tests (success, missing tabId, error result)
+  - `go/cdm_test.go` — CDM init, extract keys, license parsing tests
+  - `go/decrypt_test.go` — decrypt segments, AES-128 CTR, MP4 box parser, assemble segments tests
+
+- [x] **Split `tests/native-host/test_host.py`** (1,208 lines) — Split into 5 domain-grouped files:
+  - `tests/native-host/test_host.py` — core host utility tests (imports, sanitize, validate, protocol, artifacts, folder, open path)
+  - `tests/native-host/test_host_commands.py` — command building tests (yt-dlp, formats, n_m3u8dl_re, streamlink, tool resolution)
+  - `tests/native-host/test_host_download.py` — DownloadTask tests (pause, resume, cancel, fallbacks, creation flags)
+  - `tests/native-host/test_host_format_parsing.py` — format/media parsing tests (summarize_formats, extract_media_candidates)
+  - `tests/native-host/test_host_progress.py` — progress line parsing tests (yt-dlp, aria2, carriage returns, destination)
+
+- [ ] **Other files >400 lines (lower priority):**
+  - `benchmarks/speedtest.py` (1,050) — standalone, can remain as-is
+  - `tests/extension/test_background_hard_access_fallback.js` (980) — test file, lower priority
+  - `src/shared/filter_list_loader.js` (808) — consider splitting if maintainability suffers
+  - `src/native-host/capture_manager.py` (774) — consider splitting CDM capture vs. general capture
+  - `src/shared/video_filters.js` (661) — contains URL classification + filtering, could split
+  - `src/native-host/yt_dlp_command.py` (630) — build commands vs. parsing output
+  - `src/content/content.js` (639) — content script; already importing from shared modules
+  - `src/native-host/download_manager.py` (588) — large, consider splitting by backend type
+  - `src/background/download_orchestration.js` (582)
+  - `go/cdm.go` (566), `go/commands.go` (432), `go/decrypt.go` (417) — Go files just below threshold
+  - `src/background/cdm_network_intercept.js` (536)
+  - `src/background/recording.js` (450)
+  - `src/popup/download_list.js` (447)
+  - `src/content/page_detection.js` (443)
+
+---
+
+### Phase 3: Naming Convention Standardization
+_Low effort, aesthetic consistency._
+
+- [ ] **Standardize `src/popup/` naming** — Currently mixes kebab-case and snake_case:
 
   **Before:**
   ```
-  src/
-  ├── adblock/          ← empty directory
-  ├── background/
-  ├── content/
-  ├── native-host/
-  ├── popup/
-  └── shared/
+  src/popup/
+  ├── download_list.js        (snake_case)
+  ├── popup.js                (lowercase)
+  ├── popup.css               (lowercase)
+  ├── popup.html              (lowercase)
+  ├── popup-state.js          (kebab-case)
+  └── popup-ui.js             (kebab-case)
   ```
 
-  **After (proposed):**
+  **After (proposed — pick one convention):**
+  If the project prefers **snake_case** (dominant in `src/background`, `src/shared`, `src/native-host`):
   ```
-  src/
-  ├── background/
-  ├── content/
-  ├── native-host/
-  ├── popup/
-  └── shared/
+  src/popup/
+  ├── download_list.js
+  ├── popup.js
+  ├── popup.css
+  ├── popup.html
+  ├── popup_state.js           ← from popup-state.js
+  └── popup_ui.js              ← from popup-ui.js
   ```
 
-- [ ] **Remove empty `.claude/` directory** — no content, likely a leftover IDE artifact.
-
-- [ ] **Relocate `logs/Readme.md`** — lowercase filename `Readme.md` inside the `logs/` directory breaks convention. Either remove it or rename to `README.md` and move to project root if it's relevant documentation.
-
-- [ ] **Standardize casing in `scripts/`** — currently uses kebab-case (`build-bundles.js`, `install-aria2.ps1`), which differs from the snake_case convention used in `src/`. This is acceptable as build scripts often use kebab-case, but worth noting.
+  > **Note:** This requires updating imports in `popup.js` and any files referencing `popup-state` and `popup-ui`. Also note that `config/extension/manifest.*.json` manifest files reference these filenames.
 
 ---
 
-### Phase 2: File Refactoring (Oversized Files)
-_Medium effort — split the largest files. 20 files exceed the 400-line threshold._
+### Phase 4: Structural Improvements
+_Medium effort — address duplicated logic and slot issues._
 
-#### 🔴 `src/popup/popup.js` — 1606 lines (4× threshold)
+- [x] **Reviewed `src/native-host/media_candidates.py` vs `src/shared/media_candidates.js`** — Findings:
+  - Python is missing: `AUDIO_EXTENSION_RE`, `MUSIC_CDN_RE`, `AUDIO_ONLY_HOST_RE`, `ANTIBLOCK_RE`, `AD_STATIC_ASSET_RE`, `GIF_VIDEO_RE`, `EMBED_PLAYER_HOST_RE`, `STREAMING_PAGE_HOST_RE`, `CDN_HINT_RE`, `YOUTUBE_PAGE_PATH_RE`
+  - Python uses a combined `SEGMENT_RE` while JS has separate `SEGMENT_EXTENSION_RE`, `SEGMENT_NAME_RE`, `FRAGMENTED_STREAM_CONTEXT_RE`, `NUMBERED_MEDIA_FRAGMENT_RE`
+  - Python uses `is_reusable_media_url()` (combines block + classify) while JS uses separate `isBlockedMediaUrl()` and `isDownloadableMediaUrl()`
+  - Regex escaping differs (JS uses `/\/` for literal /, Python uses `\\/`)
+  - **Recommendation:** Keep as-is (intentional duplication for browser ↔ native host), but add a regression test that verifies the Python regex set produces results consistent with the JS set for a shared test fixture.
 
-The largest file in the project. Likely contains popup UI logic, event handlers, state management, and download list rendering. Strong candidate for modularization.
+- [x] **Reorganized `tests/extension/`** (33 files → 4 subdirectories + 3 root files):
+  - `tests/extension/background/` — 13 test files for background modules
+  - `tests/extension/content/` — 3 test files for content scripts
+  - `tests/extension/popup/` — 8 test files for popup UI
+  - `tests/extension/shared/` — 6 test files for shared modules
+  - 3 root files left in `tests/extension/` (manifest, project_automation, yandex_browser_support)
+  - All import paths updated from `../../src/` to `../../../src/`
+  - All resource paths (`../../dist/`, `../../manifest.json`, `../../scripts/`) updated to `../../../`
+  - Fixture path in `test_video_filters.js` updated to `../../fixtures/`
+  ```
+  tests/extension/
+  ├── background/          ← tests for background modules
+  ├── content/             ← tests for content scripts
+  ├── popup/               ← tests for popup UI
+  └── shared/              ← tests for shared modules
+  ```
 
-**Before:**
-```mermaid
-flowchart LR
-  popup_js[popup.js<br/>1606 lines]
-  style popup_js fill:#fef2f2,stroke:#dc2626,color:#000
-```
-
-**After (proposed):**
-```mermaid
-flowchart LR
-  popup_js[popup.js<br/>~400 lines]
-  popup_ui[popup-ui.js<br/>UI Components]
-  popup_state[popup-state.js<br/>State Mgmt]
-  popup_events[popup-events.js<br/>Event Handlers]
-  popup_js --> popup_ui
-  popup_js --> popup_state
-  popup_js --> popup_events
-  classDef added fill:#d1fae5,stroke:#10b981
-  class popup_js,popup_ui,popup_state,popup_events added
-```
-
-Suggested splits:
-- **UI rendering** (download lists, buttons, dialogs)
-- **State management** (current downloads, settings, tab state)
-- **Event handlers** (user interactions, message routing)
-- **Download list rendering** (currently partially in `download_list.js`)
-
-#### 🔴 `src/background/background.js` — 1325 lines (3.3× threshold)
-
-This is the main background script. Much of its logic has already been extracted into separate modules (see the git diff showing extensive extraction work in progress). However, it still has a high line count, likely from wiring/dependency injection code.
-
-**Before:**
-```mermaid
-flowchart LR
-  bg_js[background.js<br/>1325 lines]
-  style bg_js fill:#fef2f2,stroke:#dc2626,color:#000
-```
-
-**After (proposed):**
-```mermaid
-flowchart LR
-  bg_js[background.js<br/>&lt;400 lines]
-  deps[deps.js<br/>Dependency Wiring]
-  handlers[handlers.js<br/>Message Handlers]
-  bg_js --> deps
-  bg_js --> handlers
-  classDef added fill:#d1fae5,stroke:#10b981
-  class bg_js,deps,handlers added
-```
-
-Note: The in-progress refactoring (visible in git diff) has already extracted `download_helpers.js`, `format_helpers.js`, `header_utils.js`, `video_utils.js`, `filter_integration.js`, `size_probe.js`, and `recording.js`. Continue this effort by extracting the remaining large chunks.
-
-#### 🔴 `go/main_test.go` — 1301 lines (3.25× threshold)
-
-A massive test file for the Go CDM module. Likely contains integration tests, unit tests, and test helpers all in one file.
-
-**Before:**
-```mermaid
-flowchart LR
-  test_go[main_test.go<br/>1301 lines]
-  style test_go fill:#fef2f2,stroke:#dc2626,color:#000
-```
-
-**After (proposed):**
-```mermaid
-flowchart LR
-  main_test[main_test.go]
-  cdm_test[cdm_test.go<br/>CDM Tests]
-  decrypt_test[decrypt_test.go<br/>Decryption Tests]
-  ipc_test[ipc_test.go<br/>IPC Tests]
-  test_helpers[test_helpers.go<br/>Test Utilities]
-  classDef added fill:#d1fae5,stroke:#10b981
-  class main_test,cdm_test,decrypt_test,ipc_test,test_helpers added
-```
-
-#### 🔴 Other oversized files:
-
-| File | Lines | Ratio | Priority |
-|------|-------|-------|----------|
-| `src/popup/popup.css` | 1158 | 2.9× | High |
-| `src/shared/filter_list_loader.js` | 808 | 2× | High |
-| `src/native-host/capture_manager.py` | 764 | 1.9× | High |
-| `src/shared/video_filters.js` | 661 | 1.65× | Medium |
-| `src/content/content.js` | 639 | 1.6× | Medium |
-| `src/native-host/yt_dlp_command.py` | 630 | 1.58× | Medium |
-| `src/native-host/download_manager.py` | 588 | 1.47× | Medium |
-| `src/background/download_orchestration.js` | 582 | 1.46× | Medium |
-| `go/cdm.go` | 566 | 1.42× | Medium |
-| `src/background/cdm_network_intercept.js` | 536 | 1.34× | Low |
-| `src/native-host/download_task.py` | 477 | 1.19× | Low |
-| `src/native-host/spotify_resolver.py` | 453 | 1.13× | Low |
-| `src/background/recording.js` | 450 | 1.13× | Low |
-| `src/popup/download_list.js` | 447 | 1.12× | Low |
-| `src/content/page_detection.js` | 443 | 1.11× | Low |
-| `go/commands.go` | 432 | 1.08× | Low |
-| `go/decrypt.go` | 417 | 1.04× | Low |
-
-#### 🔴 `src/popup/popup.css` — 1158 lines
-
-Likely contains all popup styling in one monolithic stylesheet. Consider splitting into:
-- `popup-base.css` (layout, colors, typography)
-- `popup-download-list.css` (download list styling)
-- `popup-dialogs.css` (quality dialog, batch dialog, etc.)
-
-#### 🔴 `src/shared/filter_list_loader.js` — 808 lines
-
-This shared module handles filter list loading and compilation. Consider splitting the pattern loading, compilation, and caching logic into separate files.
-
----
-
-### Phase 3: Structural Refactoring
-_Higher effort — reorganize folders, address naming inconsistencies._
-
-#### 🟡 `tests/extension/` — 31 files (threshold: ≤30)
-
-Just one file over the threshold, but combined with the prevalence of oversized files, suggests test files could be better organized.
-
-```
-tests/
-├── extension/
-│   ├── test_background_download_controls.js
-│   ├── test_background_download_state.js
-│   ├── test_background_hard_access_fallback.js
-│   ├── test_batch_state.js
-│   ├── test_cdm_network_intercept.js
-│   ├── test_cdp_extraction.js
-│   ├── test_cdp_relay.js
-│   ├── test_cdp_video_integration.js
-│   ├── test_content_quality_dialog.js
-│   ├── test_content_title_extraction.js
-│   ├── test_content_youtube_detection.js
-│   ├── test_download_sync.js
-│   ├── test_filter_integration.js
-│   ├── test_filter_list_loader.js
-│   ├── test_install_stream_fallbacks.js
-│   ├── test_manifest_build_targets.js
-│   ├── test_music_streaming_support.js
-│   ├── test_playlist_detection.js
-│   ├── test_popup_batch_flow.js
-│   ├── test_popup_cdm_status.js
-│   ├── test_popup_conversion_ui.js
-│   ├── test_popup_css.js
-│   ├── test_popup_download_view.js
-│   ├── test_popup_refresh_clear_actions.js
-│   ├── test_project_automation.js
-│   ├── test_quality_format.js
-│   ├── test_recording_ui.js
-│   ├── test_segment_capture.js
-│   ├── test_video_filters.js
-│   ├── test_video_picker.js
-│   └── test_yandex_browser_support.js
-├── fixtures/
-│   └── media_candidate_rules.json
-└── native-host/
-    ├── test_capture_manager.py
-    ├── test_download_performance.py
-    ├── test_gopeed_integration.py
-    ├── test_host.py
-    ├── test_magnet_download.py
-    ├── test_media_candidate_rules.py
-    ├── test_playlist_enumeration.py
-    ├── test_torrent_file_download.py
-    └── test_youtube_premium_bypass.py
-```
-
-**Proposed organization:**
-```
-tests/
-├── extension/
-│   ├── background/         ← background-related tests
-│   ├── content/            ← content script tests
-│   ├── popup/              ← popup tests
-│   └── shared/             ← shared module tests
-├── native-host/
-│   ├── unit/               ← unit tests
-│   └── integration/        ← integration tests
-└── fixtures/
-```
-
-#### 🟢 `src/native-host/` — 24 files (close to threshold)
-
-Not over the threshold yet, but approaching it. Currently a flat directory with 24 `.py` files. Consider grouping related modules:
-- **`downloader/`**: `download_manager.py`, `download_task.py`, `download_logger.py`
-- **`backends/`**: `yt_dlp_adapter.py`, `yt_dlp_command.py`, `yt_dlp_dependencies.py`, `gopeed_adapter.py`, `stream_backends.py`, `fallback_engines.py`
-- **`media/`**: `media_candidates.py`, `media_resolver.py`, `format_list.py`, `spotify_resolver.py`
-- **`protocol/`**: `native_protocol.py`, `host.py`, `host_dispatch.py`, `process_control.py`
-
-**Before:**
-```
-src/native-host/
-├── artifacts.py
-├── browser_context.py
-├── capture_manager.py
-├── download_logger.py
-├── download_manager.py
-├── download_task.py
-├── fallback_engines.py
-├── folder_picker.py
-├── format_list.py
-├── gopeed_adapter.py
-├── host.py
-├── host_dispatch.py
-├── media_candidates.py
-├── media_resolver.py
-├── native_paths.py
-├── native_protocol.py
-├── process_control.py
-├── progress_parser.py
-├── qwin_video_host.bat
-├── spotify_resolver.py
-├── stream_backends.py
-├── yt_dlp_adapter.py
-├── yt_dlp_command.py
-└── yt_dlp_dependencies.py
-```
-
-**After (proposed):**
-```
-src/native-host/
-├── downloader/
-│   ├── download_manager.py
-│   ├── download_task.py
-│   └── download_logger.py
-├── backends/
-│   ├── yt_dlp_adapter.py
-│   ├── yt_dlp_command.py
-│   ├── yt_dlp_dependencies.py
-│   ├── gopeed_adapter.py
-│   ├── stream_backends.py
-│   └── fallback_engines.py
-├── media/
-│   ├── media_candidates.py
-│   ├── media_resolver.py
-│   ├── format_list.py
-│   ├── spotify_resolver.py
-│   └── folder_picker.py
-├── protocol/
-│   ├── host.py
-│   ├── host_dispatch.py
-│   ├── native_protocol.py
-│   ├── process_control.py
-│   └── native_paths.py
-├── capture_manager.py
-├── artifacts.py
-├── browser_context.py
-├── progress_parser.py
-└── qwin_video_host.bat
-```
-
-#### 🟢 `src/background/` — 19 files
-
-Already well-structured with good modularization. The git diff shows ongoing extraction work. No strong need to reorganize, but could benefit from subdirectories:
-- **`handlers/`**: `download_orchestration.js`, `message_router.js`
-- **`detection/`**: `cdp_extraction.js`, `cdp_relay.js`, `cdm_network_intercept.js`, `segment_capture.js`
-- **`download/`**: `download_fallbacks.js`, `download_helpers.js`, `download_state.js`
-
-#### 🟡 Nesting depth — 4 levels in `.agents/`
-
-The `.agents/skills/chrome-extension-development/` and `.agents/skills/failed-download-troubleshooting/` paths are 4 levels deep, at the threshold. Acceptable but worth noting.
-
-#### 🟢 Doc sprawl — 9 markdown files, 6 in `docs/`
-
-| File | Location |
-|------|----------|
-| `README.md` | Root ✅ (project readme) |
-| `AGENTS.md` | Root 🟢 (agent instructions for AI tools) |
-| `go/README.md` | `go/` 🟢 (Go module docs) |
-| `docs/guides/installation.md` | `docs/guides/` ✅ |
-| `docs/guides/usage.md` | `docs/guides/` ✅ |
-| `docs/guides/troubleshooting.md` | `docs/guides/` ✅ |
-| `docs/reference/project-structure.md` | `docs/reference/` ✅ |
-| `docs/reference/uBlock-integration-spec.md` | `docs/reference/` ✅ |
-| `docs/legal/legal-spec.md` | `docs/legal/` ✅ |
-| `docs/README.md` | `docs/` ✅ |
-
-Most docs are well-organized under `docs/`. No significant sprawl issue. The `AGENTS.md` and `go/README.md` serve specific purposes and are properly placed.
-
-#### 🟢 Naming conventions — largely consistent within domains
-
-| Directory | Convention | Notes |
-|-----------|-----------|-------|
-| `src/background/` | snake_case | ✅ Consistent |
-| `src/native-host/` | snake_case | ✅ Consistent |
-| `src/shared/` | snake_case | ✅ Consistent |
-| `src/content/` | snake_case | ✅ Consistent |
-| `src/popup/` | snake_case | ✅ Consistent |
-| `tests/extension/` | snake_case | ✅ Consistent |
-| `tests/native-host/` | snake_case | ✅ Consistent |
-| `go/` | snake_case | ✅ Consistent |
-| `scripts/` | kebab-case | 🟢 Different from `src/` but conventional for scripts |
-| `docs/` | kebab-case | 🟢 Different from `src/` but conventional for docs |
-| `config/` | mixed | 🟢 Uses dot-notation (`com.qwin.video_downloader.chrome.json`) which is standard for native messaging configs |
-| Root | mixed | 🟢 `eslint.config.js` (camelCase), `ruff.toml` (kebab-case) — both are framework conventions |
+  ```mermaid
+  flowchart LR
+    A[33 files in tests/extension/]
+    B[background/ ~10 tests]
+    C[content/ ~3 tests]
+    D[popup/ ~9 tests]
+    E[shared/ ~8 tests]
+    F[fixtures/]
+    A --> B
+    A --> C
+    A --> D
+    A --> E
+    A --> F
+    classDef warning fill:#fef3c7,stroke:#f59e0b
+    classDef added fill:#d1fae5,stroke:#10b981
+    class A warning
+    class B,C,D,E,F added
+  ```
 
 ---
 
@@ -359,58 +191,115 @@ Most docs are well-organized under `docs/`. No significant sprawl issue. The `AG
 
 Use this checklist to track completion. Mark `[x]` when a task is done:
 
-**Phase 1 (Quick Cleanup):** `[ ] 3 tasks`
-- [x] Remove empty `src/adblock/` directory
-- [x] Remove empty `.claude/` directory
-- [x] Clean up `logs/Readme.md`
+**Phase 1 (Quick Cleanup):** `[3] / 3 completed`
+**Phase 2 (File Splitting):** `[5] / 6 completed` (popup.js, popup.css, background.js, go/main_test.go, test_host.py done)
+**Phase 3 (Naming Convention):** `[ ] / 1 completed`
+**Phase 4 (Structural):** `[2] / 2 completed`
 
-**Phase 2 (File Refactoring):** `[ ] 20 oversized files`
-- [ ] Split `src/popup/popup.js` (1606 lines → ~400)
-- [ ] Split `src/background/background.js` (1325 lines → ~400)
-- [ ] Split `go/main_test.go` (1301 lines)
-- [ ] Split `src/popup/popup.css` (1158 lines)
-- [ ] Split `src/shared/filter_list_loader.js` (808 lines)
-- [ ] Split `src/native-host/capture_manager.py` (764 lines)
-- [ ] Split `src/shared/video_filters.js` (661 lines)
-- [ ] Split `src/content/content.js` (639 lines)
-- [ ] Split `src/native-host/yt_dlp_command.py` (630 lines)
-- [ ] Split `src/native-host/download_manager.py` (588 lines)
-- [ ] Split `src/background/download_orchestration.js` (582 lines)
-- [ ] Split `go/cdm.go` (566 lines)
-- [ ] Split `src/background/cdm_network_intercept.js` (536 lines)
-- [ ] Split `src/native-host/download_task.py` (477 lines)
-- [ ] Split `src/native-host/spotify_resolver.py` (453 lines)
-- [ ] Split `src/background/recording.js` (450 lines)
-- [ ] Split `src/popup/download_list.js` (447 lines)
-- [ ] Split `src/content/page_detection.js` (443 lines)
-- [ ] Split `go/commands.go` (432 lines)
-- [ ] Split `go/decrypt.go` (417 lines)
+> Update this checklist as you implement fixes. When all items are ticked, the codebase is clean.
 
-**Phase 3 (Structural Refactoring):** `[ ] 2 tasks`
-- [ ] Organize `tests/extension/` into subdirectories by module (31 files)
-- [ ] Consider grouping `src/native-host/` into domain subdirectories (24 files)
+> **⚠️ Before implementing any refactoring that splits or moves code, use `skill:test-driven-development`.** Write tests for existing behavior first, then refactor. This ensures refactored code preserves all functionality and catches regressions early.
 
 ---
 
-## Summary of Metrics
+## Appendix: Full Metrics
 
-| # | Metric | Threshold | Result | Severity |
-|---|--------|-----------|--------|----------|
-| 1 | Folder file count | >30 files | `tests/extension/` at 31 | 🔴 Warning |
-| 2 | File line count | >400 lines | 20 files exceed | 🔴 Warning |
-| 3 | Nesting depth | >4 levels | Max 4 levels | ✅ OK |
-| 4 | Naming conventions | Multiple styles | Mostly consistent within domains | 🟢 Suggestion |
-| 5 | Orphaned/misplaced files | Mismatch purpose | Minor: `logs/Readme.md`, `src/adblock/` | 🔴 Warning |
-| 6 | Doc sprawl | >5 scattered `.md` | 9 total, 6 in `docs/` — well organized | 🟢 Suggestion |
-| 7 | Empty/dead directories | Empty/single-subdir | `src/adblock/`, `.claude/` empty | 🟢 Suggestion |
+### A. File Count Per Directory
 
-## Key Recommendations (Priority Order)
+| Directory | File Count | Status |
+|-----------|-----------|--------|
+| `tests/extension/` | 33 | 🔴 >30 |
+| `src/native-host/` | 24 | 🟢 <30 |
+| `docs/` | 13 | 🟢 <30 |
+| `src/shared/` | 13 | 🟢 <30 |
+| `go/` | 10 | 🟢 <30 |
+| `src/background/` | 9 | 🟢 <30 |
+| `tests/native-host/` | 9 | 🟢 <30 |
+| `config/extension/` | 8 | 🟢 <30 |
+| `scripts/` | 7 | 🟢 <30 |
+| `src/popup/` | 6 | 🟢 <30 |
+| `.agents/types/` | 3 | 🟢 <30 |
+| `.agents/skills/` | 2 | 🟢 <30 |
+| `.github/` | 2 | 🟢 <30 |
+| `tools/` | 2 | 🟢 <30 |
 
-1. **🔴 Continue `background.js` refactoring** — The in-progress extraction is on the right track. Complete the dependency wiring extraction and message handler separation to get this file under 400 lines.
-2. **🔴 Split `popup.js` (1606 lines)** and **`popup.css` (1158 lines)** — These are the largest files and directly affect the user-facing popup. Splitting them will make the popup code much more maintainable.
-3. **🔴 Split `go/main_test.go` (1301 lines)** — Test files benefit from being organized by the module they test.
-4. **🟡 Remove empty `src/adblock/` directory** — Quick win, no code impact.
-5. **🟡 Organize `tests/extension/` into subdirectories** — 31 flat files in one directory makes it harder to find relevant tests.
-6. **🟢 Group `src/native-host/` into domain subdirectories** — 24 flat files approaching the threshold.
+### B. Files Exceeding 400 Lines
 
-> **Note:** This report contains enough detail for a new AI session to implement the fixes independently. Open a new session and pass this report to begin implementing.
+| Lines | File |
+|-------|------|
+| 1,837 | `src/popup/popup.js` |
+| 1,702 | `src/popup/popup.css` |
+| 1,405 | `src/background/background.js` |
+| 1,301 | `go/main_test.go` |
+| 1,208 | `tests/native-host/test_host.py` |
+| 1,050 | `benchmarks/speedtest.py` |
+| 980 | `tests/extension/test_background_hard_access_fallback.js` |
+| 808 | `src/shared/filter_list_loader.js` |
+| 774 | `src/native-host/capture_manager.py` |
+| 661 | `src/shared/video_filters.js` |
+| 656 | `tests/extension/test_filter_integration.js` |
+| 639 | `src/content/content.js` |
+| 630 | `src/native-host/yt_dlp_command.py` |
+| 588 | `src/native-host/download_manager.py` |
+| 582 | `src/background/download_orchestration.js` |
+| 566 | `go/cdm.go` |
+| 542 | `tests/extension/test_recording_ui.js` |
+| 536 | `src/background/cdm_network_intercept.js` |
+| 495 | `tests/extension/test_video_filters.js` |
+| 477 | `src/native-host/download_task.py` |
+| 470 | `tests/extension/test_cdm_network_intercept.js` |
+| 462 | `.agents/types/agent-definition.ts` |
+| 453 | `src/native-host/spotify_resolver.py` |
+| 450 | `src/background/recording.js` |
+| 447 | `src/popup/download_list.js` |
+| 443 | `src/content/page_detection.js` |
+| 436 | `.agents/types/tools.ts` |
+| 432 | `go/commands.go` |
+| 428 | `tests/extension/test_popup_refresh_clear_actions.js` |
+| 417 | `go/decrypt.go` |
+
+### C. Directory Nesting Depth
+
+All source directories are at depth 2-3. Max depth: 3 levels. ✅
+
+### D. Naming Conventions Per Directory
+
+| Directory | Convention | Consistent? |
+|-----------|-----------|-------------|
+| `src/background/` | `snake_case.js` | ✅ Yes |
+| `src/content/` | `snake_case.js` | ✅ Yes |
+| `src/native-host/` | `snake_case.py` | ✅ Yes |
+| `src/popup/` | Mixed `kebab-case.js` + `snake_case.js` | ❌ No |
+| `src/shared/` | `snake_case.js` | ✅ Yes |
+| `tests/extension/` | `test_*.js` | ✅ Yes |
+| `tests/native-host/` | `test_*.py` | ✅ Yes |
+| `scripts/` | `kebab-case.js/ps1` | ✅ Yes |
+| `.agents/types/` | `kebab-case.ts` | ✅ Yes |
+
+### E. Doc File Distribution
+
+| Location | Count | Notes |
+|----------|-------|-------|
+| `docs/` | 13 | Well-organized into guides/, legal/, reference/ |
+| Root | 3 | `AGENTS.md`, `knowledge.md`, `README.md` (expected) |
+| `.agents/skills/` | 2 | Skill documentation (expected) |
+| `benchmarks/` | 1 | `README.md` (expected) |
+| `go/` | 1 | `README.md` (expected) |
+| `logs/` | 1 | `Readme.md` — logs troubleshooting guide |
+
+### F. Empty / Dead Directories
+
+| Directory | Status |
+|-----------|--------|
+| `.claude/` | Empty — no files |
+
+---
+
+## Final Verification Checklist
+
+- [x] Each issue has a clear metric, threshold, and recommended action
+- [x] Folder-level issues use ASCII tree diagrams for before/after
+- [x] File-level issues use Mermaid diagrams where helpful
+- [x] Recommendations account for the project's language/stack (JS + Python + Go)
+- [x] The report is saved to `qwin-audit.md`
+- [x] The report contains enough context for a new AI session to implement fixes independently
