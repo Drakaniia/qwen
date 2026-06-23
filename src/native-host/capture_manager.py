@@ -280,9 +280,11 @@ class CaptureManager:
         self._reader_thread.start()
 
     def stop(self, timeout=5.0):
-        """Gracefully stop the capture binary by sending a stop command.
+        """Gracefully stop the capture binary subprocess.
 
-        Falls back to process termination if the binary does not respond.
+        Closes stdin to signal the process to exit, waits for it to
+        finish, then closes stdout/stderr and joins the background
+        reader thread to prevent ResourceWarnings from unclosed pipes.
         """
         self._reader_stop.set()
 
@@ -292,38 +294,46 @@ class CaptureManager:
                 self._process = None
                 return
 
+        # Close stdin first to signal EOF to the subprocess.
+        # This causes the Go binary to exit cleanly, which in turn
+        # closes stdout/stderr on its side and unblocks the reader.
         try:
-            response = self.send_command("stop", {})
-            if response and response.get("type") == "done":
-                process.wait(timeout=timeout)
+            if process.stdin:
+                process.stdin.close()
         except Exception:
             pass
 
+        # Wait for the process to exit naturally
+        try:
+            process.wait(timeout=timeout)
+        except Exception:
+            pass
+
+        # If the process is still alive, force-terminate it
+        if process.poll() is None:
+            try:
+                process.terminate()
+                process.wait(timeout=3)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+
+        # Close stdout and stderr from our side
+        for pipe_name in ("stdout", "stderr"):
+            try:
+                pipe = getattr(process, pipe_name, None)
+                if pipe:
+                    pipe.close()
+            except Exception:
+                pass
+
+        # Join the background reader thread so it releases its reference
+        if self._reader_thread and self._reader_thread.is_alive():
+            self._reader_thread.join(timeout=2)
+
         with self._lock:
-            if self._process and self._process.poll() is None:
-                try:
-                    if self._process.stdin:
-                        self._process.stdin.close()
-                except Exception:
-                    pass
-                try:
-                    self._process.terminate()
-                    self._process.wait(timeout=3)
-                except Exception:
-                    try:
-                        self._process.kill()
-                    except Exception:
-                        pass
-                try:
-                    if self._process.stdout:
-                        self._process.stdout.close()
-                except Exception:
-                    pass
-                try:
-                    if self._process.stderr:
-                        self._process.stderr.close()
-                except Exception:
-                    pass
             self._process = None
 
     def send_command(self, command_type, data=None, timeout=10.0):
