@@ -93,6 +93,20 @@ const elements = {
   playlistPrompt: document.getElementById("playlistPrompt"),
   playlistTitle: document.getElementById("playlistTitle"),
   downloadAllBtn: document.getElementById("downloadAllBtn"),
+  // Setup screen elements
+  setupScreen: document.getElementById("setupScreen"),
+  setupCopyBtn: document.getElementById("setupCopyBtn"),
+  setupCommandInput: document.getElementById("setupCommandInput"),
+  setupStatusText: document.getElementById("setupStatusText"),
+  // Dep banner elements
+  depBanner: document.getElementById("depBanner"),
+  depBannerToggle: document.getElementById("depBannerToggle"),
+  depBannerBody: document.getElementById("depBannerBody"),
+  depBannerList: document.getElementById("depBannerList"),
+  depBannerTitle: document.getElementById("depBannerTitle"),
+  depBannerCopyBtn: document.getElementById("depBannerCopyBtn"),
+  // Helper retry button
+  helperRetryBtn: document.getElementById("helperRetryBtn"),
 };
 
 // ─── Quality chooser ────────────────────────────────────────────────────────
@@ -606,34 +620,207 @@ async function refresh(options = {}) {
   return true;
 }
 
-async function checkNativeHost() {
-  const response = await PopupApi.pingNativeHost();
-  if (!response || !response.ok) {
-    const errorMsg = response && response.error ? `: ${response.error}` : "";
-    setHelperStatus(`Helper not connected${errorMsg}. Run scripts\\install.bat.`, "error");
+/**
+ * Query the cached helper status from the background.
+ * Updates the topbar helper status line and returns a summary.
+ * @returns {Promise<{connected: boolean, dependencies: Object, hasMissingDeps: boolean}>}
+ */
+async function checkHelperStatus() {
+  const response = await PopupApi.getHelperStatus();
+  const connected = response && response.ok && response.connected;
+  const dependencies = (response && response.dependencies) || {};
+  const hasMissingDeps = connected && (!dependencies.ytDlp || !dependencies.ffmpeg);
+
+  if (connected) {
+    if (hasMissingDeps) {
+      setHelperStatus("Helper ready, some tools missing.", "error");
+      elements.helperStatus.title = "Click the banner above to see which tools are missing.";
+    } else {
+      const streamFallbacks = dependencies.nM3u8DlRe || dependencies.streamlink;
+      const fallbackMode = streamFallbacks ? "stream fallbacks" : "yt-dlp only";
+      let capability = "";
+      if (dependencies.cdmCapture && dependencies.recording) {
+        capability = ", CDM capture + recording";
+      } else if (dependencies.recording) {
+        capability = ", recording available";
+      } else if (dependencies.cdmCapture) {
+        capability = ", CDM capture";
+      }
+      setHelperStatus(`Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}${capability}).`, "ok");
+    }
+    elements.helperRetryBtn.hidden = true;
+    elements.helperRetryBtn.disabled = true;
+  } else {
+    setHelperStatus("Helper not connected.", "error");
+    elements.helperRetryBtn.hidden = false;
+    elements.helperRetryBtn.disabled = false;
+  }
+
+  return { connected, dependencies, hasMissingDeps };
+}
+
+/**
+ * Transition from the normal UI to the setup screen with a smooth animation.
+ */
+function transitionToSetupScreen() {
+  // Fade out the normal content views
+  elements.contentView.classList.add("content-fade-out");
+  elements.viewToggle.classList.add("content-fade-out");
+  elements.footerActions.classList.add("content-fade-out");
+  elements.depBanner.classList.add("content-fade-out");
+
+  // After the fade-out completes, show the setup screen
+  window.setTimeout(function () {
+    elements.contentView.hidden = true;
+    elements.viewToggle.hidden = true;
+    elements.footerActions.hidden = true;
+    elements.musicLinkSection.hidden = true;
+    elements.settingsPanel.hidden = true;
+    elements.depBanner.hidden = true;
+
+    elements.contentView.classList.remove("content-fade-out");
+    elements.viewToggle.classList.remove("content-fade-out");
+    elements.footerActions.classList.remove("content-fade-out");
+    elements.depBanner.classList.remove("content-fade-out");
+
+    // Show the setup screen with its fade-in animation
+    elements.setupScreen.className = "setup-screen"; // Reset animation
+    void elements.setupScreen.offsetWidth; // Force reflow to restart animation
+    elements.setupScreen.hidden = false;
+    elements.setupStatusText.textContent = "Checking for helper...";
+    setHelperStatus("Helper not connected.", "error");
+    elements.helperRetryBtn.hidden = false;
+    elements.helperRetryBtn.disabled = false;
+  }, 180);
+}
+
+/**
+ * Render the full-screen setup prompt immediately (no transition).
+ */
+function renderSetupScreen() {
+  elements.contentView.hidden = true;
+  elements.viewToggle.hidden = true;
+  elements.footerActions.hidden = true;
+  elements.musicLinkSection.hidden = true;
+  elements.settingsPanel.hidden = true;
+  elements.depBanner.hidden = true;
+  elements.setupScreen.className = "setup-screen";
+  void elements.setupScreen.offsetWidth;
+  elements.setupScreen.hidden = false;
+  elements.setupStatusText.textContent = "Checking for helper...";
+  setHelperStatus("Helper not connected.", "error");
+  elements.helperRetryBtn.hidden = false;
+  elements.helperRetryBtn.disabled = false;
+}
+
+/**
+ * Transition from the setup screen to the normal UI with a smooth animation.
+ */
+function transitionToNormalUI(hasMissingDeps, deps) {
+  // Fade out the setup screen
+  elements.setupScreen.classList.add("fade-out");
+
+  window.setTimeout(function () {
+    elements.setupScreen.hidden = true;
+    elements.setupScreen.classList.remove("fade-out");
+
+    // Show normal content with fade-in
+    elements.contentView.hidden = false;
+    elements.viewToggle.hidden = false;
+    elements.footerActions.hidden = false;
+    elements.helperRetryBtn.hidden = true;
+    elements.helperRetryBtn.disabled = true;
+    setHelperStatus("Helper ready.", "ok");
+
+    elements.contentView.classList.add("content-fade-in");
+    elements.viewToggle.classList.add("content-fade-in");
+    elements.footerActions.classList.add("content-fade-in");
+
+    // Remove animation classes after they complete
+    window.setTimeout(function () {
+      elements.contentView.classList.remove("content-fade-in");
+      elements.viewToggle.classList.remove("content-fade-in");
+      elements.footerActions.classList.remove("content-fade-in");
+    }, 300);
+
+    // Refresh the normal UI
+    refresh({ syncActiveTab: false }).then(function () {
+      if (hasMissingDeps) {
+        renderDepBanner(deps);
+      }
+    }).catch(function () {});
+  }, 200);
+}
+
+/**
+ * Render the collapsible dependency warning banner.
+ * @param {Object} dependencies - Dependency status object from the helper.
+ */
+function renderDepBanner(dependencies) {
+  if (!elements.depBanner) {
     return;
   }
 
-  const dependencies = response.dependencies || {};
-  if (!dependencies.ytDlp || !dependencies.ffmpeg) {
-    setHelperStatus("Helper found, but yt-dlp or ffmpeg is missing. Run scripts\\install.bat.", "error");
-    return;
+  elements.depBanner.hidden = false;
+  elements.depBannerList.textContent = "";
+
+  const depItems = [
+    { key: "ytDlp", label: "yt-dlp (video downloads)" },
+    { key: "ffmpeg", label: "ffmpeg (audio/video processing)" },
+    { key: "aria2c", label: "aria2c (fast downloads)" },
+    { key: "nM3u8DlRe", label: "HLS stream downloader" },
+    { key: "streamlink", label: "Stream fallback" },
+  ];
+
+  let missingCount = 0;
+  for (const dep of depItems) {
+    const available = dependencies[dep.key] === true;
+    if (!available) missingCount++;
+
+    const item = document.createElement("div");
+    item.className = "dep-banner-item";
+    const statusSpan = document.createElement("span");
+    statusSpan.className = available ? "dep-banner-item-ok" : "dep-banner-item-missing";
+    statusSpan.textContent = available ? "\u2713" : "\u2717";
+    item.append(statusSpan);
+    item.append(" " + dep.label);
+    elements.depBannerList.append(item);
   }
 
-  const streamFallbacks = dependencies.nM3u8DlRe || dependencies.streamlink;
-  const fallbackMode = streamFallbacks ? "stream fallbacks" : "yt-dlp only";
-
-  // Build CDM / recording capability suffix
-  let capability = "";
-  if (dependencies.cdmCapture && dependencies.recording) {
-    capability = ", CDM capture + recording";
-  } else if (dependencies.recording) {
-    capability = ", recording available";
-  } else if (dependencies.cdmCapture) {
-    capability = ", CDM capture";
+  if (elements.depBannerTitle) {
+    elements.depBannerTitle.textContent = missingCount > 0
+      ? missingCount + " download tool" + (missingCount > 1 ? "s" : "") + " missing"
+      : "All download tools available";
   }
 
-  setHelperStatus(`Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}${capability}).`, "ok");
+  // Auto-expand if there are missing tools; collapsed if all present
+  if (elements.depBannerToggle) {
+    const shouldExpand = missingCount > 0;
+    elements.depBannerToggle.setAttribute("aria-expanded", String(shouldExpand));
+    elements.depBannerBody.classList.toggle("expanded", shouldExpand);
+  }
+}
+
+/**
+ * Copy the install command to clipboard and update button state.
+ * @param {HTMLElement} btn - The button element to show feedback on.
+ */
+function copyInstallCommand(btn) {
+  const command = "scripts\\install.bat";
+  navigator.clipboard.writeText(command).then(function () {
+    const originalText = btn.innerHTML;
+    btn.classList.add("copied");
+    btn.innerHTML = '<span class="setup-button-icon">\u2713</span> Copied!';
+    window.setTimeout(function () {
+      btn.classList.remove("copied");
+      btn.innerHTML = originalText;
+    }, 2000);
+  }).catch(function () {
+    // Fallback: select the input field
+    if (elements.setupCommandInput) {
+      elements.setupCommandInput.select();
+    }
+  });
 }
 
 async function init() {
@@ -645,8 +832,21 @@ async function init() {
     return;
   }
 
+  // First check helper status — if not connected, show the setup screen
+  const helperStatus = await checkHelperStatus();
+
+  if (!helperStatus.connected) {
+    renderSetupScreen();
+    return;
+  }
+
+  // Helper is connected, show normal UI
   await refresh({ syncActiveTab: false });
-  await checkNativeHost();
+
+  // If helper is connected but missing deps, show the dep banner
+  if (helperStatus.hasMissingDeps) {
+    renderDepBanner(helperStatus.dependencies);
+  }
 }
 
 async function rescanActiveTab() {
@@ -1542,6 +1742,95 @@ api.runtime.onMessage.addListener((message) => {
     setMessage(message.message || "Batch download complete.");
     elements.message.hidden = false;
   }
+
+  // ── Helper status change (from background auto-check) ─────────────────
+  if (message.type === "helperStatusChanged") {
+    const status = message.status || {};
+    const connected = !!status.connected;
+    const deps = status.dependencies || {};
+    const hasMissingDeps = connected && (!deps.ytDlp || !deps.ffmpeg);
+
+    const isOnSetupScreen = !elements.setupScreen.hidden;
+
+    if (connected && isOnSetupScreen) {
+      // Smoothly transition from setup screen to normal UI
+      transitionToNormalUI(hasMissingDeps, deps);
+    } else if (!connected && !isOnSetupScreen) {
+      // Smoothly transition from normal UI to setup screen
+      transitionToSetupScreen();
+    } else if (connected && !isOnSetupScreen) {
+      // Helper status changed while on normal UI — update dep banner
+      if (hasMissingDeps) {
+        renderDepBanner(deps);
+      } else {
+        // Fade out the dep banner
+        elements.depBanner.classList.add("content-fade-out");
+        window.setTimeout(function () {
+          elements.depBanner.hidden = true;
+          elements.depBanner.classList.remove("content-fade-out");
+        }, 200);
+      }
+      // Also update the helper status line
+      checkHelperStatus();
+    }
+  }
+});
+
+// ─── Helper retry button ──────────────────────────────────────────────────
+
+elements.helperRetryBtn.addEventListener("click", async function () {
+  // Show spinning animation
+  elements.helperRetryBtn.classList.add("spinning");
+  elements.helperRetryBtn.disabled = true;
+  setHelperStatus("Checking...", "");
+
+  const helperStatus = await checkHelperStatus();
+
+  elements.helperRetryBtn.classList.remove("spinning");
+
+  if (!helperStatus.connected) {
+    renderSetupScreen();
+  } else {
+    elements.setupScreen.hidden = true;
+    elements.setupScreen.classList.remove("fade-out");
+    elements.contentView.hidden = false;
+    elements.viewToggle.hidden = false;
+    elements.footerActions.hidden = false;
+    elements.contentView.classList.add("content-fade-in");
+    elements.viewToggle.classList.add("content-fade-in");
+    elements.footerActions.classList.add("content-fade-in");
+    window.setTimeout(function () {
+      elements.contentView.classList.remove("content-fade-in");
+      elements.viewToggle.classList.remove("content-fade-in");
+      elements.footerActions.classList.remove("content-fade-in");
+    }, 300);
+    if (helperStatus.hasMissingDeps) {
+      renderDepBanner(helperStatus.dependencies);
+    }
+    await refresh({ syncActiveTab: false });
+  }
+  elements.helperRetryBtn.disabled = false;
+});
+
+// ─── Setup screen: copy command button ───────────────────────────────────
+
+elements.setupCopyBtn.addEventListener("click", function () {
+  copyInstallCommand(elements.setupCopyBtn);
+});
+
+// ─── Dep banner toggle ───────────────────────────────────────────────────
+
+elements.depBannerToggle.addEventListener("click", function () {
+  const expanded = elements.depBannerToggle.getAttribute("aria-expanded") === "true";
+  const nextExpanded = !expanded;
+  elements.depBannerToggle.setAttribute("aria-expanded", String(nextExpanded));
+  elements.depBannerBody.classList.toggle("expanded", nextExpanded);
+});
+
+// ─── Dep banner: copy command button ─────────────────────────────────────
+
+elements.depBannerCopyBtn.addEventListener("click", function () {
+  copyInstallCommand(elements.depBannerCopyBtn);
 });
 
 // ─── Boot ───────────────────────────────────────────────────────────────────
