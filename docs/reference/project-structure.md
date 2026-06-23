@@ -6,7 +6,7 @@
 - `config/extension/` — Browser-specific extension manifest templates.
 - `config/native-host/` — Generated Chrome, Yandex Browser, and Firefox native messaging manifest files.
 - `dist/` — Generated browser-specific extension folders; ignored by git.
-- `go/` — Go companion binary (`qwin-capture`) for CDM, key extraction, segment decryption, and CDP relay. See [go/README.md](../go/README.md).
+- `go/` — Go companion binary (`qwin-capture`) for CDM, key extraction, segment decryption, and CDP relay. See [go/README.md](../../go/README.md).
 
 ### Extension — Shared Modules
 
@@ -93,11 +93,11 @@
 ### Documentation
 
 - `docs/README.md` — Documentation index.
-- `docs/installation.md` — Installation and browser setup.
-- `docs/usage.md` — Usage, detection, filter list integration, CDM pipeline.
-- `docs/troubleshooting.md` — Troubleshooting guide.
-- `docs/project-structure.md` — This file.
-- `docs/uBlock-integration-spec.md` — uBlock Origin filter integration specification.
+- `docs/guides/installation.md` — Installation and browser setup.
+- `docs/guides/usage.md` — Usage, detection, filter list integration, CDM pipeline.
+- `docs/guides/troubleshooting.md` — Troubleshooting guide.
+- `docs/reference/project-structure.md` — This file.
+- `docs/reference/uBlock-integration-spec.md` — uBlock Origin filter integration specification.
 - `go/README.md` — Go companion binary documentation.
 
 ## Tests

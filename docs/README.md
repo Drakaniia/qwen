@@ -4,12 +4,20 @@ This directory contains the full documentation for Qwin Video Downloader.
 
 ## Documentation Map
 
-- [Installation and browser setup](installation.md) — native helper install, Chrome/Firefox/Yandex setup, CDM installer, capture binary installer, and what the installer changes.
-- [Usage, supported detection, and speed behavior](usage.md) — how to download, what the extension can detect, download management, output folders, fast mode limits, uBlock Origin filter integration, and CDM decryption pipeline.
-- [Troubleshooting](troubleshooting.md) — common helper, dependency, browser, URL, download-speed problems, CDM issues, and filter list issues.
-- [Project structure and tests](project-structure.md) — repo layout, new modules, and test commands.
-- [uBlock Origin integration specification](uBlock-integration-spec.md) — detailed spec for ad-filter integration with uBO patterns and filter lists.
+- [Installation and browser setup](guides/installation.md) — native helper install, Chrome/Firefox/Yandex setup, CDM installer, capture binary installer, and what the installer changes.
+- [Usage, supported detection, and speed behavior](guides/usage.md) — how to download, what the extension can detect, download management, output folders, fast mode limits, uBlock Origin filter integration, and CDM decryption pipeline.
+- [Troubleshooting](guides/troubleshooting.md) — common helper, dependency, browser, URL, download-speed problems, CDM issues, and filter list issues.
+- [Project structure and tests](reference/project-structure.md) — repo layout, new modules, and test commands.
+- [uBlock Origin integration specification](reference/uBlock-integration-spec.md) — detailed spec for ad-filter integration with uBO patterns and filter lists.
 - [Go companion binary](go/README.md) — the `qwin-capture` Go binary for CDM key extraction, segment decryption, and CDP relay.
+
+## Legal
+
+- [Terms of Service](legal/terms-of-service.md) — License terms, acceptable use, and user responsibilities
+- [Privacy Policy](legal/privacy-policy.md) — Data collection and storage practices
+- [DMCA Notice](legal/dmca-notice.md) — Copyright infringement takedown procedure
+- [Disclaimer](legal/disclaimer.md) — Warranty disclaimer and limitation of liability
+- [Fair Use Notice](legal/fair-use-notice.md) — Guidance on copyright and fair use
 
 ## Short Summary
 

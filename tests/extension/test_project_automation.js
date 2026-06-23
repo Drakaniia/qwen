@@ -6,7 +6,7 @@ const __dirname = import.meta.dirname;
 const root = path.join(__dirname, "../..");
 const testScriptPath = path.join(root, "scripts/test.ps1");
 const workflowPath = path.join(root, ".github/workflows/test.yml");
-const projectDocs = fs.readFileSync(path.join(root, "docs/project-structure.md"), "utf8");
+const projectDocs = fs.readFileSync(path.join(root, "docs/reference/project-structure.md"), "utf8");
 
 const testScript = fs.readFileSync(testScriptPath, "utf8");
 const workflow = fs.readFileSync(workflowPath, "utf8");

@@ -326,12 +326,13 @@ The `.agents/skills/chrome-extension-development/` and `.agents/skills/failed-do
 | `README.md` | Root ✅ (project readme) |
 | `AGENTS.md` | Root 🟢 (agent instructions for AI tools) |
 | `go/README.md` | `go/` 🟢 (Go module docs) |
-| `docs/installation.md` | `docs/` ✅ |
-| `docs/project-structure.md` | `docs/` ✅ |
+| `docs/guides/installation.md` | `docs/guides/` ✅ |
+| `docs/guides/usage.md` | `docs/guides/` ✅ |
+| `docs/guides/troubleshooting.md` | `docs/guides/` ✅ |
+| `docs/reference/project-structure.md` | `docs/reference/` ✅ |
+| `docs/reference/uBlock-integration-spec.md` | `docs/reference/` ✅ |
+| `docs/legal/legal-spec.md` | `docs/legal/` ✅ |
 | `docs/README.md` | `docs/` ✅ |
-| `docs/troubleshooting.md` | `docs/` ✅ |
-| `docs/uBlock-integration-spec.md` | `docs/` ✅ |
-| `docs/usage.md` | `docs/` ✅ |
 
 Most docs are well-organized under `docs/`. No significant sprawl issue. The `AGENTS.md` and `go/README.md` serve specific purposes and are properly placed.
 

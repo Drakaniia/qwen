@@ -34,9 +34,9 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
 ## Full Documentation
 
 - [Documentation index](docs/README.md)
-- [Installation and browser setup](docs/installation.md)
-- [Usage, supported detection, and speed behavior](docs/usage.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Project structure and tests](docs/project-structure.md)
-- [uBlock Origin integration specification](docs/uBlock-integration-spec.md)
+- [Installation and browser setup](docs/guides/installation.md)
+- [Usage, supported detection, and speed behavior](docs/guides/usage.md)
+- [Troubleshooting](docs/guides/troubleshooting.md)
+- [Project structure and tests](docs/reference/project-structure.md)
+- [uBlock Origin integration specification](docs/reference/uBlock-integration-spec.md)
 - [Go companion binary](go/README.md)
