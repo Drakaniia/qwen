@@ -409,6 +409,9 @@ async function clearDownloads() {
   return getDownloadOrchestration().clearDownloads();
 }
 
+// ── Auto helper installer ────────────────────────────────────────────
+import * as autoHelperInstaller from "../shared/auto-helper-installer.js";
+
 // ── Imported helper-ping module ────────────────────────────────────────
 import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, startHelperPing, pingNativeHost } from "./background-helper-ping.js";
 
@@ -1226,7 +1229,36 @@ messageRouter.handle("getHelperStatus", async () => {
     version: cachedHelperStatus.version,
     dependencies: { ...cachedHelperStatus.dependencies },
     lastChecked: cachedHelperStatus.lastChecked,
+    error: cachedHelperStatus.error || "",
   };
+});
+
+// ── Auto helper installer handlers ───────────────────────────────────────
+
+messageRouter.handle("diagnoseHelper", async () => {
+  return autoHelperInstaller.getDiagnosis();
+});
+
+messageRouter.handle("autoRepairHelper", async () => {
+  const diagnosis = await autoHelperInstaller.getDiagnosis();
+  const result = await autoHelperInstaller.autoRepair(diagnosis);
+
+  // If repair succeeded, update the cached status
+  if (result.ok) {
+    await refreshCachedHelperStatus(notifyPopup, HOST_NAME);
+  }
+
+  return result;
+});
+
+messageRouter.handle("getAutoInstallFailCount", async () => {
+  const count = await autoHelperInstaller.getFailureCount();
+  return { ok: true, failCount: count };
+});
+
+messageRouter.handle("resetAutoInstallFailCount", async () => {
+  await autoHelperInstaller.resetFailureCount();
+  return { ok: true };
 });
 
 // ── Rescan / clear tab ───────────────────────────────────────────────────

@@ -5,13 +5,14 @@ import { browserApi } from "../shared/browser_api.js";
 // ── Cached helper status ────────────────────────────────────────────────
 
 /**
- * @type {{ connected: boolean, version: string, dependencies: Object, lastChecked: number }}
+ * @type {{ connected: boolean, version: string, dependencies: Object, lastChecked: number, error: string }}
  */
 export let cachedHelperStatus = {
   connected: false,
   version: "",
   dependencies: {},
   lastChecked: 0,
+  error: "",
 };
 
 export const HELPER_PING_INTERVAL_MS = 30000; // 30 seconds
@@ -33,6 +34,7 @@ export async function refreshCachedHelperStatus(notifyPopup, hostName) {
       version: result.version || "",
       dependencies: result.dependencies || {},
       lastChecked: Date.now(),
+      error: "",
     };
   } else {
     cachedHelperStatus = {
@@ -40,6 +42,7 @@ export async function refreshCachedHelperStatus(notifyPopup, hostName) {
       version: "",
       dependencies: {},
       lastChecked: Date.now(),
+      error: result && result.error ? result.error : "Native helper is not registered or could not start.",
     };
   }
 
