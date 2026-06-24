@@ -39,7 +39,7 @@ const EMBED_PLAYER_HOST_RE = /(?:^|[/.])player\.hanime\.tv(?:$|[/?#])/i;
 
 // Video hosting sites whose page URLs are not real yt-dlp sources
 // Actual CDN stream URLs from these sites still pass through with video extensions.
-const VIDEO_HOSTING_SITES_RE = /(?:^|[\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone)\.(?:pw|tv|to|net|pro)(?:$|[\/?#])/i;
+const VIDEO_HOSTING_SITES_RE = /(?:^|[\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone|beeg)\.(?:pw|tv|to|net|pro|com)(?:$|[\/?#])/i;
 
 // P2P streaming platforms (Chinese streaming — douyu, huya)
 const P2P_STREAMING_HOSTS_RE = /(?:^|[\/.])(?:douyu|huya)\.(?:com|cn)(?:$|[\/?#])/i;
@@ -194,7 +194,7 @@ function isBlockedMediaUrl(url, contentType = "") {
     type.includes("video/mp2t") ||
     SEGMENT_EXTENSION_RE.test(text) ||
     SEGMENT_NAME_RE.test(text) ||
-    (FRAGMENTED_STREAM_CONTEXT_RE.test(text) && NUMBERED_MEDIA_FRAGMENT_RE.test(text))
+    (FRAGMENTED_STREAM_CONTEXT_RE.test(text) && NUMBERED_MEDIA_FRAGMENT_RE.test(text) && !HLS_RE.test(text) && !DASH_RE.test(text))
   ) {
     return true;
   }

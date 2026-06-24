@@ -135,6 +135,24 @@
     "reusable": false
   },
   {
+    "name": "beeg video page URL",
+    "url": "https://beeg.com/-0527563087766924",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": true,
+    "downloadable": false,
+    "reusable": false
+  },
+  {
+    "name": "beeg hls manifest from CDN",
+    "url": "https://video.beeg.com/key=sRy2sSSMqNYMlOY23Y+uWw,end=1782430228,limit=3/data=ZoKtEqN2zq/media=hls4A/multi=426x240:240p:YXZjMS42NDAwMTUsbXA0YS40MC4y,640x360:360p:YXZjMS42NDAwMUUsbXA0YS40MC4y,854x480:480p:YXZjMS42NDAwMUYsbXA0YS40MC4y,1280x720:720p:YXZjMS42NDAwMjAsbXA0YS40MC4y,1920x1080:1080p:YXZjMS42NDAwMjksbXA0YS40MC4y/_TPL_/527563087766924.mp4.m3u8",
+    "contentType": "",
+    "format": "M3U8",
+    "blocked": false,
+    "downloadable": true,
+    "reusable": true
+  },
+  {
     "name": "legitimate webm video",
     "url": "https://cdn.example.com/videos/movie.webm",
     "contentType": "",
