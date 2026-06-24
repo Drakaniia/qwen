@@ -458,9 +458,14 @@ function scanVisiblePlayerFrames() {
         ? iframeTitle
         : pageDetection.cleanText(document.title) || pageDetection.titleFromUrl(src) || "Video";
 
+    // If the iframe URL doesn't have a video extension, treat it as a PAGE
+    // format so the native host uses yt-dlp for page extraction rather than
+    // attempting a direct download of the (non-video) URL.
+    const hasVideoExt = /(?:\.(?:mp4|m4v|webm|m3u8|mpd)(?:$|[?#])|\.ism(?:\/Manifest)?(?:$|[?#]))/i.test(src);
+
     pageDetection.addBuiltCandidate(candidates, {
       url: src,
-      format: pageDetection.detectFormat(src),
+      format: hasVideoExt ? pageDetection.detectFormat(src) : "PAGE",
       source: "iframe-page",
       contentType: "",
       pageUrl: src,
