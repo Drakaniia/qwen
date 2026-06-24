@@ -46,6 +46,13 @@ function Copy-ExtensionTarget {
   # Overlay esbuild bundles (content, background, popup)
   Copy-Item -Path (Join-Path $bundlesDir "src\*") -Destination (Join-Path $targetDir "src") -Recurse -Force
 
+  # Copy native-host assets for auto-helper-installer (web_accessible_resources)
+  $bundledNativeHost = Join-Path $bundlesDir "native-host"
+  if (Test-Path $bundledNativeHost) {
+    Copy-Item -Path (Join-Path $bundledNativeHost "*") -Destination (Join-Path $targetDir "native-host") -Force
+    Write-Output "  Copied native-host assets to $Name"
+  }
+
   Copy-Item -LiteralPath (Join-Path $templateDir $ManifestTemplate) -Destination (Join-Path $targetDir "manifest.json")
 }
 

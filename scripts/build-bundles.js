@@ -1,5 +1,6 @@
 import esbuild from "esbuild";
-import { resolve, dirname } from "path";
+import { copyFileSync, mkdirSync, readdirSync, statSync } from "fs";
+import { resolve, dirname, join, extname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -16,6 +17,61 @@ const targets = {
     entryPoints: [resolve(rootDir, "src/popup/popup.js")],
   },
 };
+
+/**
+ * Copy native-host assets (manifest JSONs, bat, ps1) into the bundled output.
+ * These are needed as web-accessible resources for the auto-helper-installer.
+ */
+function copyNativeHostAssets(outDir) {
+  const srcNativeHost = resolve(rootDir, "src", "native-host");
+  const outNativeHost = resolve(outDir, "src", "native-host");
+
+  mkdirSync(outNativeHost, { recursive: true });
+
+  // Files to bundle
+  const filesToCopy = [
+    "qwin_video_host.bat",
+    "register-host.ps1",
+  ];
+
+  for (const file of filesToCopy) {
+    const src = resolve(srcNativeHost, file);
+    const dest = resolve(outNativeHost, file);
+    try {
+      copyFileSync(src, dest);
+      console.log(`  Copied native-host asset: ${file}`);
+    } catch (err) {
+      console.warn(`  Warning: Could not copy ${file}: ${err.message}`);
+    }
+  }
+}
+
+/**
+ * Copy config/native-host manifest JSON files into the bundled output.
+ */
+function copyConfigAssets(outDir) {
+  const configNativeHost = resolve(rootDir, "config", "native-host");
+  const outNativeHost = resolve(outDir, "native-host");
+
+  mkdirSync(outNativeHost, { recursive: true });
+
+  const manifestFiles = [
+    "com.qwin.video_downloader.chrome.json",
+    "com.qwin.video_downloader.firefox.json",
+    "com.qwin.video_downloader.yandex.json",
+  ];
+
+  for (const file of manifestFiles) {
+    const src = resolve(configNativeHost, file);
+    const dest = resolve(outNativeHost, file);
+    try {
+      copyFileSync(src, dest);
+      console.log(`  Copied config asset: ${file}`);
+    } catch (err) {
+      console.warn(`  Warning: Could not copy ${file}: ${err.message}`);
+    }
+  }
+}
 
 async function build(targetNames, outDir) {
   if (!outDir) {
@@ -41,6 +97,10 @@ async function build(targetNames, outDir) {
       logLevel: "info",
     });
   }
+
+  // Copy native host and config assets for the auto-helper-installer
+  copyNativeHostAssets(outDir);
+  copyConfigAssets(outDir);
 }
 
 // Parse CLI args
