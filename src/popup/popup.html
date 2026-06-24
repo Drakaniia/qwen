@@ -53,10 +53,37 @@
       </div>
     </header>
 
-    <!-- ─── Helper not connected: setup screen ────────────────────────── -->
-    <div id="setupScreen" class="setup-screen" hidden>
+    <!-- ─── Auto-repair banner ──────────────────────────────────────── -->
+    <div id="autoRepairBanner" class="auto-repair-banner" hidden>
+      <div class="auto-repair-content">
+        <span class="auto-repair-spinner"></span>
+        <span id="autoRepairText" class="auto-repair-text">Setting up helper...</span>
+      </div>
+      <div id="autoRepairRetryRow" class="auto-repair-retry-row" hidden>
+        <span id="autoRepairErrorText" class="auto-repair-error-text">Helper setup failed. Retrying...</span>
+        <button id="autoRepairRetryBtn" class="auto-repair-retry-btn" type="button">Retry now</button>
+      </div>
+    </div>
+
+    <!-- ─── Helper not connected: compact warning bar ─────────────────── -->
+    <div id="helperWarningBar" class="helper-warning-bar" hidden>
+      <div class="helper-warning-content">
+        <span class="helper-warning-icon">⚠️</span>
+        <span id="helperWarningText" class="helper-warning-text">Helper offline — downloads unavailable</span>
+      </div>
+      <div class="helper-warning-actions">
+        <button id="helperWarningRetryBtn" class="helper-warning-retry-btn" type="button" title="Retry connection">↻</button>
+        <button id="helperWarningFixBtn" class="helper-warning-fix-btn" type="button">Fix...</button>
+      </div>
+    </div>
+
+    <!-- ─── Helper troubleshooting panel (shown on-demand) ──────────────── -->
+    <div id="helperTroubleshooting" class="helper-troubleshooting" hidden>
+      <div class="helper-troubleshooting-header">
+        <button id="helperTroubleshootingBackBtn" class="helper-troubleshooting-back-btn" type="button">← Back</button>
+        <h2 class="helper-troubleshooting-title">Helper Troubleshooting</h2>
+      </div>
       <div class="setup-icon">⚠️</div>
-      <h2 class="setup-title">Helper Not Connected</h2>
       <p class="setup-desc">
         Qwin needs the native helper to download videos and music.
         The helper was not found or could not start.
@@ -92,6 +119,9 @@
         <span id="setupStatusText" class="setup-status-text">Checking for helper...</span>
       </div>
     </div>
+
+    <!-- ─── Old setup screen (kept for backward compat, hidden by default) -->
+    <div id="setupScreen" class="setup-screen" hidden></div>
 
     <!-- ─── Collapsible dependency warning banner ──────────────────────── -->
     <div id="depBanner" class="dep-banner" hidden>

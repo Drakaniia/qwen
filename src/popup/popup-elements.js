@@ -91,7 +91,15 @@ export const elements = {
   playlistPrompt: document.getElementById("playlistPrompt"),
   playlistTitle: document.getElementById("playlistTitle"),
   downloadAllBtn: document.getElementById("downloadAllBtn"),
-  // Setup screen elements
+  // Helper warning bar elements
+  helperWarningBar: document.getElementById("helperWarningBar"),
+  helperWarningText: document.getElementById("helperWarningText"),
+  helperWarningRetryBtn: document.getElementById("helperWarningRetryBtn"),
+  helperWarningFixBtn: document.getElementById("helperWarningFixBtn"),
+  // Helper troubleshooting panel elements
+  helperTroubleshooting: document.getElementById("helperTroubleshooting"),
+  helperTroubleshootingBackBtn: document.getElementById("helperTroubleshootingBackBtn"),
+  // Setup screen elements (kept for backward compat)
   setupScreen: document.getElementById("setupScreen"),
   setupCopyBtn: document.getElementById("setupCopyBtn"),
   setupCommandInput: document.getElementById("setupCommandInput"),
@@ -103,6 +111,11 @@ export const elements = {
   depBannerList: document.getElementById("depBannerList"),
   depBannerTitle: document.getElementById("depBannerTitle"),
   depBannerCopyBtn: document.getElementById("depBannerCopyBtn"),
+  // Auto-repair elements
+  autoRepairBanner: document.getElementById("autoRepairBanner"),
+  autoRepairText: document.getElementById("autoRepairText"),
+  autoRepairErrorText: document.getElementById("autoRepairErrorText"),
+  autoRepairRetryBtn: document.getElementById("autoRepairRetryBtn"),
   // Helper retry button
   helperRetryBtn: document.getElementById("helperRetryBtn"),
 };

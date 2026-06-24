@@ -178,4 +178,13 @@
   .recording-icon {
     animation: none;
   }
+
+  .auto-repair-banner {
+    animation: none;
+  }
+
+  .auto-repair-spinner {
+    animation: none;
+    opacity: 0.5;
+  }
 }
