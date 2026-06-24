@@ -22,6 +22,18 @@
       "match_about_blank": true
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "native-host/com.qwin.video_downloader.chrome.json",
+        "native-host/com.qwin.video_downloader.firefox.json",
+        "native-host/com.qwin.video_downloader.yandex.json",
+        "native-host/qwin_video_host.bat",
+        "native-host/register-host.ps1"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "qwin-video-downloader@example.com",
