@@ -294,6 +294,7 @@ function assembleDecryptedSegments(params) {
 }
 
 export {
+  runtimeMessage,
   tabsQuery,
   getVideos,
   getVideoFormats,

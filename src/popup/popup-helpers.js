@@ -8,6 +8,15 @@ import * as PopupUI from "./popup-ui.js";
 import * as playlistDetection from "../shared/playlist_detection.js";
 import { elements, qualityChooser, INDICATOR_STATES, INDICATOR_TOOLTIPS, INDICATOR_ARIA_LABELS, INDICATOR_DEBOUNCE_MS, AUDIO_FORMAT, RESCAN_IDLE_LABEL, RESCAN_BUSY_LABEL, ACTIVE_DOWNLOAD_STATUSES } from "./popup-elements.js";
 
+// ─── Auto-repair state ──────────────────────────────────────────────────────
+
+let autoRepairTimer = null;
+let autoRepairAttempts = 0;
+const MAX_AUTO_REPAIR_ATTEMPTS = 3;
+const AUTO_REPAIR_RETRY_DELAY_MS = 5000;
+const AUTO_REPAIR_COOLDOWN_MS = 30000;
+
+
 // ─── Mutable indicator state ────────────────────────────────────────────────
 let indicatorDebounceTimer = null;
 let currentIndicatorState = INDICATOR_STATES.CHECKING;
@@ -333,6 +342,7 @@ export async function checkHelperStatus() {
   const connected = response && response.ok && response.connected;
   const dependencies = (response && response.dependencies) || {};
   const hasMissingDeps = connected && (!dependencies.ytDlp || !dependencies.ffmpeg);
+  const nativeError = response && response.error ? response.error : "";
 
   if (connected) {
     if (hasMissingDeps) {
@@ -359,86 +369,136 @@ export async function checkHelperStatus() {
     elements.helperRetryBtn.disabled = false;
   }
 
+  // If there's a native messaging error, update the warning bar text with it
+  if (!connected && nativeError) {
+    // Make the error more readable by stripping known prefixes
+    const friendlyError = nativeError
+      .replace(/^Native messaging is not connected: /, "")
+      .replace(/^Native helper is not registered or could not start:? ?/, "")
+      .trim();
+    elements.helperWarningText.textContent = friendlyError
+      ? "Helper offline — " + friendlyError
+      : "Helper offline — downloads unavailable";
+  }
+
   return { connected, dependencies, hasMissingDeps };
 }
 
-// ─── Transition functions ──────────────────────────────────────────────────
+// ─── Helper warning bar functions ─────────────────────────────────────────
 
-export function transitionToSetupScreen() {
-  elements.contentView.classList.add("content-fade-out");
-  elements.viewToggle.classList.add("content-fade-out");
-  elements.footerActions.classList.add("content-fade-out");
-  elements.depBanner.classList.add("content-fade-out");
-
-  window.setTimeout(function () {
-    elements.contentView.hidden = true;
-    elements.viewToggle.hidden = true;
-    elements.footerActions.hidden = true;
-    elements.musicLinkSection.hidden = true;
-    elements.settingsPanel.hidden = true;
-    elements.depBanner.hidden = true;
-
-    elements.contentView.classList.remove("content-fade-out");
-    elements.viewToggle.classList.remove("content-fade-out");
-    elements.footerActions.classList.remove("content-fade-out");
-    elements.depBanner.classList.remove("content-fade-out");
-
-    elements.setupScreen.className = "setup-screen";
-    void elements.setupScreen.offsetWidth;
-    elements.setupScreen.hidden = false;
-    elements.setupStatusText.textContent = "Checking for helper...";
-    setHelperStatus("Helper not connected.", "error");
-    elements.helperRetryBtn.hidden = false;
-    elements.helperRetryBtn.disabled = false;
-  }, 180);
-}
-
-export function renderSetupScreen() {
-  elements.contentView.hidden = true;
-  elements.viewToggle.hidden = true;
-  elements.footerActions.hidden = true;
-  elements.musicLinkSection.hidden = true;
-  elements.settingsPanel.hidden = true;
-  elements.depBanner.hidden = true;
-  elements.setupScreen.className = "setup-screen";
-  void elements.setupScreen.offsetWidth;
-  elements.setupScreen.hidden = false;
-  elements.setupStatusText.textContent = "Checking for helper...";
+/**
+ * Show the compact helper warning bar.
+ * Does NOT hide contentView, viewToggle, or footerActions —
+ * the warning bar is a thin banner at the top, not a takeover.
+ */
+export function showHelperWarningBar() {
+  // Hide troubleshooting panel if it was open
+  elements.helperTroubleshooting.hidden = true;
+  // Ensure normal UI stays visible
+  elements.contentView.hidden = false;
+  elements.viewToggle.hidden = false;
+  elements.footerActions.hidden = false;
+  // Show the compact warning bar (preserve any existing error text)
+  elements.helperWarningBar.hidden = false;
+  if (!elements.helperWarningText.textContent || elements.helperWarningText.textContent === "Checking connection...") {
+    elements.helperWarningText.textContent = "Helper offline — downloads unavailable";
+  }
   setHelperStatus("Helper not connected.", "error");
   elements.helperRetryBtn.hidden = false;
   elements.helperRetryBtn.disabled = false;
 }
 
+/**
+ * Transition from connected state to the compact warning bar with a fade.
+ */
+export function transitionToHelperWarning() {
+  // Fade out the troubleshooting panel if visible
+  if (!elements.helperTroubleshooting.hidden) {
+    elements.helperTroubleshooting.classList.add("fade-out");
+    window.setTimeout(function () {
+      elements.helperTroubleshooting.hidden = true;
+      elements.helperTroubleshooting.classList.remove("fade-out");
+    }, 200);
+  }
+
+  // Fade dep banner
+  elements.depBanner.classList.add("content-fade-out");
+  window.setTimeout(function () {
+    elements.depBanner.hidden = true;
+    elements.depBanner.classList.remove("content-fade-out");
+  }, 180);
+
+  showHelperWarningBar();
+}
+
+/**
+ * Hide the helper warning bar and troubleshooting panel.
+ */
+export function hideHelperWarningBar() {
+  elements.helperWarningBar.hidden = true;
+  elements.helperTroubleshooting.hidden = true;
+}
+
+/**
+ * Show the helper troubleshooting panel (expanded view with install instructions).
+ * This replaces the old setup screen takeover.
+ */
+export function showHelperTroubleshooting() {
+  elements.helperTroubleshooting.hidden = false;
+  elements.helperTroubleshooting.classList.remove("fade-out");
+  elements.setupStatusText.textContent = "Checking for helper...";
+}
+
+/**
+ * Show a checking state in the warning bar.
+ */
+export function showHelperWarningChecking() {
+  elements.helperWarningBar.hidden = false;
+  elements.helperWarningText.textContent = "Checking connection...";
+  elements.helperWarningRetryBtn.classList.add("spinning");
+  setHelperStatus("Checking helper...", "");
+}
+
+/**
+ * Update the warning bar text (e.g. with error details).
+ * @param {string} text
+ */
+export function setHelperWarningText(text) {
+  elements.helperWarningText.textContent = text || "Helper offline — downloads unavailable";
+}
+
+// ─── Transition to connected UI ────────────────────────────────────────────
+
 export function transitionToNormalUI(hasMissingDeps, deps) {
-  elements.setupScreen.classList.add("fade-out");
+  // Hide the warning bar and troubleshooting panel
+  elements.helperWarningBar.hidden = true;
+  elements.helperTroubleshooting.hidden = true;
+  elements.helperTroubleshooting.classList.remove("fade-out");
+
+  // Make sure normal UI is visible
+  elements.contentView.hidden = false;
+  elements.viewToggle.hidden = false;
+  elements.footerActions.hidden = false;
+  elements.helperRetryBtn.hidden = true;
+  elements.helperRetryBtn.disabled = true;
+  setHelperStatus("Helper ready.", "ok");
+
+  // Fade in content
+  elements.contentView.classList.add("content-fade-in");
+  elements.viewToggle.classList.add("content-fade-in");
+  elements.footerActions.classList.add("content-fade-in");
 
   window.setTimeout(function () {
-    elements.setupScreen.hidden = true;
-    elements.setupScreen.classList.remove("fade-out");
+    elements.contentView.classList.remove("content-fade-in");
+    elements.viewToggle.classList.remove("content-fade-in");
+    elements.footerActions.classList.remove("content-fade-in");
+  }, 300);
 
-    elements.contentView.hidden = false;
-    elements.viewToggle.hidden = false;
-    elements.footerActions.hidden = false;
-    elements.helperRetryBtn.hidden = true;
-    elements.helperRetryBtn.disabled = true;
-    setHelperStatus("Helper ready.", "ok");
-
-    elements.contentView.classList.add("content-fade-in");
-    elements.viewToggle.classList.add("content-fade-in");
-    elements.footerActions.classList.add("content-fade-in");
-
-    window.setTimeout(function () {
-      elements.contentView.classList.remove("content-fade-in");
-      elements.viewToggle.classList.remove("content-fade-in");
-      elements.footerActions.classList.remove("content-fade-in");
-    }, 300);
-
-    refresh({ syncActiveTab: false }).then(function () {
-      if (hasMissingDeps) {
-        renderDepBanner(deps);
-      }
-    }).catch(function () {});
-  }, 200);
+  refresh({ syncActiveTab: false }).then(function () {
+    if (hasMissingDeps) {
+      renderDepBanner(deps);
+    }
+  }).catch(function () {});
 }
 
 export function renderDepBanner(dependencies) {
@@ -502,6 +562,141 @@ export function copyInstallCommand(btn) {
   });
 }
 
+// ─── Auto-repair helpers ────────────────────────────────────────────────────
+
+/**
+ * Show the auto-repair banner with a spinner and status text.
+ */
+function showAutoRepairBanner(text) {
+  elements.autoRepairBanner.hidden = false;
+  elements.autoRepairText.textContent = text || "Setting up helper...";
+  if (elements.autoRepairRetryRow) {
+    elements.autoRepairRetryRow.hidden = true;
+  }
+}
+
+/**
+ * Hide the auto-repair banner.
+ */
+function hideAutoRepairBanner() {
+  if (autoRepairTimer) {
+    clearTimeout(autoRepairTimer);
+    autoRepairTimer = null;
+  }
+  elements.autoRepairBanner.hidden = true;
+}
+
+/**
+ * Show a retry state in the auto-repair banner with error message.
+ */
+function showAutoRepairError(message, showRetry) {
+  elements.autoRepairText.textContent = "Helper setup failed";
+  if (elements.autoRepairErrorText) {
+    elements.autoRepairErrorText.textContent = message || "Could not set up the helper.";
+  }
+  if (elements.autoRepairRetryRow) {
+    elements.autoRepairRetryRow.hidden = !showRetry;
+  }
+}
+
+/**
+ * Run the auto-repair flow: attempt to diagnose and repair the native helper.
+ * Shows the auto-repair banner, calls the background, and handles the result.
+ * @returns {Promise<{ok: boolean, exhausted?: boolean}>}
+ */
+async function runAutoRepair() {
+  if (autoRepairAttempts >= MAX_AUTO_REPAIR_ATTEMPTS) {
+    return { ok: false, exhausted: true };
+  }
+
+  showAutoRepairBanner(
+    "Setting up helper (attempt " + (autoRepairAttempts + 1) + " of " + MAX_AUTO_REPAIR_ATTEMPTS + ")...",
+  );
+
+  autoRepairAttempts++;
+
+  try {
+    // Attempt repair (autoRepairHelper handler runs diagnosis internally)
+    const repairResult = await PopupApi.runtimeMessage({ type: "autoRepairHelper" });
+
+    if (repairResult && repairResult.ok) {
+      // Repair succeeded — ping to verify
+      hideAutoRepairBanner();
+      autoRepairAttempts = 0;
+      // Reset fail count
+      await PopupApi.runtimeMessage({ type: "resetAutoInstallFailCount" });
+      return { ok: true };
+    }
+
+    if (repairResult && repairResult.exhausted) {
+      // Exhausted all attempts — show setup screen
+      showAutoRepairError(
+        repairResult.error || "Auto-repair exhausted. Please run scripts\\install.bat manually.",
+        false,
+      );
+      return { ok: false, exhausted: true };
+    }
+
+    // Not exhausted yet — show retry option
+    const willRetry = repairResult && repairResult.willRetry;
+    if (willRetry) {
+      const delay = (repairResult && repairResult.retryDelayMs) || AUTO_REPAIR_RETRY_DELAY_MS;
+      showAutoRepairError(
+        repairResult.error || "Helper setup failed. Retrying...",
+        true,
+      );
+
+      // Auto-retry after delay
+      if (autoRepairTimer) clearTimeout(autoRepairTimer);
+      return new Promise(function (resolve) {
+        autoRepairTimer = setTimeout(async function () {
+          const result = await runAutoRepair();
+          resolve(result);
+        }, delay);
+      });
+    }
+
+    return { ok: false };
+  } catch (err) {
+    showAutoRepairError(
+      "Auto-repair error: " + (err.message || String(err)),
+      autoRepairAttempts < MAX_AUTO_REPAIR_ATTEMPTS,
+    );
+    return { ok: false };
+  }
+}
+
+/**
+ * Retry auto-repair immediately (called from the retry button).
+ */
+async function retryAutoRepair() {
+  if (elements.autoRepairRetryBtn) {
+    elements.autoRepairRetryBtn.disabled = true;
+  }
+  const result = await runAutoRepair();
+  if (elements.autoRepairRetryBtn) {
+    elements.autoRepairRetryBtn.disabled = false;
+  }
+
+  if (result.ok) {
+    // Repair succeeded — check helper status and transition
+    const helperStatus = await checkHelperStatus();
+    if (helperStatus.connected) {
+      hideAutoRepairBanner();
+      hideHelperWarningBar();
+      await refresh({ syncActiveTab: false });
+      if (helperStatus.hasMissingDeps) {
+        renderDepBanner(helperStatus.dependencies);
+      }
+    } else {
+      // Connection didn't work — show warning bar
+      showHelperWarningBar();
+    }
+  } else if (result.exhausted) {
+    showHelperWarningBar();
+  }
+}
+
 export async function init() {
   await updateActiveTabContext();
 
@@ -514,9 +709,30 @@ export async function init() {
   const helperStatus = await checkHelperStatus();
 
   if (!helperStatus.connected) {
-    renderSetupScreen();
+    // Try auto-repair first
+    const repairResult = await runAutoRepair();
+
+    if (repairResult.ok) {
+      // Auto-repair succeeded — re-check helper status
+      const recheck = await checkHelperStatus();
+      if (recheck.connected) {
+        hideAutoRepairBanner();
+        hideHelperWarningBar();
+        await refresh({ syncActiveTab: false });
+        if (recheck.hasMissingDeps) {
+          renderDepBanner(recheck.dependencies);
+        }
+        return;
+      }
+    }
+
+    // Auto-repair failed or exhausted — show compact warning bar (not full takeover)
+    showHelperWarningBar();
     return;
   }
+
+  // Helper is connected — check fail count was reset
+  await PopupApi.runtimeMessage({ type: "resetAutoInstallFailCount" });
 
   await refresh({ syncActiveTab: false });
 
@@ -842,4 +1058,4 @@ export function renderSyncedHistory() {
 // ─── Active download jobs helper (re-export) ──────────────────────────────
 // Re-exported for convenience, see popup-state.js for the canonical definition
 import { activeDownloadJobs, isUnknownMessageTypeError } from "./popup-state.js";
-export { activeDownloadJobs, isUnknownMessageTypeError };
+export { activeDownloadJobs, isUnknownMessageTypeError, retryAutoRepair };

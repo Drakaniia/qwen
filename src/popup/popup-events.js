@@ -27,9 +27,12 @@ import {
   shortenUrl,
   normalizeManualUrl,
   startRecording,
-  transitionToSetupScreen,
+  transitionToHelperWarning,
   transitionToNormalUI,
-  renderSetupScreen,
+  showHelperWarningBar,
+  showHelperWarningChecking,
+  hideHelperWarningBar,
+  showHelperTroubleshooting,
   renderDepBanner,
   copyInstallCommand,
   updateBatchUI,
@@ -38,6 +41,7 @@ import {
   updateIndicatorFromVideos,
   setVideoLayoutMode as setVideoLayout,
   isUnknownMessageTypeError,
+  retryAutoRepair,
 } from "./popup-helpers.js";
 import { renderVideos as renderVideosFn } from "./popup-renderer.js";
 
@@ -593,60 +597,124 @@ api.runtime.onMessage.addListener((message) => {
     const deps = status.dependencies || {};
     const hasMissingDeps = connected && (!deps.ytDlp || !deps.ffmpeg);
 
-    const isOnSetupScreen = !elements.setupScreen.hidden;
+    const isOnWarning = !elements.helperWarningBar.hidden;
+    const isOnTroubleshooting = !elements.helperTroubleshooting.hidden;
 
-    if (connected && isOnSetupScreen) {
-      transitionToNormalUI(hasMissingDeps, deps);
-    } else if (!connected && !isOnSetupScreen) {
-      transitionToSetupScreen();
-    } else if (connected && !isOnSetupScreen) {
-      if (hasMissingDeps) {
-        renderDepBanner(deps);
+    if (connected) {
+      // Hide warning bar and troubleshooting panel
+      hideHelperWarningBar();
+      if (!elements.contentView.hidden) {
+        // Already showing normal UI — just update status
+        if (hasMissingDeps) {
+          renderDepBanner(deps);
+        } else {
+          elements.depBanner.classList.add("content-fade-out");
+          window.setTimeout(function () {
+            elements.depBanner.hidden = true;
+            elements.depBanner.classList.remove("content-fade-out");
+          }, 200);
+        }
+        checkHelperStatus();
       } else {
-        elements.depBanner.classList.add("content-fade-out");
-        window.setTimeout(function () {
-          elements.depBanner.hidden = true;
-          elements.depBanner.classList.remove("content-fade-out");
-        }, 200);
+        // Was showing warning — transition to normal UI
+        transitionToNormalUI(hasMissingDeps, deps);
+      }
+    } else {
+      // Not connected — show warning bar if not already showing
+      if (!isOnWarning && !isOnTroubleshooting) {
+        transitionToHelperWarning();
       }
       checkHelperStatus();
     }
   }
 });
 
-// ─── Helper retry button ──────────────────────────────────────────────────
+// ─── Helper retry button (topbar) ────────────────────────────────────────
 
 elements.helperRetryBtn.addEventListener("click", async function () {
   elements.helperRetryBtn.classList.add("spinning");
   elements.helperRetryBtn.disabled = true;
   setHelperStatus("Checking...", "");
-
-  const helperStatus = await checkHelperStatus();
-
-  elements.helperRetryBtn.classList.remove("spinning");
-
-  if (!helperStatus.connected) {
-    renderSetupScreen();
+  // Show the warning bar in checking state
+  if (elements.helperWarningBar.hidden) {
+    showHelperWarningChecking();
   } else {
-    elements.setupScreen.hidden = true;
-    elements.setupScreen.classList.remove("fade-out");
-    elements.contentView.hidden = false;
-    elements.viewToggle.hidden = false;
-    elements.footerActions.hidden = false;
-    elements.contentView.classList.add("content-fade-in");
-    elements.viewToggle.classList.add("content-fade-in");
-    elements.footerActions.classList.add("content-fade-in");
-    window.setTimeout(function () {
-      elements.contentView.classList.remove("content-fade-in");
-      elements.viewToggle.classList.remove("content-fade-in");
-      elements.footerActions.classList.remove("content-fade-in");
-    }, 300);
-    if (helperStatus.hasMissingDeps) {
-      renderDepBanner(helperStatus.dependencies);
-    }
-    await refresh({ syncActiveTab: false });
+    elements.helperWarningText.textContent = "Checking connection...";
   }
-  elements.helperRetryBtn.disabled = false;
+
+  try {
+    const helperStatus = await checkHelperStatus();
+
+    if (!helperStatus.connected) {
+      showHelperWarningBar();
+    } else {
+      hideHelperWarningBar();
+      elements.contentView.hidden = false;
+      elements.viewToggle.hidden = false;
+      elements.footerActions.hidden = false;
+      elements.contentView.classList.add("content-fade-in");
+      elements.viewToggle.classList.add("content-fade-in");
+      elements.footerActions.classList.add("content-fade-in");
+      window.setTimeout(function () {
+        elements.contentView.classList.remove("content-fade-in");
+        elements.viewToggle.classList.remove("content-fade-in");
+        elements.footerActions.classList.remove("content-fade-in");
+      }, 300);
+      if (helperStatus.hasMissingDeps) {
+        renderDepBanner(helperStatus.dependencies);
+      }
+      await refresh({ syncActiveTab: false });
+    }
+  } finally {
+    elements.helperRetryBtn.classList.remove("spinning");
+    elements.helperRetryBtn.disabled = false;
+  }
+});
+
+// ─── Helper warning bar: retry button ───────────────────────────────────
+
+elements.helperWarningRetryBtn.addEventListener("click", async function () {
+  if (elements.helperWarningRetryBtn.classList.contains("spinning")) return;
+  elements.helperWarningRetryBtn.classList.add("spinning");
+  showHelperWarningChecking();
+
+  try {
+    const helperStatus = await checkHelperStatus();
+
+    if (!helperStatus.connected) {
+      showHelperWarningBar();
+    } else {
+      hideHelperWarningBar();
+      transitionToNormalUI(helperStatus.hasMissingDeps, helperStatus.dependencies);
+    }
+  } finally {
+    elements.helperWarningRetryBtn.classList.remove("spinning");
+  }
+});
+
+// ─── Helper warning bar: fix button ─────────────────────────────────────
+
+elements.helperWarningFixBtn.addEventListener("click", function () {
+  showHelperTroubleshooting();
+});
+
+// ─── Helper troubleshooting: back button ────────────────────────────────
+
+elements.helperTroubleshootingBackBtn.addEventListener("click", function () {
+  elements.helperTroubleshooting.classList.add("fade-out");
+  window.setTimeout(function () {
+    elements.helperTroubleshooting.hidden = true;
+    elements.helperTroubleshooting.classList.remove("fade-out");
+    // Re-show the warning bar
+    showHelperWarningBar();
+  }, 200);
+});
+
+// ─── Auto-repair retry button ─────────────────────────────────────────
+
+elements.autoRepairRetryBtn.addEventListener("click", async function () {
+  if (elements.autoRepairRetryBtn.disabled) return;
+  await retryAutoRepair();
 });
 
 // ─── Setup screen: copy command button ───────────────────────────────────
