@@ -4,6 +4,8 @@ import { browserApi } from "../shared/browser_api.js";
 
 // ── Cached helper status ────────────────────────────────────────────────
 
+export const HELPER_PING_INTERVAL_MS = 30000;
+
 /**
  * @type {{ connected: boolean, version: string, dependencies: Object, lastChecked: number, error: string }}
  */
@@ -16,7 +18,7 @@ export let cachedHelperStatus = {
 };
 let helperPingTimer = null;
 
-const HELPER_PING_INTERVAL_MS = 30000;
+/**
  * Run a ping check and update the cached status.
  * If the status changed from the previous check, broadcast to popups.
  * @param {Function} notifyPopup - Function to send messages to popup

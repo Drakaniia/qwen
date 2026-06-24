@@ -19,8 +19,7 @@ const targets = {
 };
 
 /**
- * Copy native-host assets (manifest JSONs, bat, ps1) into the bundled output.
- * These are needed as web-accessible resources for the auto-helper-installer.
+ * Copy native-host assets (bat, ps1) into the bundled output.
  */
 function copyNativeHostAssets(outDir) {
   const srcNativeHost = resolve(rootDir, "src", "native-host");
@@ -28,7 +27,6 @@ function copyNativeHostAssets(outDir) {
 
   mkdirSync(outNativeHost, { recursive: true });
 
-  // Files to bundle
   const filesToCopy = [
     "qwin_video_host.bat",
     "register-host.ps1",
@@ -98,7 +96,7 @@ async function build(targetNames, outDir) {
     });
   }
 
-  // Copy native host and config assets for the auto-helper-installer
+  // Copy native host and config assets
   copyNativeHostAssets(outDir);
   copyConfigAssets(outDir);
 }
