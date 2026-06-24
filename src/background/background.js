@@ -99,7 +99,9 @@ const HOST_NAME = downloadHelpers.HOST_NAME;
 
 const pageTitlesByTab = {};
 
-// Inject filter-block check into header_utils
+// ── Track last successful download for helper status fallback ─────────
+
+let lastSuccessfulDownloadAt = 0;
 headerUtils.setBlockedUrlCheck(isBlockedUrlWithFilters);
 
 // ── Popup notification ───────────────────────────────────────────────────
@@ -300,6 +302,18 @@ function nativeRequest(payload, timeoutMs = 60000) {
   return nativeRequests.nativeRequest(api, HOST_NAME, payload, timeoutMs);
 }
 
+// ── Shared wrapper to track download completion for helper status ──────
+
+function wrapUpdateDownload(updater) {
+  return (jobId, patch) => {
+    updater(jobId, patch);
+    if (patch && patch.status === "done") {
+      lastSuccessfulDownloadAt = Date.now();
+      autoHelperInstaller.resetFailureCount().catch(() => {});
+    }
+  };
+}
+
 // ── Download orchestration wiring ────────────────────────────────────────
 
 function downloadOrchestrationDeps() {
@@ -345,7 +359,7 @@ function downloadOrchestrationDeps() {
       tabState.setSettings(nextSettings);
     },
     titleFromUrl: videoUtils.titleFromUrl,
-    updateDownload: (jobId, patch) => updateDownload(jobId, patch, notifyPopup),
+    updateDownload: wrapUpdateDownload((jobId, patch) => updateDownload(jobId, patch, notifyPopup)),
     userAgent: () => navigator.userAgent || "",
     userFriendlyDownloadError,
     variantsForVideo,
@@ -413,7 +427,7 @@ async function clearDownloads() {
 import * as autoHelperInstaller from "../shared/auto-helper-installer.js";
 
 // ── Imported helper-ping module ────────────────────────────────────────
-import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, startHelperPing, pingNativeHost } from "./background-helper-ping.js";
+import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, startHelperPing, pingNativeHost, hasRecentDownloadSuccess } from "./background-helper-ping.js";
 
 // ── WebRequest listener registration helper ─────────────────────────────
 
@@ -1106,7 +1120,7 @@ function initBatchOrchestration() {
     notifyPopup,
     normalizeUrl,
     getTabVideos,
-    updateDownload: (jobId, patch) => updateDownload(jobId, patch, notifyPopup),
+    updateDownload: wrapUpdateDownload((jobId, patch) => updateDownload(jobId, patch, notifyPopup)),
     nativeRequestHeadersForVideo,
     userAgent: navigator.userAgent || "",
   });
@@ -1223,9 +1237,23 @@ messageRouter.handle("getHelperStatus", async () => {
   if (age > HELPER_PING_INTERVAL_MS || !cachedHelperStatus.lastChecked) {
     await refreshCachedHelperStatus(notifyPopup, HOST_NAME);
   }
+
+  // Fallback: if the ping reports disconnected but a download recently
+  // completed successfully, trust the download as proof the helper is
+  // actually connected. This prevents false "not connected" when the
+  // dedicated ping connection has issues but downloads work fine.
+  const fallbackConnected = !cachedHelperStatus.connected
+    && hasRecentDownloadSuccess(lastSuccessfulDownloadAt, cachedHelperStatus.lastChecked, HELPER_PING_INTERVAL_MS);
+
+  if (fallbackConnected) {
+    console.info(
+      "[helper-status] Ping reported disconnected, but a recent download succeeded. Treating helper as connected.",
+    );
+  }
+
   return {
     ok: true,
-    connected: cachedHelperStatus.connected,
+    connected: cachedHelperStatus.connected || fallbackConnected,
     version: cachedHelperStatus.version,
     dependencies: { ...cachedHelperStatus.dependencies },
     lastChecked: cachedHelperStatus.lastChecked,

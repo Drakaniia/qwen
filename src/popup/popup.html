@@ -19,8 +19,7 @@
             aria-label="Checking for downloadable videos"
           ></span>
         </div>
-        <p id="helperStatus" class="helper-status">Checking helper...</p>
-    <button id="helperRetryBtn" class="helper-retry-btn" type="button" hidden title="Retry check">↻</button>
+        <p id="helperStatus" class="helper-status"></p>
       </div>
       <div class="topbar-actions">
         <button id="rescan" class="icon-button" type="button" aria-label="Rescan" title="Rescan">
@@ -52,77 +51,6 @@
         </button>
       </div>
     </header>
-
-    <!-- ─── Auto-repair banner ──────────────────────────────────────── -->
-    <div id="autoRepairBanner" class="auto-repair-banner" hidden>
-      <div class="auto-repair-content">
-        <span class="auto-repair-spinner"></span>
-        <span id="autoRepairText" class="auto-repair-text">Setting up helper...</span>
-      </div>
-      <div id="autoRepairRetryRow" class="auto-repair-retry-row" hidden>
-        <span id="autoRepairErrorText" class="auto-repair-error-text">Helper setup failed. Retrying...</span>
-        <button id="autoRepairRetryBtn" class="auto-repair-retry-btn" type="button">Retry now</button>
-      </div>
-    </div>
-
-    <!-- ─── Helper not connected: compact warning bar ─────────────────── -->
-    <div id="helperWarningBar" class="helper-warning-bar" hidden>
-      <div class="helper-warning-content">
-        <span class="helper-warning-icon">⚠️</span>
-        <span id="helperWarningText" class="helper-warning-text">Helper offline — downloads unavailable</span>
-      </div>
-      <div class="helper-warning-actions">
-        <button id="helperWarningRetryBtn" class="helper-warning-retry-btn" type="button" title="Retry connection">↻</button>
-        <button id="helperWarningFixBtn" class="helper-warning-fix-btn" type="button">Fix...</button>
-      </div>
-    </div>
-
-    <!-- ─── Helper troubleshooting panel (shown on-demand) ──────────────── -->
-    <div id="helperTroubleshooting" class="helper-troubleshooting" hidden>
-      <div class="helper-troubleshooting-header">
-        <button id="helperTroubleshootingBackBtn" class="helper-troubleshooting-back-btn" type="button">← Back</button>
-        <h2 class="helper-troubleshooting-title">Helper Troubleshooting</h2>
-      </div>
-      <div class="setup-icon">⚠️</div>
-      <p class="setup-desc">
-        Qwin needs the native helper to download videos and music.
-        The helper was not found or could not start.
-      </p>
-
-      <div class="setup-install-area">
-        <button id="setupCopyBtn" class="primary setup-button" type="button">
-          <span class="setup-button-icon">📋</span>
-          <span class="setup-button-text">Copy install command</span>
-        </button>
-        <div class="setup-command-row">
-          <input id="setupCommandInput" type="text" class="setup-command-input" readonly spellcheck="false"
-            value="scripts\install.bat" />
-        </div>
-        <p class="setup-hint">
-          Open a terminal in the <strong>Qwin project directory</strong>, paste this command, and press Enter.
-        </p>
-      </div>
-
-      <div class="setup-whats-installed">
-        <p class="setup-whats-title">The installer will set up:</p>
-        <ul class="setup-whats-list">
-          <li>yt-dlp — downloads videos from 1,000+ sites</li>
-          <li>ffmpeg — merges audio/video and converts formats</li>
-          <li>aria2c — fast segmented downloading</li>
-          <li>Stream fallback tools</li>
-          <li>Native messaging host registration</li>
-        </ul>
-      </div>
-
-      <div class="setup-status-row">
-        <span class="setup-checking-dot"></span>
-        <span id="setupStatusText" class="setup-status-text">Checking for helper...</span>
-      </div>
-    </div>
-
-    <!-- ─── Old setup screen (kept for backward compat, hidden by default) -->
-    <div id="setupScreen" class="setup-screen" hidden></div>
-
     <!-- ─── Collapsible dependency warning banner ──────────────────────── -->
     <div id="depBanner" class="dep-banner" hidden>
       <button id="depBannerToggle" class="dep-banner-toggle" type="button" aria-expanded="false">

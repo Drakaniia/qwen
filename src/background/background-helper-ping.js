@@ -14,11 +14,9 @@ export let cachedHelperStatus = {
   lastChecked: 0,
   error: "",
 };
-
-export const HELPER_PING_INTERVAL_MS = 30000; // 30 seconds
 let helperPingTimer = null;
 
-/**
+const HELPER_PING_INTERVAL_MS = 30000;
  * Run a ping check and update the cached status.
  * If the status changed from the previous check, broadcast to popups.
  * @param {Function} notifyPopup - Function to send messages to popup
@@ -118,6 +116,10 @@ export function pingNativeHost(hostName, runtimeApi) {
     port.onDisconnect.addListener(() => {
       clearTimeout(timeout);
       const runtimeError = api.runtime.lastError ? api.runtime.lastError.message : "";
+      console.warn(
+        "[helper-ping] Native messaging port disconnected:",
+        runtimeError || "no error message",
+      );
       finish({
         ok: false,
         error: runtimeError || "Native helper is not registered or could not start.",
