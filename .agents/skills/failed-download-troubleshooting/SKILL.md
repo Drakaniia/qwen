@@ -12,146 +12,220 @@ A systematic, general-purpose debugging workflow for failed video downloads. Des
 
 ## Core Principle
 
-Every failed download has one of two root causes. Determine which one before fixing anything:
+Every failed download has one of two root causes. But **check both sides** — the real issue is often a combination:
 
 | Category | Symptom | What it means |
 |----------|---------|---------------|
-| **False Positive** | The URL sent to backends is not a real stream — it's a page route, API endpoint, meta tag path, ad URL, or static asset | The detection system incorrectly flagged something as a video. Block the bad URL pattern. |
-| **Missing Real Stream** | The actual video plays in the browser but the extension never found its stream URL | The detection system missed the real video. Add a new detection path or improve an existing one. |
+| **False Positive** | A non-video URL was detected as downloadable. The bad URL is what gets sent to backends. | The detection system incorrectly flagged something. Block the bad URL pattern. |
+| **Incorrectly Blocked Real Stream** | The actual video plays in the browser but the extension never found its stream URL _or_ found it but blocked it. | A legit stream URL is being blocked by a filter that's too broad. Narrow the blocking pattern. |
+
+**Both categories can coexist.** Fixing only one side (e.g., blocking the bad URL) while the real stream remains blocked leaves the user with no valid option. Always check both.
 
 ---
 
-## Workflow
+## Investigation Phases
 
-### Step 1: Read the Download Log
+### Phase 1: Gather Context
 
-Open `logs/downloads.jsonl`. Find the failed download (search for `DOWNLOAD_ERROR` or `ATTEMPT_END` with `exitCode` ≠ 0).
+Before looking at any URLs, understand what changed and what exists:
 
-Look at these fields in the `DOWNLOAD_INIT` event:
-
-- **`url`** — The URL that was sent to backends. Is this something a video player would request?
-- **`pageUrl`** — Which page was the user on when this was detected?
-- **`format`** — What format did the detection system assign? (M3U8, MP4, etc.)
-
-Then check the `ATTEMPT_END` events for the backend error message.
-
-**Red flags in the URL:**
-
-- No video file extension (`.mp4`, `.m3u8`, `.mpd`, `.webm`)
-- Looks like a page route, not a media asset (single path segment, no extension)
-- Matches common non-video patterns: meta tags, HTTP headers, CSS properties, ad networks, font files, web manifests
-- Very short or random-looking path segments
-- Relative-looking paths that got resolved to the site domain
-
-### Step 2: Classify the URL
-
-Check what the server actually returns for the suspicious URL:
-
-```
-curl -sI "https://suspicious-site.com/bad-path"
-```
-
-Look at the response:
-- **`Content-Type: text/html`** — It's an HTML page, not a video. False positive.
-- **`Content-Type: application/json`** — It's an API response. False positive.
-- **`Content-Type: video/mp4` or `application/x-mpegURL`** — It returns video content, but the backend can't handle it. Could be either category.
-
-### Step 3: Determine the Detection Path
-
-The extension detects video URLs through several paths. Different detection paths have access to different information:
-
-1. **Network request interception** (`onBeforeRequest`) — Fires before the request. No content-type available. Only checks URL patterns and resource type.
-2. **Network response interception** (`onHeadersReceived`) — Fires after the response. Has content-type. Can block `text/html`, `image/*`, `font/*`, etc.
-3. **Content script scanning** — Scans performance entries and inline scripts for URLs. No content-type info available. Relies purely on URL pattern matching.
-4. **DOM video element detection** — Finds `<video>` tags on the page. Has width, height, duration.
-5. **CDP extraction** — Injects JavaScript via DevTools Protocol to extract video sources from the page context.
-
-To find which path caught a bad URL:
-- If it has a video extension → likely #1 or #2
-- If it has no video extension but appears in the list → likely #3
-- If it's a `<video>` element URL → likely #4
-
-### Step 4: Fix False Positives
-
-If the URL is not a real video:
-
-1. **Categorize the URL pattern** — What type of non-video content is it?
-   - Single-word page routes (meta tags, HTTP headers, CSS properties) → `STATIC_PAGE_ASSET_RE`
-   - Player JavaScript/CSS assets (`.js`, `.css`, `.hlsjs`, `.map`) → `STATIC_PLAYER_ASSET_RE`
-   - Web app manifests (`.webmanifest`, `manifest.json`) → `WEB_APP_MANIFEST_RE`
-   - Ad networks (doubleclick, googleads, imasdk, preroll, etc.) → `AD_RE`
-   - Stream segments (`.ts`, `.m4s`, `segment-00001`) → `SEGMENT_EXTENSION_RE`
-   - GIF-style clips (giphy, tenor, animated-gif, loop-preview) → `GIF_VIDEO_RE`
-
-2. **Add the pattern to the appropriate regex** in `src/shared/media_candidates.js`
-
-3. **Apply TDD** (skill: `tdd`):
-   - Add a test fixture to `tests/fixtures/media_candidate_rules.json` with `blocked: true`
-   - Run `node tests/extension/test_video_filters.js` (it should pass after the fix)
-   - Run `npm run build` to rebuild the extension
-
-### Step 5: Fix Missing Real Streams
-
-If the real video plays in the browser but the extension never detected it:
-
-1. **Open DevTools → Network tab** on the actual site
-2. **Filter for video types**: `.m3u8`, `.mpd`, `.mp4`, `.webm`
-3. **Check how the video is served**:
-   - Direct URL with extension → The network interceptors should catch it. Check why they missed it.
-   - Blob URL (e.g., `blob:https://...`) → The player uses MediaSource Extensions (MSE). The `media_source_intercept.js` module handles this.
-   - Encrypted (Widevine DRM) → Needs the CDM pipeline (cdm_network_intercept + Go binary for key extraction + decryption). This is a deeper integration, not a quick fix.
-   - Embedded in JavaScript data → May need CDP Extraction (cdp_extraction.js) to pull the URL from the page's JS context.
-
-4. **For each case**:
-   - Direct URL: Check if `handleBeforeRequest` or `handleHeadersReceived` filters it. Maybe the regex needs updating.
-   - Blob/MSE: Verify `media_source_intercept.js` is intercepting the source buffer. Check the content script is running on the page.
-   - CDP extraction: Try running the CDP extraction flow from the popup to see if the video is found.
-
-### Step 6: Verify
-
-1. **Run the unit tests**:
+1. **Check recent git changes** — What code was modified recently? Could a previous fix have introduced a regression?
    ```
-   node tests/extension/test_video_filters.js
+   git log --oneline -20
+   git diff HEAD~5
    ```
-2. **Rebuild the extension**:
-   ```
-   npm run build
-   ```
-3. **Replay the actual error from the log** — Before declaring the fix done, test that your retry/regex changes work against the **exact error message** from the log. Extract the error text from the `ATTEMPT_END` event and run it through the relevant regex or function:
-   ```
+
+2. **Read the troubleshooting log** (`docs/guides/troubleshooting-log.md`) — Has this site or a similar pattern been fixed before?
+
+3. **Read the relevant source files** — At minimum:
+   - `src/shared/media_candidates.js` — The blocking regex patterns
+   - `src/shared/video_filters.js` — The candidate filtering logic
+   - `src/content/content.js` — Content script detection flow
+   - `src/background/background.js` — Network interception handlers
+
+4. **Check existing test fixtures** (`tests/fixtures/media_candidate_rules.json`) — What URL patterns are explicitly tested?
+
+---
+
+### Phase 2: Live Investigation (Browser)
+
+Use the `browser-use` agent to investigate what actually happens on the site. This is essential because the page may load dynamic content that isn't visible from static analysis.
+
+1. **Navigate to the failing page** and wait for full load (10+ seconds for ad-heavy / video sites)
+
+2. **Identify video-related elements**:
+   - Check for `<video>` elements in the DOM (their `src`, `currentSrc`)
+   - Look for blob URLs (HLS.js / Shaka Player style)
+   - Note the page title — it often contains the actual video title
+
+3. **Capture network requests** for media streams:
+   - Filter for `.m3u8`, `.mpd`, `.mp4`, `.webm`, `.ts`, `.m4s`
+   - Look for CDN subdomains (e.g., `video.example.com`, `cdn.example.com`, `stream.example.com`)
+   - Note the full URL structure including query parameters and auth tokens
+
+4. **Answer these questions**:
+   - What is the actual video stream URL? (Usually a CDN URL with video extension)
+   - Is the player using a blob URL? (means HLS.js / MSE — stream comes via network requests)
+   - Does clicking the video produce additional network requests? (confirms the player works)
+   - What Content-Type does the page itself return? (`text/html` = page, not a video)
+
+---
+
+### Phase 3: Trace Detection Flow
+
+For EACH URL involved (both the bad one detected and the good one that should be detected), trace through the code:
+
+1. **Content script detection paths** (`src/content/content.js`):
+   - `scanVideoElements()` — Finds `<video>` elements and creates candidates
+   - `scanPerformanceEntries()` — Scans resource load entries
+   - `scanInlinePlayerScripts()` — Scans inline scripts for media URLs
+   - `scanVisiblePlayerFrames()` — Detects iframe video players
+   - `pageFallbackCandidateForVideo()` — Creates a "PAGE" candidate with the page URL as fallback for yt-dlp
+
+2. **Network interception paths** (`src/background/background.js`):
+   - `handleBeforeRequest()` — Catches requests before they're sent (type: xmlhttprequest, media, etc.)
+   - `handleHeadersReceived()` — Catches responses with content-type headers
+
+3. **For each detection path, ask**:
+   - Would this path catch the bad URL? Why?
+   - Would this path catch the real stream URL? Why not?
+   - What source/format would each detection assign?
+   - Would `isLikelyFullLengthVideoCandidate()` filter it out?
+
+---
+
+### Phase 4: Check Filter Status (Direct Testing)
+
+Directly test the actual URLs against the blocking system to verify your understanding:
+
+1. **Check block/allow status** for each URL:
+   ```bash
    node -e "
-   const re = /Unsupported URL|did not find any downloadable video formats|No video formats|ConnectionResetError|TransportError|.../i;
-   const error = process.argv[1];
-   console.log('Match:', re.test(error));
-   " "$(cat logs/downloads.jsonl | python -c "import sys,json; lines=[l for l in sys.stdin if l.strip()]; last=json.loads(lines[-1]); print(last.get('output',''))")
+   import('./src/shared/media_candidates.js').then(m => {
+     const url = 'https://example.com/suspect-path';
+     console.log('isBlockedMediaUrl:', m.isBlockedMediaUrl(url));
+     console.log('isDownloadableMediaUrl:', m.isDownloadableMediaUrl(url));
+     console.log('classifyMediaUrl:', m.classifyMediaUrl(url));
+   });
+   "
    ```
-   If it returns `false`, the fix is incomplete — go back and adjust.
-4. **Reload the extension** in the browser (`chrome://extensions` → reload)
-5. **Visit the site** and confirm:
-   - The bad URL no longer appears in the detected list
-   - The real video stream still appears (if it was working before)
-6. **Browser automation** (skill: `browser-use`): Use the browser agent to navigate to the site, verify no console errors, and confirm real streams load.
+
+2. **Trace which regex blocks/allows** — Create a step-by-step trace of `isBlockedMediaUrl()`:
+   ```bash
+   node -e "
+   import('./src/shared/media_candidates.js').then(m => {
+     const text = 'https://example.com/suspect-path'.toLowerCase();
+     const checks = [
+       ['STATIC_PAGE_ASSET_RE', /\\/(?:stylesheet|theme-color|...)/i],
+       ['STATIC_PLAYER_ASSET_RE', /\\.(?:hlsjs|js|css|map)(?:$|[?#])/i],
+       ['SEGMENT_EXTENSION_RE', /\\.(ts|mp2t|m4s|cmfv|cmfa)(?:$|[?#])/i],
+       ['VIDEO_HOSTING_SITES_RE', /(?:^|[\\/.])(?:flashx|thevideo|...)/i],
+       // ... list each pattern from isBlockedMediaUrl in order
+     ];
+     for (const [name, re] of checks) {
+       if (re.test(text)) console.log('BLOCKED by:', name);
+     }
+   });
+   ```
+
+3. **Key insight**: Trace BOTH URLs — the bad one (to confirm it's not blocked when it should be) AND the real stream (to check if it's incorrectly blocked). A real stream being blocked by an overbroad pattern is a common hidden bug.
+
+4. **Common over-blocking patterns to watch for**:
+   - `FRAGMENTED_STREAM_CONTEXT_RE + NUMBERED_MEDIA_FRAGMENT_RE` — Can incorrectly block legitimate `.m3u8`/`.mpd` manifests that contain numeric video IDs
+   - `SEGMENT_NAME_RE` — Can match legitimate filenames that happen to contain "seg" or "chunk"
+   - `STREAMING_PAGE_HOST_RE` / `VIDEO_HOSTING_SITES_RE` — Must check `!VIDEO_EXTENSION_RE.test(text)` to allow CDN streams through
+
+---
+
+### Phase 5: Apply TDD (Test-Driven Fixing)
+
+Once you understand exactly which patterns need changing, follow TDD:
+
+**RED — Write failing test(s):**
+
+Add entries to `tests/fixtures/media_candidate_rules.json`:
+
+```json
+{
+  "name": "description of the URL",
+  "url": "https://actual-url-to-test",
+  "contentType": "",
+  "format": "EXPECTED_FORMAT",
+  "blocked": true,
+  "downloadable": false,
+  "reusable": false
+}
+```
+
+Always add fixtures for ALL affected URLs:
+- The bad URL → expect `blocked: true`
+- The real stream URL → expect `blocked: false`
+- Key regression URLs → expect their existing behavior is preserved
+
+Run the test to confirm it **fails** before fixing:
+```
+node tests/extension/shared/test_video_filters.js
+```
+
+**GREEN — Fix production code:**
+
+Edit `src/shared/media_candidates.js` to:
+1. Add new blocking pattern for the false positive
+2. Fix any overbroad pattern that's blocking real streams (narrow the condition)
+
+Run the test again to confirm it **passes**.
+
+**REFACTOR — Verify no regressions:**
+
+Run comprehensive checks:
+```
+node tests/extension/shared/test_video_filters.js
+```
+
+Also run direct verification of all existing patterns still work:
+```bash
+node -e "
+import('./src/shared/media_candidates.js').then(m => {
+  // Known-good URLs should still pass
+  console.log('stream.m3u8:', m.isBlockedMediaUrl('https://cdn.example.com/stream.m3u8'));  // false
+  
+  // Known-bad URLs should still be blocked
+  console.log('segment.ts:', m.isBlockedMediaUrl('https://cdn.example.com/seg-001.ts'));  // true
+  console.log('ad.mp4:', m.isBlockedMediaUrl('https://ads.example.com/preroll.mp4'));  // true
+  
+  // Video hosting page URLs without extension should be blocked
+  console.log('vidfast page:', m.isBlockedMediaUrl('https://vidfast.pro/some-video'));  // true
+  
+  // CDN streams from video hosting sites should NOT be blocked
+  console.log('vidfast m3u8:', m.isBlockedMediaUrl('https://cdn.vidfast.pro/stream.m3u8'));  // false
+});
+```
 
 ---
 
 ## Decision Tree
 
 ```
-Log shows failed download
+User reports "download failed / wrong video"
 │
-├─ URL has no video extension AND server returns text/html/application/json
-│  └─ FALSE POSITIVE → Add URL pattern to block regex
+├─ Phase 1: Gather context
+│  └─ git log, troubleshooting log, source files, existing test fixtures
 │
-├─ URL has no video extension AND server returns video content-type
-│  └─ Check if this is an API endpoint that happens to serve video
-│     ├─ If it's an internal API route → FALSE POSITIVE → block the URL pattern
-│     └─ If it's an actual stream URL → improve detection to catch its extension
+├─ Phase 2: Live browser investigation
+│  └─ Navigate to site, identify video elements, capture stream URLs
 │
-├─ URL has video extension but backend says "Unsupported URL"
-│  └─ The URL structure is valid but the backend can't navigate the site → may need yt-dlp extractor args or site-specific handling
+├─ Phase 3: Trace detection flow
+│  └─ For each URL, trace through content script + network interception paths
 │
-└─ No URL was sent to backend (no DOWNLOAD_INIT in log)
-   └─ MISSING REAL STREAM → find the actual stream URL via DevTools Network tab
+├─ Phase 4: Check filter status (direct testing)
+│  ├─ is the bad URL incorrectly not blocked?  → need to add block pattern
+│  ├─ is the real stream incorrectly blocked?  → need to narrow existing pattern
+│  └─ BOTH? → fix both (the most common scenario)
+│
+└─ Phase 5: Apply TDD
+   ├─ RED: Add test fixtures, confirm they fail
+   ├─ GREEN: Fix media_candidates.js, confirm they pass
+   └─ REFACTOR: Verify no regressions, check all existing patterns
 ```
 
 ---
@@ -167,10 +241,24 @@ Log shows failed download
 | Stream segments | `segment-00001.ts`, `chunk-42.m4s` | `SEGMENT_EXTENSION_RE` |
 | GIF / short clips | `giphy`, `tenor`, `animated-gif`, `loop-preview` | `GIF_VIDEO_RE` |
 | CDN ephemeral tokens | `googlevideo.com/videoplayback?range=0-1000` | `isEphemeralMediaUrl()` |
+| Video hosting page URLs | Page URLs from sites like flashx, vidoza, beeg without video extension | `VIDEO_HOSTING_SITES_RE` |
+| Numbered media fragments | Long numeric IDs + `.mp4` extension in HLS/DASH context (can over-block manifests) | `FRAGMENTED_STREAM_CONTEXT_RE + NUMBERED_MEDIA_FRAGMENT_RE` |
+
+## Common Over-Blocking Traps
+
+These patterns often catch legitimate stream URLs. When fixing, always check if they're too broad:
+
+| Trap | Why it over-blocks | How to narrow |
+|------|-------------------|---------------|
+| `FRAGMENTED_STREAM_CONTEXT_RE + NUMBERED_MEDIA_FRAGMENT_RE` | `.m3u8`/`.mpd` manifests with numeric video IDs trigger both conditions | Add `!HLS_RE.test(text) && !DASH_RE.test(text)` to exclude manifests |
+| `SEGMENT_NAME_RE` | Legitimate filenames containing "seg", "chunk", "part" get blocked | Check that the match is actually a numeric segment pattern, not just a keyword |
+| Domain-level host blocking | Subdomain CDN URLs (`video.example.com`) match the same domain regex as page URLs (`example.com`) | Always add `!VIDEO_EXTENSION_RE.test(text)` to allow CDN streams with `.m3u8`/`.mp4` extensions |
 
 ---
 
 ## Related Skills
 
 - [`tdd`](../tdd/SKILL.md) — Test-driven development for RED→GREEN workflow
-- [`browser-use`](../../tools.md) — Browser automation for verifying real streams
+- [`browser-use`](../../tools.md) — Browser automation for live site investigation
+- [`systematic-debugging`](../systematic-debugging/SKILL.md) — Root cause investigation before fixing
+- [`docs/guides/troubleshooting-log.md`](../../../docs/guides/troubleshooting-log.md) — Record of past fixes with root causes and patterns
