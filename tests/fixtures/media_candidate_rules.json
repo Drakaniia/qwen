@@ -160,5 +160,23 @@
     "blocked": false,
     "downloadable": true,
     "reusable": true
+  },
+  {
+    "name": "playmogo embed page URL",
+    "url": "https://playmogo.com/e/k2c18kmf5fea",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": true,
+    "downloadable": false,
+    "reusable": false
+  },
+  {
+    "name": "playmogo page URL (no path)",
+    "url": "https://playmogo.com/some-video-title-here",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": true,
+    "downloadable": false,
+    "reusable": false
   }
 ]
