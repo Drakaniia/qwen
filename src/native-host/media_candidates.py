@@ -25,7 +25,7 @@ WEB_APP_MANIFEST_RE = re.compile(
 
 # Phase A.3 — Streaming platform host patterns (block page URLs, allow stream URLs)
 VIDEO_HOSTING_SITES_RE = re.compile(
-    r"(?:^|[\\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone|beeg|playmogo)\.(?:pw|tv|to|net|pro|com)(?:$|[\\/?#])",
+    r"(?:^|[\\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone|beeg)\.(?:pw|tv|to|net|pro|com)(?:$|[\\/?#])",
     re.IGNORECASE,
 )
 P2P_STREAMING_HOSTS_RE = re.compile(

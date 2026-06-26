@@ -166,8 +166,8 @@
     "url": "https://playmogo.com/e/k2c18kmf5fea",
     "contentType": "",
     "format": "VIDEO",
-    "blocked": true,
-    "downloadable": false,
+    "blocked": false,
+    "downloadable": true,
     "reusable": false
   },
   {
@@ -175,8 +175,8 @@
     "url": "https://playmogo.com/some-video-title-here",
     "contentType": "",
     "format": "VIDEO",
-    "blocked": true,
-    "downloadable": false,
+    "blocked": false,
+    "downloadable": true,
     "reusable": false
   }
 ]
