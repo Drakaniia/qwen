@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -313,7 +315,18 @@ func handleCDPRelay(cmd Command) []byte {
 		})
 	}
 
-	forwardID := fmt.Sprintf("relay_%s", cmd.ID)
+	// Generate a cryptographically secure random token for the relay identifier.
+	// This prevents an attacker who can write to stdin from predicting the relay ID
+	// and spoofing relay results. 16 bytes = 128 bits of entropy.
+	relayToken := make([]byte, 16)
+	if _, err := rand.Read(relayToken); err != nil {
+		return mustMarshal(ErrorResponse{
+			Type:  ResError,
+			ID:    cmd.ID,
+			Error: fmt.Sprintf("failed to generate relay token: %v", err),
+		})
+	}
+	forwardID := fmt.Sprintf("relay_%s", hex.EncodeToString(relayToken))
 
 	// Write the CDP forward message to stdout.
 	// Python's background reader catches this, forwards to the extension,
