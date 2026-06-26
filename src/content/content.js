@@ -6,6 +6,7 @@ import * as qualityDialog from "../shared/quality_dialog.js";
 import * as videoPicker from "../shared/video_picker.js";
 import * as pageDetectionModule from "./page_detection.js";
 import * as mediaSourceIntercept from "./media_source_intercept.js";
+import * as emeIntercept from "./eme_intercept.js";
 
 const extensionApi = typeof browser !== "undefined" ? browser : chrome;
 const seenUrls = new Map();
@@ -604,6 +605,9 @@ function start() {
   });
   // Initialise MSE/Blob URL interception for custom players
   mediaSourceIntercept.init();
+
+  // Initialise EME interception for DRM-protected streams
+  emeIntercept.init();
 
   publishScan();
   window.setInterval(publishScan, 3000);
