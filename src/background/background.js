@@ -475,6 +475,26 @@ browserApi.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { url
   "responseHeaders",
 ]);
 
+// ── Sender validation helpers ────────────────────────────────────────────
+
+/**
+ * Check that the message sender is from an extension page (popup, options, etc.)
+ * rather than a web page content script.
+ *
+ * Blocks compromised content scripts while allowing extension UI pages to
+ * invoke sensitive operations (CDM, debugger, recording).
+ *
+ * @param {Object} sender - The sender from onMessage
+ * @returns {boolean}
+ */
+function isExtensionPageSender(sender) {
+  if (!sender || !sender.url) {
+    return false;
+  }
+  // Extension pages have chrome-extension:// or moz-extension:// origins.
+  return /^(chrome|moz)-extension:\/\//i.test(sender.url);
+}
+
 // ── CDP relay init ───────────────────────────────────────────────────────
 
 cdpRelay.init();
@@ -912,9 +932,12 @@ messageRouter.handle("cdpExtractVideos", async (message, sender) => {
   };
 });
 
-// ── CDM capture handlers ─────────────────────────────────────────────────
+// ── CDM capture handlers (sender-restricted) ─────────────────────────────
 
-messageRouter.handle("startCdmCapture", async (message) => {
+messageRouter.handle("startCdmCapture", async (message, sender) => {
+  if (!isExtensionPageSender(sender)) {
+    return { ok: false, error: "Unauthorized: only the extension popup may start CDM capture." };
+  }
   const tabId = Number(message.tabId) || 0;
   if (!tabId) {
     return { ok: false, error: "No tabId provided for CDM capture." };
@@ -922,7 +945,10 @@ messageRouter.handle("startCdmCapture", async (message) => {
   return cdmNetworkIntercept.initIntercept(tabId);
 });
 
-messageRouter.handle("stopCdmCapture", async (message) => {
+messageRouter.handle("stopCdmCapture", async (message, sender) => {
+  if (!isExtensionPageSender(sender)) {
+    return { ok: false, error: "Unauthorized: only the extension popup may stop CDM capture." };
+  }
   const tabId = Number(message.tabId) || 0;
   if (!tabId) {
     return { ok: false, error: "No tabId provided." };
@@ -935,7 +961,10 @@ messageRouter.handle("stopCdmCapture", async (message) => {
   return { ok: result.ok, exchanges, error: result.error };
 });
 
-messageRouter.handle("getCdmCaptures", async () => {
+messageRouter.handle("getCdmCaptures", async (message, sender) => {
+  if (!isExtensionPageSender(sender)) {
+    return { ok: false, error: "Unauthorized: only the extension popup may access CDM captures." };
+  }
   return {
     ok: true,
     exchanges: cdmNetworkIntercept.getCapturedExchanges(),
@@ -943,13 +972,19 @@ messageRouter.handle("getCdmCaptures", async () => {
   };
 });
 
-messageRouter.handle("cdmStatus", async () => {
+messageRouter.handle("cdmStatus", async (message, sender) => {
+  if (!isExtensionPageSender(sender)) {
+    return { ok: false, error: "Unauthorized." };
+  }
   return { ok: true, status: cdmNetworkIntercept.getStatus() };
 });
 
-// ── CDM key extraction pipeline ──────────────────────────────────────────
+// ── CDM key extraction pipeline (sender-restricted) ───────────────────────
 
-messageRouter.handle("cdmInit", async (message) => {
+messageRouter.handle("cdmInit", async (message, sender) => {
+  if (!isExtensionPageSender(sender)) {
+    return { ok: false, error: "Unauthorized: only the extension popup may initialize CDM." };
+  }
   const cdmPath = message.cdmPath || "";
   if (!cdmPath) {
     return { ok: false, error: "cdmPath is required." };
@@ -967,7 +1002,10 @@ messageRouter.handle("cdmInit", async (message) => {
   }
 });
 
-messageRouter.handle("extractCdmKeys", async (message) => {
+messageRouter.handle("extractCdmKeys", async (message, sender) => {
+  if (!isExtensionPageSender(sender)) {
+    return { ok: false, error: "Unauthorized: only the extension popup may extract CDM keys." };
+  }
   const exchange = message.exchange;
   if (!exchange || !exchange.responseBody) {
     return { ok: false, error: "A completed license exchange with responseBody is required." };
@@ -1000,7 +1038,10 @@ messageRouter.handle("extractCdmKeys", async (message) => {
   }
 });
 
-messageRouter.handle("decryptCdmSegments", async (message) => {
+messageRouter.handle("decryptCdmSegments", async (message, sender) => {
+  if (!isExtensionPageSender(sender)) {
+    return { ok: false, error: "Unauthorized: only the extension popup may decrypt segments." };
+  }
   if (!message.jobId) {
     return { ok: false, error: "jobId is required." };
   }
@@ -1036,7 +1077,10 @@ messageRouter.handle("decryptCdmSegments", async (message) => {
   }
 });
 
-messageRouter.handle("assembleDecryptedSegments", async (message) => {
+messageRouter.handle("assembleDecryptedSegments", async (message, sender) => {
+  if (!isExtensionPageSender(sender)) {
+    return { ok: false, error: "Unauthorized: only the extension popup may assemble segments." };
+  }
   if (!message.jobId) {
     return { ok: false, error: "jobId is required." };
   }
