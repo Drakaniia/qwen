@@ -17,6 +17,53 @@ AUDIO_FORMAT_MAP = {
 
 DEFAULT_FORMAT_SELECTOR = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b"
 AUDIO_FORMAT_SELECTOR = "ba[ext=m4a]/ba[ext=mp3]/ba/best"
+
+# ── aria2c argument allowlist ─────────────────────────────────────────────
+
+# Strict allowlist of known-safe aria2c arguments.
+# Only arguments in this set may be passed via --downloader-args.
+# This prevents injection attacks via --on-download-complete or other
+# dangerous flags that could lead to arbitrary command execution.
+ARIA2C_ALLOWED_ARGS = frozenset({
+    "--max-connection-per-server",
+    "--split",
+    "--min-split-size",
+    "--continue",
+    "--file-allocation",
+    "--max-tries",
+    "--retry-wait",
+    "--summary-interval",
+    "--async-dns",
+    "--dns-timeout",
+})
+
+
+def build_aria2c_downloader_args(connection_count):
+    """Build a validated aria2c argument string for yt-dlp's --downloader-args.
+
+    Each argument name is validated against ARIA2C_ALLOWED_ARGS.
+    Arguments are constructed as structured key=value pairs, not string
+    concatenation, to prevent injection via connection_count.
+
+    Returns the "aria2c:<args>" string ready for yt-dlp.
+    """
+    args = [
+        ("--max-connection-per-server", str(connection_count)),
+        ("--split", str(connection_count)),
+        ("--min-split-size", "1M"),
+        ("--continue", "true"),
+        ("--file-allocation", "none"),
+        ("--max-tries", "8"),
+        ("--retry-wait", "2"),
+        ("--summary-interval", "1"),
+        ("--async-dns", "true"),
+        ("--dns-timeout", "3"),
+    ]
+    # Validate every argument name against the strict allowlist
+    for arg_name, _arg_value in args:
+        if arg_name not in ARIA2C_ALLOWED_ARGS:
+            raise ValueError(f"Disallowed aria2c argument: {arg_name}")
+    return "aria2c:" + " ".join(f"{k}={v}" for k, v in args)
 YOUTUBE_REMOTE_COMPONENTS = "ejs:github"
 GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
 MAX_FAST_CONNECTIONS = 48
@@ -169,20 +216,6 @@ def build_yt_dlp_command(
             DEFAULT_ARIA2_CONNECTIONS,
             maximum=MAX_ARIA2_CONNECTIONS,
         )
-        aria2_args = " ".join(
-            [
-                f"--max-connection-per-server={connection_count}",
-                f"--split={connection_count}",
-                "--min-split-size=1M",
-                "--continue=true",
-                "--file-allocation=none",
-                "--max-tries=8",
-                "--retry-wait=2",
-                "--summary-interval=1",
-                "--async-dns=true",
-                "--dns-timeout=3",
-            ]
-        )
         command.extend(
             [
                 "--downloader",
@@ -190,7 +223,7 @@ def build_yt_dlp_command(
                 "--downloader",
                 "dash,m3u8:native",
                 "--downloader-args",
-                f"aria2c:{aria2_args}",
+                build_aria2c_downloader_args(connection_count),
             ]
         )
     append_browser_context_options(
