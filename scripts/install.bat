@@ -46,6 +46,14 @@ if %ERRORLEVEL% neq 0 (
   exit /b 1
 )
 
+echo Verifying curl_cffi impersonation library...
+%PYTHON_CMD% -c "from curl_cffi import requests; print('curl_cffi version: ' + getattr(requests, '__version__', 'unknown'))" 2>nul
+if %ERRORLEVEL% neq 0 (
+  echo WARNING: curl_cffi did not import correctly.
+  echo Direct download fallback will use standard HTTP (less effective behind CDNs/WAFs).
+  echo Re-run scripts\install.bat or manually run: pip install ^"yt-dlp[default,curl-cffi]^" --upgrade
+)
+
 where ffmpeg >nul 2>nul
 if %ERRORLEVEL% neq 0 (
   where winget >nul 2>nul
