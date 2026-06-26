@@ -133,6 +133,121 @@ Python Host → Go Binary → Extension → chrome.debugger → Extension → Go
 1. **Runtime.evaluate** — Executes JavaScript in the page context to find video elements, sources, and player configurations.
 2. **Network instrumentation** — Captures license exchanges for CDM key extraction.
 
+## TLS Impersonation with curl_cffi
+
+Qwin uses the [`curl_cffi`](https://github.com/yifeikong/curl_cffi) Python library to **impersonate real web browsers' TLS/SSL and HTTP/2 fingerprints**. This helps bypass Cloudflare, Akamai, and other WAF/CDN bot-detection systems that would otherwise block standard HTTP clients (like Python's `urllib` or raw `curl`).
+
+### How It Works
+
+When `curl_cffi` makes an HTTPS request, it mimics the exact TLS handshake characteristics of a real browser:
+
+- **Cipher suites** — matches Chrome's supported cipher list
+- **TLS extensions** — order and values match Chrome's actual negotiation
+- **HTTP/2 frames** — SETTINGS, WINDOW_UPDATE, and priority framing match browser behavior
+- **User-Agent** — automatically sent with the correct browser version string
+
+The result: the remote server sees a connection that looks identical to one from a real Chrome browser.
+
+### Two Levels of Integration
+
+curl_cffi is integrated at **two levels** in the native host:
+
+#### 1. Inside yt-dlp (primary path)
+
+Every yt-dlp command includes `--extractor-args generic:impersonate`, which tells yt-dlp to use its bundled curl_cffi for TLS impersonation when extracting from generic/unknown sites. This is the **primary download path** — most downloads go through yt-dlp + aria2c with impersonation active.
+
+```python
+# src/native-host/yt_dlp_command.py
+GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
+# Applied to every yt-dlp command:
+command.extend(["--extractor-args", "generic:impersonate"])
+```
+
+#### 2. Standalone adapter (fallback path)
+
+If yt-dlp fails entirely (site not supported, extraction error, etc.), a standalone `curl_cffi_adapter.py` module tries a direct HTTP download with full Chrome TLS impersonation. This catches URLs that yt-dlp's generic extractor cannot parse but that are accessible via direct download.
+
+```
+Primary:   yt-dlp + aria2c + impersonation (via --extractor-args generic:impersonate)
+               │
+               ▼ (if yt-dlp fails)
+Fallback:  curl_cffi direct download (standalone adapter, impersonate="chrome")
+               │
+               ▼ (if curl_cffi fails)
+More:      yt-dlp variants (no SSL, geo bypass, no impersonate, max retries, etc.)
+```
+
+### Download Flow with Impersonation
+
+```
+Media URL from extension
+         │
+         ├── YouTube?                   ──→ yt-dlp dedicated extractor (YouTube's own TLS)
+         ├── HLS/DASH manifest (.m3u8, .mpd)? → N_m3u8DL-RE or Streamlink
+         ├── Magnet link / .torrent?    ──→ aria2c BitTorrent engine
+         └── Direct media URL (.mp4, .webm, etc.)
+                   │
+         ┌─────────┴─────────┐
+         ▼                   ▼
+  yt-dlp + aria2c      yt-dlp + aria2c
+  impersonation ON     impersonation ON
+  (generic:impersonate)
+         │
+         ▼ (if primary fails)
+  curl_cffi direct download
+  impersonate="chrome"
+         │
+         ▼ (if curl_cffi fails)
+  yt-dlp fallback variants
+  (no SSL, geo bypass,
+   no impersonate, retries,
+   generic extractor, throttle detect)
+```
+
+### When curl_cffi Is Skipped
+
+| URL Type | curl_cffi Used? | Reason |
+|---|---|---|
+| Direct `.mp4` / `.webm` / `.mkv` | **Yes** (standalone fallback) | Streams to disk with full browser impersonation |
+| `.m3u8` (HLS) | **No** (standalone) | Needs specialized HLS downloader (N_m3u8DL-RE / ffmpeg) — yt-dlp handles it |
+| `.mpd` (DASH) | **No** (standalone) | Needs specialized DASH downloader |
+| YouTube | **No** (standalone) | yt-dlp has dedicated extractor + fine-grained format selection |
+| Generic video page | **Yes** (inside yt-dlp) | yt-dlp's generic extractor uses `--extractor-args generic:impersonate` |
+| Magnet / torrent | **No** | BitTorrent protocol, not HTTP |
+| CDN behind Cloudflare | **Yes** | Primary use case — bypasses TLS fingerprint blocking |
+
+### Verifying curl_cffi Is Working
+
+The installer checks that curl_cffi is importable:
+```
+Verifying curl_cffi impersonation library...
+curl_cffi version: <version>
+```
+
+If curl_cffi is missing, the installer shows a warning and the standalone fallback degrades to standard HTTP (less effective behind WAFs). The in-yt-dlp path also degrades but may still work for sites yt-dlp supports natively.
+
+### Verifying with Live TLS Fingerprint
+
+You can manually verify that curl_cffi is sending browser-matching fingerprints:
+
+```bash
+python -c "
+from curl_cffi import requests
+r = requests.get('https://tls.browserleaks.com/json', impersonate='chrome')
+data = r.json()
+print('JA3:', data.get('ja3_hash'))
+print('User-Agent:', data.get('user_agent'))
+"
+```
+
+Expected output:
+```
+JA3: <32-char hex string>
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ... Chrome/146...
+```
+
+The impersonated fingerprint will differ from standard curl's fingerprint (confirmed by running without `impersonate="chrome"`).
+
 ## Download A Video
 
 1. Visit a page with a playing video.

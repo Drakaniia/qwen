@@ -24,6 +24,7 @@ This directory contains the full documentation for Qwin Video Downloader.
 Qwin Video Downloader detects playable MP4/WebM, HLS M3U8, DASH MPD, Smooth Streaming ISM, supported video page URLs, and manually pasted video page links, then sends supported URLs to a native Python helper. The helper uses `yt-dlp` and `ffmpeg` to save videos, uses `aria2c` for segmented fast downloads, and can use N_m3u8DL-RE or Streamlink as stream fallbacks when available.
 
 Qwin also supports:
+- **`curl_cffi` TLS impersonation** — two levels of browser fingerprint matching to bypass Cloudflare, Akamai, and other WAF/CDN bot-detection: inside `yt-dlp` via `--extractor-args generic:impersonate`, and as a standalone direct-download adapter (`curl_cffi_adapter.py`) when yt-dlp fails.
 - **BitTorrent downloads** through `aria2c` — paste a magnet link or select a `.torrent` file.
 - **uBlock Origin filter integration** — loads and parses uBO filter lists (Unbreak, EasyList, EasyPrivacy) to block ad URLs while whitelisting known video CDN domains, with automatic background refresh every 5 days.
 - **Widevine CDM pipeline** — Go companion binary (`qwin-capture`) for CDM initialization, license key extraction, AES-128 CTR segment decryption, and fMP4 assembly.

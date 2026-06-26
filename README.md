@@ -5,6 +5,7 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
 ## Features
 
 - **Video detection** — MP4/WebM/M4V, HLS M3U8, DASH MPD, Smooth Streaming ISM, YouTube shorts/live/embed, and manual page links.
+- **TLS impersonation** — `curl_cffi` library provides browser-matching TLS/HTTP2 fingerprints at two levels: inside `yt-dlp` via `--extractor-args generic:impersonate`, and as a standalone direct-download adapter when yt-dlp fails. Bypasses Cloudflare, Akamai, and WAF CDN blocking.
 - **Ad filtering** — Built-in ad/tracker URL patterns (AD_RE, CDN_HINT_RE) plus **uBlock Origin filter list integration** for community-maintained ad blocking and video CDN exception whitelisting.
 - **Widevine CDM Pipeline** — Experimental Go companion binary (`qwin-capture`) for CDM initialization, license key extraction, and AES-128 CTR segment decryption.
 - **CDP Relay** — Chrome DevTools Protocol commands relayed through Go → Python → Extension → `chrome.debugger` for advanced video source extraction.

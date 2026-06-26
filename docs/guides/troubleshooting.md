@@ -77,11 +77,90 @@ The settings-panel link box sends the pasted URL to `yt-dlp` first, then may use
 
 For YouTube, Qwin enables yt-dlp's EJS challenge helper with `--remote-components ejs:github`. The first YouTube extraction may download yt-dlp's solver script from GitHub. If GitHub or the JavaScript runtime is blocked on the machine, YouTube may still return only storyboard/image formats.
 
-## Cloudflare Anti-Bot Challenge
+## Cloudflare / WAF Anti-Bot Challenges
 
-If yt-dlp reports `Got HTTP Error 403 caused by Cloudflare anti-bot challenge`, run `scripts\install.bat` again. Qwin passes yt-dlp `--extractor-args generic:impersonate`, and the installer adds yt-dlp's `curl-cffi` dependency so those impersonation targets are available.
+### curl_cffi Impersonation Architecture
 
-This is still best-effort. It can help with some generic Cloudflare challenges, but it cannot bypass DRM, private login access, region blocking, or challenges that require an interactive browser session.
+Qwin uses `curl_cffi` at two levels to bypass CDN/WAF bot-detection:
+
+1. **Inside yt-dlp** — every yt-dlp command passes `--extractor-args generic:impersonate`, enabling curl-cffi's TLS impersonation for generic/unknown site extraction.
+2. **Standalone adapter** — if yt-dlp fails, the `curl_cffi_adapter.py` module tries a direct download with full Chrome TLS fingerprint matching.
+
+### Diagnosing curl_cffi Issues
+
+**1. Check if curl_cffi is installed:**
+```bat
+python -c "from curl_cffi import requests; print('curl_cffi OK')"
+```
+If this fails with `ModuleNotFoundError`, re-run the installer:
+```bat
+scripts\install.bat
+```
+The installer installs `yt-dlp[default,curl-cffi]` which includes curl_cffi as a dependency.
+
+**2. Verify TLS impersonation is actually working:**
+```bat
+python -c "
+from curl_cffi import requests
+r = requests.get('https://tls.browserleaks.com/json', impersonate='chrome')
+data = r.json()
+print('JA3:', data['ja3_hash'])
+print('UA:', data['user_agent'])
+"
+```
+Expected: a JA3 fingerprint and a Chrome User-Agent string. If this fails with a network error, the issue is likely DNS or network connectivity, not curl_cffi.
+
+**3. Compare impersonated vs non-impersonated fingerprints:**
+```bat
+python -c "
+from curl_cffi import requests
+# With impersonation (browser-like)
+r1 = requests.get('https://tls.browserleaks.com/json', impersonate='chrome')
+# Without impersonation (default curl fingerprint)
+r2 = requests.get('https://tls.browserleaks.com/json')
+print('With Chrome:', r1.json()['ja3_hash'])
+print('Default:    ', r2.json()['ja3_hash'])
+print('Different?', r1.json()['ja3_hash'] != r2.json()['ja3_hash'])
+"
+```
+If both hashes are the same, curl_cffi's impersonation is NOT working.
+
+**4. Check the fallback chain in progress output:**
+
+When a download fails with yt-dlp and falls through to curl_cffi, you'll see this label in the progress:
+```
+Trying: curl-cffi (direct download)
+```
+
+### What curl_cffi Can and Cannot Do
+
+| Can Bypass | Cannot Bypass |
+|---|---|
+| TLS fingerprint checks (JA3/JA4) | JavaScript challenges (turnstile, captcha) |
+| HTTP/2 fingerprint checks | Behavioral detection |
+| SSL/TLS-level bot detection | Login / session-based access |
+| Some Cloudflare generic challenges | DRM (Widevine, PlayReady) |
+| Akamai fingerprint blocking | Region blocking (needs proxy/VPN) |
+| Simple CDN/WAF referrer checks | Short-lived token security |
+
+### Common Error Messages
+
+| Error | Likely Cause | Fix |
+|---|---|---|
+| `curl: (6) Could not resolve host` | DNS failure in libcurl | Check network connectivity, try `nslookup <host>` |
+| `curl: (28) Connection timed out` | Host unreachable or firewall | Check if the site is accessible in a browser |
+| `curl: (35) SSL connect error` | TLS handshake rejected | The site may require a specific browser version — try `impersonate="chrome124"` |
+| `curl: (56) Failure when receiving data` | Connection reset by server | The server may have detected non-browser behavior despite impersonation |
+
+### When Impersonation Alone Is Not Enough
+
+If curl_cffi impersonation does not resolve the issue, the site may be using additional protection layers:
+
+- **JavaScript challenges** (Cloudflare Turnstile, hCaptcha) — these require a real browser with JavaScript execution, which curl_cffi cannot provide. The extension's existing capture/CDP path may handle these.
+- **Behavioral fingerprinting** — mouse movements, scroll patterns, and page interaction timing. These cannot be mimicked by a static HTTP client.
+- **Token-based access** — short-lived signed URLs that require a previous page visit or API call to generate. These are typically handled earlier in the pipeline (during page scanning in `media_resolver.py`).
+
+In these cases, the download still falls through to other backends (N_m3u8DL-RE, Streamlink, yt-dlp variants) or requires the extension's interactive capture mode.
 
 ## Helper Download Errors
 

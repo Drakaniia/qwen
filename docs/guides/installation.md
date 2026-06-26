@@ -22,7 +22,8 @@
 The installer:
 
 - Finds Python 3 through `py -3` or `python`.
-- Installs or updates `yt-dlp` with `curl-cffi` impersonation support and `imageio-ffmpeg` with `pip`.
+- Installs or updates `yt-dlp[default,curl-cffi]` with `curl-cffi` TLS impersonation support and `imageio-ffmpeg` with `pip`.
+- Verifies `curl_cffi` imports correctly — if missing, shows a warning (the standalone download fallback will use standard HTTP without browser impersonation).
 - Uses `winget` to install system `ffmpeg` when available.
 - Falls back to the `imageio-ffmpeg` binary when system `ffmpeg` is not available.
 - Installs a portable `aria2c` fast downloader under `tools\aria2` when possible.
