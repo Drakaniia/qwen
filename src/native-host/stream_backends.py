@@ -116,6 +116,92 @@ def build_streamlink_command(
     return command
 
 
+def build_ffmpeg_direct_command(
+    url,
+    output_path,
+    request_headers=None,
+    ffmpeg_location=None,
+):
+    """Build an ffmpeg command for direct HLS/DASH stream copying.
+
+    Produces::
+
+        ffmpeg -headers <k:v pairs> -i <url> -c copy -y <output>
+
+    This is the simplest, most reliable way to download an HLS or DASH
+    stream once the manifest URL has been intercepted. Used as a fallback
+    before gallery-dl / yt-dlp-native steps.
+
+    Args:
+        url: The stream manifest URL (m3u8, mpd, etc.).
+        output_path: Full path for the output file (parent dir must exist).
+        request_headers: Optional list of {"name": ..., "value": ...} dicts
+                         to forward as custom HTTP headers.
+        ffmpeg_location: Path to ffmpeg binary; defaults to "ffmpeg".
+
+    Returns:
+        List of command-line arguments suitable for subprocess.Popen.
+    """
+    command = [str(ffmpeg_location or "ffmpeg")]
+
+    # Build custom header string (ffmpeg accepts -headers for HTTP headers)
+    headers_parts = []
+    if request_headers:
+        for h in clean_request_headers(request_headers):
+            name = h["name"]
+            value = h["value"]
+            headers_parts.append(f"{name}: {value}")
+
+    if headers_parts:
+        command.extend(["-headers", "\r\n".join(headers_parts)])
+
+    command.extend([
+        "-i",
+        str(url),
+        "-c",
+        "copy",
+        "-y",
+        str(output_path),
+    ])
+    return command
+
+
+def build_mp4decrypt_command(
+    input_path,
+    output_path,
+    key,
+    mp4decrypt_location=None,
+):
+    """Build an mp4decrypt command for CENC-decrypting a DASH segment.
+
+    Produces::
+
+        mp4decrypt --key 1:XXXX --key 2:YYYY <input> <output>
+
+    ``mp4decrypt`` is part of the Bento4 suite and is the gold standard
+    for decrypting Common Encryption (cenc / cbcs) MP4 segments after
+    CDM key extraction.
+
+    Args:
+        input_path: Path to the encrypted segment file.
+        output_path: Path for the decrypted output file.
+        key: A single key string (e.g. "1:XXXXXXXX") or a list of keys.
+        mp4decrypt_location: Path to mp4decrypt binary; defaults to
+                             "mp4decrypt".
+
+    Returns:
+        List of command-line arguments suitable for subprocess.Popen.
+    """
+    command = [str(mp4decrypt_location or "mp4decrypt")]
+
+    keys = key if isinstance(key, list) else [key]
+    for k in keys:
+        command.extend(["--key", str(k)])
+
+    command.extend([str(input_path), str(output_path)])
+    return command
+
+
 def source_host(url):
     try:
         return urlparse(str(url or "")).hostname or ""
