@@ -364,7 +364,10 @@ class CaptureManager:
             if stdin is None:
                 raise HostError("qwin-capture process has no stdin pipe.")
 
-        command_id = f"py_{os.urandom(4).hex()}"
+        # Use 16 bytes of cryptographically strong random data for the command ID
+        # to prevent an attacker who can write to stdin from predicting or guessing
+        # relay identifiers. 16 bytes = 128 bits of entropy.
+        command_id = f"py_{os.urandom(16).hex()}"
 
         message = {"type": command_type, "id": command_id}
         if data is not None:
