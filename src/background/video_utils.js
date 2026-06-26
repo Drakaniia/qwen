@@ -76,6 +76,27 @@ function canProbeVideoSize(video) {
   return DIRECT_VIDEO_EXTENSION_RE.test(video.url || "") || contentType.startsWith("video/");
 }
 
+// ── WebSocket & Service Worker helpers ────────────────────────────────────
+
+const WEBSOCKET_PROTOCOL_RE = /^wss?:\/\//i;
+
+/**
+ * Check if a URL uses the WebSocket protocol (ws:// or wss://).
+ *
+ * Modern streaming platforms (especially live-streaming sites)
+ * deliver video frames through WebSocket connections. When detected,
+ * the tab can be flagged for possible video delivery inspection.
+ *
+ * @param {string} url - The URL to check.
+ * @returns {boolean} True if the URL is a WebSocket URL.
+ */
+function isWebSocketDeliveryUrl(url) {
+  if (!url || typeof url !== "string") {
+    return false;
+  }
+  return WEBSOCKET_PROTOCOL_RE.test(url);
+}
+
 // ── URL classification ───────────────────────────────────────────────────
 
 function isDownloadableUrl(url, contentType = "") {
@@ -136,6 +157,9 @@ export {
   // URL classification
   isDownloadableUrl,
   isLikelyVideoRequest,
+
+  // WebSocket detection
+  isWebSocketDeliveryUrl,
 
   // Title helpers
   looksLikeServerToken,
