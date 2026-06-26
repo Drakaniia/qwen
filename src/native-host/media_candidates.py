@@ -44,6 +44,53 @@ AD_SDK_RE = re.compile(r"(?:/vast\\.js|/ad-plugin/|ad-manager|admanager)/[^/]+\\
 CHINESE_STREAMING_CDN_RE = re.compile(r"(?:douyucdn\\.cn|msstatic\\.com|huya\\.com/.*p2p)", re.IGNORECASE)
 CHINESE_STREAMING_P2P_RE = re.compile(r"/front-publish/stream-sdk-lib-master/", re.IGNORECASE)
 
+# Phase A.7 — Service Worker & WebSocket stream detection
+SERVICE_WORKER_SCOPE_RE = re.compile(
+    r"(?:^|[/?#._-])(?:sw(?:\.js|\b)|serviceworker(?:\.js|\b)|service-worker(?:\.js|\b)|worker\.js)(?:$|[?#])",
+    re.IGNORECASE,
+)
+WEBSOCKET_RE = re.compile(r"^wss?://", re.IGNORECASE)
+
+
+def is_service_worker_scope(initiator_url):
+    """Check if a URL corresponds to a Service Worker script scope.
+
+    Service Workers are commonly registered at paths like:
+    - /sw.js
+    - /serviceworker.js
+    - /service-worker.js
+    - /worker.js
+
+    When a network request has its initiator set to one of these URLs,
+    the response may be proxied through the Service Worker's cache,
+    which can deliver video content through SW-managed streaming.
+
+    Args:
+        initiator_url: The URL of the script that initiated the request
+                       (typically the Service Worker script URL).
+
+    Returns:
+        True if the URL matches a known Service Worker script path.
+    """
+    return bool(SERVICE_WORKER_SCOPE_RE.search(str(initiator_url or "")))
+
+
+def is_websocket_url(url):
+    """Check if a URL uses the WebSocket protocol (ws:// or wss://).
+
+    Many modern streaming platforms deliver video frames through
+    WebSocket connections rather than traditional HTTP streaming.
+    Detected WebSocket upgrade URLs can be flagged for further
+    inspection or capture.
+
+    Args:
+        url: The URL to check.
+
+    Returns:
+        True if the URL starts with ws:// or wss://.
+    """
+    return bool(WEBSOCKET_RE.match(str(url or "")))
+
 
 def is_ephemeral_media_url(url):
     try:
