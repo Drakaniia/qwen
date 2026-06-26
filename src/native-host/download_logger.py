@@ -15,9 +15,11 @@ ATTEMPT_END         — The process exited with a given code.
 FALLBACK            — Switching to a fallback strategy.
 DOWNLOAD_COMPLETE   — The download finished successfully.
 DOWNLOAD_ERROR      — The download failed with an error message.
-DOWNLOAD_CANCEL     — The download was cancelled by the user.
-DOWNLOAD_PAUSE      — The download was paused.
-"""
+DOWNLOAD_CANCEL     — The download was cancelled by the user.DOWNLOAD_PAUSE      — The download was paused.
+PROBE_START         — A parallel probe round was launched.
+PROBE_RESULT        — An individual backend probe finished.
+PROBE_WIN           — A winning backend was selected.
+PROBE_ALL_FAIL      — All probes failed."""
 
 import json
 import os
@@ -209,6 +211,83 @@ class DownloadLogger:
                 "event": "DOWNLOAD_PAUSE",
                 "downloadId": download_id,
                 "message": message,
+            }
+        )
+
+    # ── Probe event helpers ────────────────────────────────────────────────
+
+    def probe_start(self, url: str, backends: list[str]) -> None:
+        """Log that a parallel probe round was launched."""
+        self._write(
+            {
+                "event": "PROBE_START",
+                "url": url,
+                "backends": backends,
+            }
+        )
+
+    def probe_result(
+        self,
+        backend: str,
+        ok: bool,
+        duration_ms: int,
+        error_type: str | None = None,
+    ) -> None:
+        """Log an individual backend probe result."""
+        entry: dict = {
+            "event": "PROBE_RESULT",
+            "backend": backend,
+            "ok": ok,
+            "durationMs": duration_ms,
+        }
+        if error_type is not None:
+            entry["errorType"] = error_type
+        self._write(entry)
+
+    def probe_win(self, backend: str, label: str) -> None:
+        """Log the winning backend selected."""
+        self._write(
+            {
+                "event": "PROBE_WIN",
+                "backend": backend,
+                "label": label,
+            }
+        )
+
+    def probe_all_fail(self, url: str, backends: list[str], errors: list) -> None:
+        """Log that all probes failed, with aggregated error details.
+
+        Parameters
+        ----------
+        url : str
+            The URL that was probed.
+        backends : list[str]
+            List of backends that were tried.
+        errors : list[ProbeError]
+            ProbeError objects with details per backend.
+        """
+        error_dicts = []
+        for e in errors:
+            d = {
+                "backend": e.backend,
+                "label": e.label,
+                "errorType": e.error_type,
+                "message": e.message,
+            }
+            if e.status_code is not None:
+                d["statusCode"] = e.status_code
+            if e.raw_output is not None:
+                d["rawOutput"] = e.raw_output
+            if e.duration_ms:
+                d["durationMs"] = e.duration_ms
+            error_dicts.append(d)
+
+        self._write(
+            {
+                "event": "PROBE_ALL_FAIL",
+                "url": url,
+                "backends": backends,
+                "errors": error_dicts,
             }
         )
 
