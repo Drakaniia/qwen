@@ -7,7 +7,10 @@ through the CaptureManager singleton.
 Uses lazy imports internally to avoid circular imports with capture_manager.py.
 """
 
+import subprocess
+
 from native_protocol import HostError
+from stream_backends import build_mp4decrypt_command
 
 
 def cdm_init(cdm_path, timeout=15.0):
@@ -132,6 +135,111 @@ def decrypt_segments(job_id, segments, keys, output_dir="", timeout=60.0):
         }
     except HostError as exc:
         return {"ok": False, "jobId": job_id, "decrypted": 0, "error": str(exc)}
+
+
+def decrypt_with_mp4decrypt(job_id, encrypted_segments, keys, output_dir="", mp4decrypt_location=None):
+    """Decrypt encrypted media segments using mp4decrypt (Bento4).
+
+    Uses ``build_mp4decrypt_command`` from stream_backends to construct
+    mp4decrypt invocations for each encrypted segment. This serves as a
+    post-processing step or alternative to the Go binary's built-in
+    AES-128 CTR/CBC decryption, providing support for additional cipher
+    modes and validation via Bento4's implementation.
+
+    Args:
+        job_id: Identifier for this decryption job.
+        encrypted_segments: List of dicts with keys:
+            - inputPath: Path to the encrypted segment file.
+            - outputPath: Path for the decrypted output (optional, auto-generated if omitted).
+            - key: Key string (e.g. "1:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX") or list of keys.
+        keys: List of dicts with keyIdB64, keyB64, type (fallback if segment has no key).
+        output_dir: Optional output directory (defaults to parent of each input).
+        mp4decrypt_location: Path to mp4decrypt binary.
+
+    Returns:
+        Dict with keys: ok, jobId, decrypted (count), segmentPaths, error.
+    """
+    import os as _os
+    from pathlib import Path as _Path
+
+    decrypted_count = 0
+    decrypted_paths = []
+    errors = []
+
+    for i, segment in enumerate(encrypted_segments):
+        input_path = segment.get("inputPath", "")
+        if not input_path:
+            errors.append(f"Segment {i}: missing inputPath")
+            continue
+
+        if not _Path(input_path).is_file():
+            errors.append(f"Segment {i}: input file not found: {input_path}")
+            continue
+
+        # Determine output path
+        output_path = segment.get("outputPath", "")
+        if not output_path:
+            stem = _Path(input_path).stem
+            if output_dir:
+                output_path = str(_Path(output_dir) / f"{stem}_decrypted.mp4")
+            else:
+                output_path = str(_Path(input_path).parent / f"{stem}_decrypted.mp4")
+
+        # Determine key(s) for this segment
+        segment_key = segment.get("key")
+        if segment_key is None and keys:
+            # Use first available key
+            first_key = keys[0]
+            key_id_b64 = first_key.get("keyIdB64", "")
+            key_b64 = first_key.get("keyB64", "")
+            segment_key = f"1:{key_b64}"
+
+        if segment_key is None:
+            errors.append(f"Segment {i}: no key available for decryption")
+            continue
+
+        try:
+            command = build_mp4decrypt_command(
+                input_path=input_path,
+                output_path=output_path,
+                key=segment_key,
+                mp4decrypt_location=mp4decrypt_location,
+            )
+
+            completed = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
+            )
+
+            if completed.returncode == 0 and _Path(output_path).is_file():
+                decrypted_count += 1
+                decrypted_paths.append(output_path)
+            else:
+                error_msg = (completed.stderr or "").strip() or f"mp4decrypt exited with code {completed.returncode}"
+                errors.append(f"Segment {i} ({input_path}): {error_msg}")
+        except subprocess.TimeoutExpired:
+            errors.append(f"Segment {i} ({input_path}): mp4decrypt timed out after 120s")
+        except Exception as exc:
+            errors.append(f"Segment {i} ({input_path}): {exc}")
+
+    result = {
+        "ok": decrypted_count > 0,
+        "jobId": job_id,
+        "decrypted": decrypted_count,
+        "segmentPaths": decrypted_paths,
+    }
+    if errors:
+        result["error"] = " | ".join(errors[:5])
+        if len(errors) > 5:
+            result["error"] += f" (...and {len(errors) - 5} more)"
+
+    return result
 
 
 def assemble_segments(job_id, file_paths, output_path, timeout=60.0):
