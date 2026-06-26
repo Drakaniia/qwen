@@ -36,9 +36,9 @@ param(
 
   [string]$HostName = "com.qwin.video_downloader",
 
-  [string]$ExtensionId = "dbjddokdmkodnkiaccmbjagfalmmmkmi",
+  [string]$ExtensionId = $(if ($env:QWIN_EXTENSION_ID) { $env:QWIN_EXTENSION_ID } else { "dbjddokdmkodnkiaccmbjagfalmmmkmi" }),
 
-  [string]$FirefoxExtensionId = "qwin-video-downloader@example.com"
+  [string]$FirefoxExtensionId = $(if ($env:QWIN_FIREFOX_EXTENSION_ID) { $env:QWIN_FIREFOX_EXTENSION_ID } else { "qwin-video-downloader@example.com" })
 )
 
 $ErrorActionPreference = "Stop"
