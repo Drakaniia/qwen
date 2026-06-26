@@ -34,6 +34,18 @@ function create() {
   }
 
   /**
+   * Get the current extension's runtime ID in a cross-browser way.
+   * @returns {string}
+   */
+  function getExtensionId() {
+    return (
+      (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id) ||
+      (typeof browser !== "undefined" && browser.runtime && browser.runtime.id) ||
+      ""
+    );
+  }
+
+  /**
    * Dispatch a message. Returns true (keep channel open for async response).
    * Compatible with Chrome's onMessage.addListener contract.
    */
@@ -42,6 +54,17 @@ function create() {
       // Unknown message shape — let it fall through.
       if (sendResponse) {
         sendResponse({ ok: false, error: "Missing message type." });
+      }
+      return false;
+    }
+
+    // CRITICAL: Validate sender origin.
+    // Only allow messages from the extension's own runtime context.
+    // This prevents external extensions or compromised contexts from
+    // invoking any message handler (download, CDM, recording, etc.).
+    if (!sender || sender.id !== getExtensionId()) {
+      if (sendResponse) {
+        sendResponse({ ok: false, error: "Unauthorized sender." });
       }
       return false;
     }
