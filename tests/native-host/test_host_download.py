@@ -10,6 +10,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
 
 import host
+import download_manager as dm
 
 
 class HostDownloadTaskTests(unittest.TestCase):
@@ -267,6 +268,268 @@ class HostDownloadTaskTests(unittest.TestCase):
                 message.get("type") == "progress" and "yt-dlp (no SSL check)" in message.get("line", "")
                 for message in sent
             )
+        )
+
+
+class TestCurlCffiFallbackChain(unittest.TestCase):
+    """Verify curl_cffi is included/excluded correctly in the fallback chain."""
+
+    def _capture_fallback(self, url, format_id=None):
+        """Run run_download and capture the fallback_commands list."""
+        import tempfile
+
+        captured = []
+
+        class CapturingTask:
+            def __init__(
+                self,
+                message,
+                command,
+                download_dir,
+                send=None,
+                fallback_command=None,
+                fallback_commands=None,
+                temp_files=None,
+                logger=None,
+            ):
+                captured.extend(list(fallback_commands or []))
+
+            def start(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dl_dir = Path(tmpdir) / "Downloads"
+            dl_dir.mkdir(parents=True)
+
+            msg = {
+                "id": "test_1",
+                "url": url,
+                "pageUrl": "https://example.com/watch",
+                "formatId": "best",
+            }
+            if format_id:
+                msg["format"] = format_id
+
+            with (
+                patch.object(dm, "resolve_download_dir", return_value=dl_dir),
+                patch.object(dm, "write_cookie_file_from_headers", return_value=None),
+                patch.object(dm, "validate_download_url", return_value=None),
+            ):
+                dm.run_download(
+                    message=msg,
+                    task_class=CapturingTask,
+                    aria2c_location_resolver=lambda: r"C:\Tools\aria2c.exe",
+                    ffmpeg_location_resolver=lambda: None,
+                    yt_dlp_command_resolver=lambda: ["yt-dlp"],
+                    n_m3u8dl_re_location_resolver=lambda: None,
+                    streamlink_command_resolver=lambda: None,
+                )
+
+        return captured
+
+    def test_curl_cffi_in_fallback_for_direct_mp4(self):
+        """curl-cffi should be in the fallback chain for direct .mp4 URLs."""
+        fallbacks = self._capture_fallback("https://cdn.example.com/video.mp4")
+        labels = [cmd.get("label", "") for cmd in fallbacks]
+        self.assertIn(
+            "curl-cffi (direct download)",
+            labels,
+            f"curl-cffi should be in fallback for .mp4 URLs. Got: {labels}",
+        )
+
+    def test_curl_cffi_first_fallback_after_primary(self):
+        """curl-cffi should be the first fallback entry (position 2 in chain)."""
+        fallbacks = self._capture_fallback("https://cdn.example.com/video.mp4")
+        self.assertGreater(len(fallbacks), 0)
+        first_label = fallbacks[0].get("label", "")
+        self.assertEqual(
+            first_label,
+            "curl-cffi (direct download)",
+            f"First fallback should be curl-cffi. Got: {first_label}",
+        )
+
+    def test_curl_cffi_not_in_fallback_for_m3u8(self):
+        """curl-cffi should NOT be in the fallback chain for HLS URLs."""
+        fallbacks = self._capture_fallback("https://cdn.example.com/hls/master.m3u8", format_id="M3U8")
+        labels = [cmd.get("label", "") for cmd in fallbacks]
+        self.assertNotIn(
+            "curl-cffi (direct download)",
+            labels,
+            f"curl-cffi should NOT be in fallback for .m3u8 URLs. Got: {labels}",
+        )
+
+    def test_curl_cffi_not_in_fallback_for_mpd(self):
+        """curl-cffi should NOT be in the fallback chain for DASH URLs."""
+        fallbacks = self._capture_fallback("https://cdn.example.com/dash/manifest.mpd", format_id="MPD")
+        labels = [cmd.get("label", "") for cmd in fallbacks]
+        self.assertNotIn(
+            "curl-cffi (direct download)",
+            labels,
+            f"curl-cffi should NOT be in fallback for .mpd URLs. Got: {labels}",
+        )
+
+    def test_curl_cffi_in_fallback_for_webm(self):
+        """curl-cffi should be in the fallback chain for .webm URLs."""
+        fallbacks = self._capture_fallback("https://cdn.example.com/video.webm")
+        labels = [cmd.get("label", "") for cmd in fallbacks]
+        self.assertIn(
+            "curl-cffi (direct download)",
+            labels,
+            f"curl-cffi should be in fallback for .webm URLs. Got: {labels}",
+        )
+
+    def test_curl_cffi_not_in_fallback_for_youtube(self):
+        """curl-cffi should NOT be in the fallback chain for YouTube URLs.
+
+        YouTube URLs are handled by yt-dlp with dedicated extractors;
+        curl_cffi is intended for direct CDN-style media URLs.
+        """
+        fallbacks = self._capture_fallback("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        labels = [cmd.get("label", "") for cmd in fallbacks]
+        self.assertNotIn(
+            "curl-cffi (direct download)",
+            labels,
+            f"curl-cffi should NOT be in fallback for YouTube URLs. Got: {labels}",
+        )
+
+
+class TestRunDownloadFallbackChain(unittest.TestCase):
+    """Verify the fallback chain built by run_download is correct for different URL types."""
+
+    def test_run_download_does_not_include_gallery_dl_for_cdn_url(self):
+        """gallery-dl should NOT be in the fallback chain for direct CDN video URLs.
+
+        Gallery-dl is an image/gallery site downloader (Pixiv, DeviantArt, etc.).
+        It should NOT be used as a catch-all fallback for direct CDN video URLs,
+        because it always fails with "Unsupported URL" for such URLs, producing
+        a misleading error that replaces the real cause of failure.
+
+        This test verifies that when downloading a direct CDN URL (like those
+        used by video hosting sites), the fallback chain does not include
+        gallery-dl. It will currently FAIL until the unconditional gallery-dl
+        fallback is removed from download_manager.run_download().
+        """
+        import tempfile
+
+        captured_fallback_commands = []
+
+        class CapturingTask:
+            def __init__(
+                self,
+                message,
+                command,
+                download_dir,
+                send=None,
+                fallback_command=None,
+                fallback_commands=None,
+                temp_files=None,
+                logger=None,
+            ):
+                captured_fallback_commands.extend(list(fallback_commands or []))
+
+            def start(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dl_dir = Path(tmpdir) / "Downloads"
+            dl_dir.mkdir(parents=True)
+
+            with (
+                patch.object(dm, "resolve_download_dir", return_value=dl_dir),
+                patch.object(dm, "write_cookie_file_from_headers", return_value=None),
+                patch.object(dm, "validate_download_url", return_value=None),
+            ):
+                dm.run_download(
+                    message={
+                        "id": "test_cdn_1",
+                        "url": "https://cdn.example.com/video.mp4?token=abc&expiry=123",
+                        "pageUrl": "https://example.com/watch",
+                        "formatId": "best",
+                    },
+                    task_class=CapturingTask,
+                    aria2c_location_resolver=lambda: r"C:\Tools\aria2c.exe",
+                    ffmpeg_location_resolver=lambda: None,
+                    yt_dlp_command_resolver=lambda: ["yt-dlp"],
+                    n_m3u8dl_re_location_resolver=lambda: None,
+                    streamlink_command_resolver=lambda: None,
+                )
+
+        # Verify gallery-dl is NOT in the fallback chain for direct CDN URLs
+        gallery_dl_entries = [
+            cmd
+            for cmd in captured_fallback_commands
+            if "gallery-dl" in cmd.get("label", "").lower()
+            or "gallery_dl" in str(cmd.get("command", []))
+        ]
+        self.assertEqual(
+            len(gallery_dl_entries),
+            0,
+            f"gallery-dl should NOT be in fallback chain for CDN URLs. "
+            f"Found {len(gallery_dl_entries)} entry(ies): {gallery_dl_entries}",
+        )
+
+    def test_run_download_includes_native_downloader_for_cdn_url(self):
+        """yt-dlp (native downloader) should be in the fallback chain for CDN URLs.
+
+        After removing the unconditional gallery-dl fallback, a yt-dlp variant
+        without aria2c (using yt-dlp's native downloader) is added instead.
+        This ensures direct CDN URLs can be downloaded even when aria2c fails.
+        """
+        import tempfile
+
+        captured_fallback_commands = []
+
+        class CapturingTask:
+            def __init__(
+                self,
+                message,
+                command,
+                download_dir,
+                send=None,
+                fallback_command=None,
+                fallback_commands=None,
+                temp_files=None,
+                logger=None,
+            ):
+                captured_fallback_commands.extend(list(fallback_commands or []))
+
+            def start(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dl_dir = Path(tmpdir) / "Downloads"
+            dl_dir.mkdir(parents=True)
+
+            with (
+                patch.object(dm, "resolve_download_dir", return_value=dl_dir),
+                patch.object(dm, "write_cookie_file_from_headers", return_value=None),
+                patch.object(dm, "validate_download_url", return_value=None),
+            ):
+                dm.run_download(
+                    message={
+                        "id": "test_cdn_2",
+                        "url": "https://cdn.example.com/video.mp4?token=abc&expiry=123",
+                        "pageUrl": "https://example.com/watch",
+                        "formatId": "best",
+                    },
+                    task_class=CapturingTask,
+                    aria2c_location_resolver=lambda: r"C:\Tools\aria2c.exe",
+                    ffmpeg_location_resolver=lambda: None,
+                    yt_dlp_command_resolver=lambda: ["yt-dlp"],
+                    n_m3u8dl_re_location_resolver=lambda: None,
+                    streamlink_command_resolver=lambda: None,
+                )
+
+        native_labels = [
+            cmd.get("label", "")
+            for cmd in captured_fallback_commands
+            if "native downloader" in cmd.get("label", "").lower()
+        ]
+        self.assertGreater(
+            len(native_labels),
+            0,
+            f"yt-dlp (native downloader) SHOULD be in fallback chain for CDN URLs. "
+            f"Found {len(native_labels)} matching entries. Full chain: {captured_fallback_commands}",
         )
 
 

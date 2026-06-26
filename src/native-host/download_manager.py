@@ -1,6 +1,6 @@
 import threading
 
-from fallback_engines import resolve_gallery_dl_command
+from gopeed_adapter import build_gopeed_magnet_command, build_gopeed_torrent_command
 from spotify_resolver import (
     build_youtube_download_command,
     fetch_spotify_track_metadata,
@@ -9,18 +9,18 @@ from spotify_resolver import (
     search_youtube,
 )
 
+import curl_cffi_adapter as _curl_cffi_adapter
 from browser_context import write_cookie_file_from_headers
 from download_task import DownloadTask
 from native_paths import resolve_download_dir, validate_download_url, validate_magnet_url, validate_torrent_file
 from native_protocol import HostError, send_native_message
-from gopeed_adapter import build_gopeed_magnet_command, build_gopeed_torrent_command
 from stream_backends import (
     build_n_m3u8dl_re_command,
     build_streamlink_command,
     is_stream_manifest_url,
     stream_output_path,
 )
-from yt_dlp_command import build_yt_dlp_command, build_yt_dlp_fallback_variants
+from yt_dlp_command import build_yt_dlp_command, build_yt_dlp_fallback_variants, is_youtube_url
 from yt_dlp_dependencies import (
     require_aria2c_location,
     require_gopeed_location,
@@ -222,12 +222,30 @@ def run_download(
     # ---- Fallback chain: multiple strategies exhaustively tried -------------------
     fallback_commands = []
 
-    # 1. yt-dlp strategy variants (SSL, geo, retries, etc.) — always with aria2c
+    # 1. curl-cffi direct download — use curl_cffi's TLS impersonation to bypass
+    #    WAF/CDN blocking on direct media URLs (Cloudflare, Akamai, etc.).
+    #    Only applicable for direct media URLs; HLS/DASH manifests are handled
+    #    by N_m3u8DL-RE or Streamlink below.
+    #    Skip for YouTube — yt-dlp has dedicated extractors with fine-grained
+    #    format selection and curl_cffi adds no value here.
+    if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
+        fallback_commands.append(
+            {
+                "command": _curl_cffi_adapter.download_curl_cffi_command(
+                    url=url,
+                    output_path=stream_output_path(download_dir, message.get("title") or "Video"),
+                    headers=request_headers,
+                ),
+                "label": "curl-cffi (direct download)",
+            }
+        )
+
+    # 2. yt-dlp strategy variants (SSL, geo, retries, etc.) — always with aria2c
     fallback_commands.extend(
         build_yt_dlp_fallback_variants(**build_command_kwargs({"aria2c_location": aria2c_location}))
     )
 
-    # 2. N_m3u8DL-RE for HLS/DASH manifest URLs
+    # 3. N_m3u8DL-RE for HLS/DASH manifest URLs
     requested_backend = str(message.get("backend") or "auto").lower()
     if (
         requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"}
@@ -273,22 +291,19 @@ def run_download(
             }
         )
 
-    # 4. gallery-dl for image/gallery sites (if available)
-    gallery_dl_cmd = resolve_gallery_dl_command()
-    if gallery_dl_cmd:
-        fallback_commands.append(
-            {
-                "command": [
-                    *gallery_dl_cmd,
-                    "--directory",
-                    str(download_dir),
-                    "--no-colors",
-                    "--no-mtime",
-                    str(url),
-                ],
-                "label": "gallery-dl",
-            }
-        )
+    # 4. yt-dlp with native downloader (no aria2c) — useful when aria2c
+    #    fails on servers that limit parallel connections or reject aria2c's
+    #    User-Agent. Also serves as a better last-resort fallback than
+    #    gallery-dl, which is designed for image/gallery sites (Pixiv,
+    #    DeviantArt, etc.) and cannot handle direct CDN video URLs.
+    fallback_commands.append(
+        {
+            "command": build_yt_dlp_command(
+                **build_command_kwargs({"aria2c_location": None})
+            ),
+            "label": "yt-dlp (native downloader)",
+        }
+    )
 
     task = task_class(
         message=message,

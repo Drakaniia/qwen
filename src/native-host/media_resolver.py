@@ -3,6 +3,7 @@ import re
 from urllib.parse import unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
+import curl_cffi_adapter as _curl_cffi_adapter
 from browser_context import clean_request_headers
 from media_candidates import classify_media_url, is_reusable_media_url
 from native_paths import validate_download_url
@@ -225,7 +226,16 @@ def request_headers_for_resolver(message):
 
 
 def fetch_resolver_text(url, message, urlopen_fn=urlopen):
-    request = Request(url, headers=request_headers_for_resolver(message))
+    headers = request_headers_for_resolver(message)
+
+    # Try curl_cffi first for TLS impersonation (bypasses WAF/CDN blocking)
+    if _curl_cffi_adapter.curl_cffi_available():
+        text = _curl_cffi_adapter.fetch_page_text(url, headers, impersonate="chrome")
+        if text:
+            return text
+
+    # Fall back to urllib
+    request = Request(url, headers=headers)
     with urlopen_fn(request, timeout=RESOLVER_TIMEOUT_SECONDS) as response:
         content_type = content_type_from_response(response)
         if content_type and not any(
