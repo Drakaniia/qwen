@@ -301,6 +301,112 @@ function registerDetachHandler() {
 /** @type {boolean} */
 let _detachHandlerRegistered = false;
 
+// ─── Rate Limiting ──────────────────────────────────────────────────────────
+
+/**
+ * Rate limiter for getCapturedExchanges() to prevent exfiltration.
+ * Limits to RATE_LIMIT_MAX_CALLS calls per RATE_LIMIT_WINDOW_MS window.
+ */
+const RATE_LIMIT_WINDOW_MS = 30000; // 30 seconds
+const RATE_LIMIT_MAX_CALLS = 5; // max 5 calls per window
+
+// ─── Memory Protection for Captured License Data ────────────────────────────
+
+/**
+ * Maximum age (ms) for a completed exchange before it is auto-pruned.
+ * Exchanges older than this are automatically removed from memory to limit
+ * the window of exposure for DRM key material.
+ */
+const EXCHANGE_MAX_AGE_MS = 300000; // 5 minutes
+
+/**
+ * Prune completed exchanges that have exceeded the maximum age.
+ * Also removes any timed-out pending tracked requests.
+ */
+function _pruneStaleExchanges() {
+  const now = Date.now();
+
+  // Prune completed exchanges
+  for (let i = completedExchanges.length - 1; i >= 0; i--) {
+    if (now - completedExchanges[i].completedAt > EXCHANGE_MAX_AGE_MS) {
+      // Overwrite sensitive data before removing reference
+      completedExchanges[i].responseBody = "";
+      completedExchanges[i].postData = "";
+      completedExchanges.splice(i, 1);
+    }
+  }
+
+  // Prune stale pending tracked requests (older than 2x the max age)
+  for (const [requestId, tracked] of trackedRequests) {
+    if (tracked.status === "pending" && now - tracked.capturedAt > EXCHANGE_MAX_AGE_MS * 2) {
+      trackedRequests.delete(requestId);
+    }
+  }
+}
+
+/**
+ * Schedule periodic pruning of stale exchanges.
+ * Runs every EXCHANGE_MAX_AGE_MS / 2 to keep memory footprint small.
+ */
+let _pruneTimer = null;
+
+function _startAutoPrune() {
+  if (_pruneTimer) {
+    return;
+  }
+  _pruneTimer = setInterval(_pruneStaleExchanges, EXCHANGE_MAX_AGE_MS / 2);
+}
+
+function _stopAutoPrune() {
+  if (_pruneTimer) {
+    clearInterval(_pruneTimer);
+    _pruneTimer = null;
+  }
+}
+
+/**
+ * Overwrite sensitive fields (responseBody, postData) on all stored exchanges
+ * with empty strings before removing references. This reduces the window during
+ * which key material exists in memory.
+ */
+function _wipeSensitiveData() {
+  for (const exchange of completedExchanges) {
+    exchange.responseBody = "";
+    exchange.postData = "";
+  }
+  for (const tracked of trackedRequests.values()) {
+    tracked.responseBody = "";
+    tracked.postData = "";
+  }
+}
+
+/** @type {number[]} */
+let _callTimestamps = [];
+
+/**
+ * Check if the current call is within the rate limit.
+ * @returns {boolean} True if the call is allowed
+ */
+function _checkRateLimit() {
+  const now = Date.now();
+  // Purge expired timestamps outside the window
+  _callTimestamps = _callTimestamps.filter(function (t) {
+    return now - t < RATE_LIMIT_WINDOW_MS;
+  });
+  if (_callTimestamps.length >= RATE_LIMIT_MAX_CALLS) {
+    return false;
+  }
+  _callTimestamps.push(now);
+  return true;
+}
+
+/**
+ * Reset the rate limiter (for testing or session end).
+ */
+function _resetRateLimit() {
+  _callTimestamps = [];
+}
+
 /**
  * Unregister CDP event listeners for the tab.
  *
@@ -364,6 +470,9 @@ async function initIntercept(tabId) {
   // Register the global onDetach handler (once)
   registerDetachHandler();
 
+  // Start periodic pruning of stale license data
+  _startAutoPrune();
+
   return { ok: true };
 }
 
@@ -410,7 +519,9 @@ function stopAll() {
     }
     activeSessions.delete(tabId);
   }
+  _wipeSensitiveData();
   trackedRequests.clear();
+  _stopAutoPrune();
 }
 
 /**
@@ -426,6 +537,11 @@ function stopAll() {
  *   - completedAt: Timestamp when response was received (only for completed)
  */
 function getCapturedExchanges() {
+  // Rate limit access to prevent bulk exfiltration by compromised contexts
+  if (!_checkRateLimit()) {
+    return [];
+  }
+
   const all = [...completedExchanges];
   for (const tracked of trackedRequests.values()) {
     all.push({
@@ -442,8 +558,12 @@ function getCapturedExchanges() {
  * Clear all captured license exchanges.
  */
 function clearCapturedExchanges() {
+  // Wipe sensitive data before removing references to minimize
+  // the window during which DRM key material exists in memory.
+  _wipeSensitiveData();
   completedExchanges.length = 0;
   trackedRequests.clear();
+  _resetRateLimit();
 }
 
 /**
@@ -519,6 +639,11 @@ async function extractKeysFromAllExchanges(nativeRequestFn) {
     const result = await extractKeysFromExchange(exchange, nativeRequestFn);
     results.push({ exchange, result });
   }
+
+  // Auto-clear after extraction to minimize the window during which
+  // DRM key material exists in memory. Once keys are extracted, the
+  // raw license responses are no longer needed.
+  clearCapturedExchanges();
 
   return results;
 }
