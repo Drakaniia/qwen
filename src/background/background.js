@@ -411,20 +411,67 @@ async function clearDownloads() {
 // ── Imported helper-ping module ────────────────────────────────────────
 import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, startHelperPing, pingNativeHost } from "./background-helper-ping.js";
 
-// ── WebRequest listener registration helper ─────────────────────────────
+// ── Video URL patterns for webRequest listeners ────────────────────────
 
-function registerBeforeSendHeadersListener() {
-  browserApi.webRequest.onBeforeSendHeaders.addListener(handleBeforeSendHeaders, { urls: ["<all_urls>"] }, [
-    "requestHeaders",
-    "extraHeaders",
-  ]);
-}
+/**
+ * Narrow URL patterns to avoid using "<all_urls>" for webRequest listeners.
+ *
+ * Covers common video file extensions and CDN URL patterns.
+ * This prevents the extension from intercepting headers and request bodies
+ * for every single HTTP request (images, fonts, scripts, API calls, etc.),
+ * significantly reducing the attack surface for compromised content scripts.
+ *
+ * SECURITY NOTE: The `extraHeaders` permission used in onBeforeSendHeaders
+ * exposes Authorization and Cookie headers for matching requests. By narrowing
+ * to these video/CDN patterns, we minimize exposure to only video-related
+ * traffic rather than all web browsing. The captured headers are stored in
+ * header_utils.js's requestHeadersByUrl with a cap of 250 entries and are
+ * only used to provide download context to yt-dlp/aria2c.
+ */
+const VIDEO_REQUEST_PATTERNS = [
+  "*://*/*.mp4*",
+  "*://*/*.m3u8*",
+  "*://*/*.ts*",
+  "*://*/*.webm*",
+  "*://*/*.mkv*",
+  "*://*/*.avi*",
+  "*://*/*.mov*",
+  "*://*/*.flv*",
+  "*://*/*.wmv*",
+  "*://*/*.m4s*",
+  "*://*/*.mpd*",
+  "*://*/*.key*",
+  "*://*/*videoplayback*",
+  "*://*/*dash*",
+  "*://*/*hls*",
+  "*://*/*segment*",
+  "*://*/*media*",
+  "*://*/*stream*",
+  "*://*/*cdn*",
+];
 
 // ── WebRequest listener registration ─────────────────────────────────────
 
-browserApi.webRequest.onBeforeRequest.addListener(handleBeforeRequest, { urls: ["<all_urls>"] });
-registerBeforeSendHeadersListener();
-browserApi.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { urls: ["<all_urls>"] }, [
+// Tab clearing on main_frame navigation — still needs <all_urls>
+browserApi.webRequest.onBeforeRequest.addListener(handleBeforeRequest, {
+  urls: ["<all_urls>"],
+  types: ["main_frame"],
+});
+
+// Video detection — narrow patterns only
+browserApi.webRequest.onBeforeRequest.addListener(handleBeforeRequest, {
+  urls: VIDEO_REQUEST_PATTERNS,
+});
+
+// Request headers for video download context — narrow patterns + extraHeaders
+browserApi.webRequest.onBeforeSendHeaders.addListener(
+  handleBeforeSendHeaders,
+  { urls: VIDEO_REQUEST_PATTERNS },
+  ["requestHeaders", "extraHeaders"],
+);
+
+// Response headers for video detection — narrow patterns only
+browserApi.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { urls: VIDEO_REQUEST_PATTERNS }, [
   "responseHeaders",
 ]);
 
