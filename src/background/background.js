@@ -272,53 +272,10 @@ function handleWebSocketRequest(details) {
   }
 
   // Flag the tab as having WebSocket activity (stored in tab state)
+  // The tab flag is checked by the UI to show WebSocket activity indicators.
+  // We do NOT call addDetectedVideo here because WebSocket URLs (ws:///wss://)
+  // fail isHttpUrl checks in the video pipeline — the tab flag is sufficient.
   tabState.setTabFlag(details.tabId, "websocket", details.url);
-
-  // Add a candidate for the WebSocket URL so it appears in detected list
-  addDetectedVideo(details.tabId, {
-    url: details.url,
-    format: "WEBSOCKET",
-    source: "websocket",
-    pageUrl: details.documentUrl || details.initiator || "",
-    title: "WebSocket Stream",
-  });
-}
-
-/**
- * Handle HTTP responses initiated by Service Worker scripts.
- *
- * Service Workers can intercept fetch() calls and serve video segments
- * from cache or proxy them through SW-managed streaming. When a response's
- * initiator URL is a Service Worker script, and the response has a video
- * content-type, we detect the video URL as a SW-served candidate.
- *
- * @param {Object} details - webRequest.onHeadersReceived details.
- */
-function handleServiceWorkerResponse(details) {
-  if (!details || details.tabId < 0 || !details.url) {
-    return;
-  }
-
-  // Check if the request was initiated by a Service Worker
-  const initiator = details.initiator || details.documentUrl || "";
-  if (!isServiceWorkerScopeUrl(initiator)) {
-    return;
-  }
-
-  // Check if response has video content-type
-  const contentType = contentTypeFromHeaders(details.responseHeaders);
-  if (!isLikelyVideoRequest(details.url, details.type, contentType)) {
-    return;
-  }
-
-  addDetectedVideo(details.tabId, {
-    url: details.url,
-    format: detectFormat(details.url, contentType),
-    source: "service-worker",
-    pageUrl: details.documentUrl || details.initiator || "",
-    contentType,
-    sizeBytes: contentLengthFromHeaders(details.responseHeaders),
-  });
 }
 
 // ── Web request handlers ─────────────────────────────────────────────────
@@ -368,10 +325,15 @@ function handleHeadersReceived(details) {
     return;
   }
 
+  // Determine the source based on whether this request was initiated by
+  // a Service Worker script (which may proxy/cache video segments).
+  const initiator = details.initiator || details.documentUrl || "";
+  const source = isServiceWorkerScopeUrl(initiator) ? "service-worker" : (contentType ? "headers" : "network");
+
   addDetectedVideo(details.tabId, {
     url: details.url,
     format: detectFormat(details.url, contentType),
-    source: contentType ? "headers" : "network",
+    source,
     pageUrl: details.documentUrl || details.initiator || "",
     contentType,
     sizeBytes: contentLengthFromHeaders(details.responseHeaders),
@@ -565,13 +527,6 @@ browserApi.webRequest.onBeforeSendHeaders.addListener(
 browserApi.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { urls: VIDEO_REQUEST_PATTERNS }, [
   "responseHeaders",
 ]);
-
-// Service Worker video responses — narrow patterns only, check initiator URL
-browserApi.webRequest.onHeadersReceived.addListener(
-  handleServiceWorkerResponse,
-  { urls: VIDEO_REQUEST_PATTERNS },
-  ["responseHeaders"],
-);
 
 // ── Sender validation helpers ────────────────────────────────────────────
 
