@@ -3,6 +3,7 @@ import re
 import shutil
 from pathlib import Path
 
+from native_paths import has_unexpanded_env_vars
 from native_protocol import HostError
 
 # Gopeed progress bar regex
@@ -36,7 +37,10 @@ def resolve_gopeed_command(extra_paths=None, _which=None):
     # Check environment variable
     configured = os.environ.get("QWIN_GOPEED")
     if configured:
-        configured_path = Path(os.path.expandvars(os.path.expanduser(configured)))
+        expanded = os.path.expandvars(os.path.expanduser(configured))
+        if has_unexpanded_env_vars(expanded):
+            return None
+        configured_path = Path(expanded)
         if configured_path.exists():
             return [str(configured_path)]
 

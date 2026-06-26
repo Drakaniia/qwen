@@ -5,6 +5,55 @@ from urllib.parse import urlparse
 
 from native_protocol import HostError
 
+# Extended env-var pattern: matches %VAR_NAME% on Windows
+_ENV_VAR_RE = re.compile(r"%[A-Za-z_][A-Za-z0-9_]*%")
+
+
+def has_unexpanded_env_vars(path_str):
+    """Check if a path string contains unexpanded Windows %VAR% patterns.
+
+    After calling os.path.expandvars(), any remaining %VAR% references
+    indicate either:
+    - An undefined environment variable that wasn't expanded (potential injection)
+    - Deliberate % signs in the path (extremely rare)
+
+    Rejecting these prevents attackers from using e.g. %APPDATA% or %USERPROFILE%
+    to redirect file operations to arbitrary locations.
+    """
+    if not isinstance(path_str, str):
+        return False
+    return bool(_ENV_VAR_RE.search(path_str))
+
+
+def is_safe_resolved_path(resolved_path, allowed_bases=None):
+    """Verify that a resolved path stays within an allowed base directory.
+
+    This prevents directory traversal attacks that could write files outside
+    the intended download directory or user's home folder.
+
+    By default, the user's home directory and default Downloads folder are allowed.
+    Returns True if the path is under at least one allowed base.
+    """
+    if allowed_bases is None:
+        try:
+            allowed_bases = [Path.home().resolve(), default_download_dir().resolve()]
+        except (OSError, RuntimeError):
+            return False
+
+    try:
+        resolved = Path(resolved_path).resolve(strict=False)
+    except (OSError, ValueError):
+        return False
+
+    for base in allowed_bases:
+        try:
+            base_resolved = Path(base).resolve(strict=False)
+            resolved.relative_to(base_resolved)
+            return True
+        except (ValueError, OSError):
+            continue
+    return False
+
 
 def is_magnet_url(url):
     """Check if the given URL is a magnet link."""
@@ -40,7 +89,10 @@ def validate_torrent_file(path):
     if not isinstance(path, str) or not path.strip():
         raise HostError("Download request did not include a .torrent file path.")
 
-    candidate = Path(os.path.expandvars(os.path.expanduser(path.strip()))).resolve()
+    expanded = os.path.expandvars(os.path.expanduser(path.strip()))
+    if has_unexpanded_env_vars(expanded):
+        raise HostError("Torrent file path contains unexpanded environment variables.")
+    candidate = Path(expanded).resolve()
     if candidate.suffix.lower() != ".torrent":
         raise HostError("Selected file is not a .torrent file.")
     if not candidate.is_file():
@@ -78,9 +130,19 @@ def default_download_dir(env=None):
 
 def resolve_download_dir(folder):
     if folder:
-        target = Path(os.path.expandvars(os.path.expanduser(str(folder)))).resolve()
+        expanded = os.path.expandvars(os.path.expanduser(str(folder)))
+        if has_unexpanded_env_vars(expanded):
+            raise HostError("Download folder path contains unexpanded environment variables.")
+        target = Path(expanded).resolve()
     else:
         target = default_download_dir().resolve()
+
+    # Verify the resolved path is within the user's home directory
+    if not is_safe_resolved_path(target):
+        raise HostError(
+            f"Download path is not within an allowed directory: {target}. "
+            f"Please choose a folder within your user profile."
+        )
 
     try:
         target.mkdir(parents=True, exist_ok=True)

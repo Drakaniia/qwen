@@ -3,7 +3,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from native_paths import default_download_dir, resolve_download_dir
+from native_paths import default_download_dir, has_unexpanded_env_vars, is_safe_resolved_path, resolve_download_dir
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
 
@@ -25,7 +25,10 @@ def open_download_path(message, reveal=False):
     if not raw_path:
         raise HostError("No downloaded file path is available for this item.")
 
-    target = Path(os.path.expandvars(os.path.expanduser(raw_path))).resolve()
+    expanded = os.path.expandvars(os.path.expanduser(raw_path))
+    if has_unexpanded_env_vars(expanded):
+        raise HostError("File path contains unexpanded environment variables.")
+    target = Path(expanded).resolve()
     if not target.exists():
         parent = target.parent
         if reveal and parent.exists():
@@ -56,7 +59,10 @@ def open_download_path(message, reveal=False):
 
 
 def resolve_artifact_path(value):
-    return Path(os.path.expandvars(os.path.expanduser(str(value)))).resolve()
+    expanded = os.path.expandvars(os.path.expanduser(str(value)))
+    if has_unexpanded_env_vars(expanded):
+        raise HostError("Artifact path contains unexpanded environment variables.")
+    return Path(expanded).resolve()
 
 
 def path_is_relative_to(path, root):

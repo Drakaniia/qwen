@@ -3,7 +3,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from native_paths import default_download_dir
+from native_paths import default_download_dir, has_unexpanded_env_vars
 from native_protocol import HostError
 from process_control import creation_flags
 
@@ -11,7 +11,9 @@ from process_control import creation_flags
 def initial_folder_for_picker(folder):
     candidates = []
     if folder:
-        candidates.append(Path(os.path.expandvars(os.path.expanduser(str(folder)))))
+        expanded = os.path.expandvars(os.path.expanduser(str(folder)))
+        if not has_unexpanded_env_vars(expanded):
+            candidates.append(Path(expanded))
     candidates.append(default_download_dir())
     candidates.append(Path.home())
 

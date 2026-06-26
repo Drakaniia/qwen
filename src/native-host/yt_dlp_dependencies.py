@@ -4,6 +4,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from native_paths import has_unexpanded_env_vars
 from native_protocol import HostError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -47,7 +48,10 @@ def resolve_ffmpeg_location(imageio_resolver=None):
 def resolve_aria2c_location(local_aria2c=None):
     configured = os.environ.get("QWIN_ARIA2C")
     if configured:
-        configured_path = Path(os.path.expandvars(os.path.expanduser(configured)))
+        expanded = os.path.expandvars(os.path.expanduser(configured))
+        if has_unexpanded_env_vars(expanded):
+            return None
+        configured_path = Path(expanded)
         if configured_path.exists():
             return str(configured_path)
 
@@ -81,7 +85,10 @@ def require_aria2c_location(local_aria2c=None):
 def resolve_n_m3u8dl_re_location(local_n_m3u8dl_re=None):
     configured = os.environ.get("QWIN_N_M3U8DL_RE")
     if configured:
-        configured_path = Path(os.path.expandvars(os.path.expanduser(configured)))
+        expanded = os.path.expandvars(os.path.expanduser(configured))
+        if has_unexpanded_env_vars(expanded):
+            return None
+        configured_path = Path(expanded)
         if configured_path.exists():
             return str(configured_path)
 
