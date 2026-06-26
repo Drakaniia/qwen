@@ -236,6 +236,91 @@ function downloadFallbackDeps() {
   return buildDownloadFallbackDeps(nativeRequest, addDetectedVideo, getVisibleVideosForTab, nativeRequestHeadersForVideo);
 }
 
+// ── WebSocket & Service Worker detection ─────────────────────────────────
+
+/**
+ * Pattern to detect Service Worker script URLs used as request initiators.
+ */
+const SERVICE_WORKER_SCOPE_RE = /(?:^|[/?#._-])(?:sw(?:\.js|\b)|serviceworker(?:\.js|\b)|service-worker(?:\.js|\b)|worker\.js)(?:$|[?#])/i;
+
+/**
+ * Check if a URL corresponds to a Service Worker script scope.
+ *
+ * @param {string} url - The initiator URL to check.
+ * @returns {boolean} True if the URL looks like a Service Worker script.
+ */
+function isServiceWorkerScopeUrl(url) {
+  if (!url || typeof url !== "string") {
+    return false;
+  }
+  return SERVICE_WORKER_SCOPE_RE.test(url);
+}
+
+/**
+ * Handle WebSocket upgrade requests detected via webRequest.
+ *
+ * Some streaming platforms deliver video through WebSocket connections.
+ * When a WebSocket is detected, we add a placeholder candidate so the
+ * user knows the tab has WebSocket activity and can investigate.
+ */
+function handleWebSocketRequest(details) {
+  if (!details || details.tabId < 0 || !details.url) {
+    return;
+  }
+  if (!isWebSocketDeliveryUrl(details.url)) {
+    return;
+  }
+
+  // Flag the tab as having WebSocket activity (stored in tab state)
+  tabState.setTabFlag(details.tabId, "websocket", details.url);
+
+  // Add a candidate for the WebSocket URL so it appears in detected list
+  addDetectedVideo(details.tabId, {
+    url: details.url,
+    format: "WEBSOCKET",
+    source: "websocket",
+    pageUrl: details.documentUrl || details.initiator || "",
+    title: "WebSocket Stream",
+  });
+}
+
+/**
+ * Handle HTTP responses initiated by Service Worker scripts.
+ *
+ * Service Workers can intercept fetch() calls and serve video segments
+ * from cache or proxy them through SW-managed streaming. When a response's
+ * initiator URL is a Service Worker script, and the response has a video
+ * content-type, we detect the video URL as a SW-served candidate.
+ *
+ * @param {Object} details - webRequest.onHeadersReceived details.
+ */
+function handleServiceWorkerResponse(details) {
+  if (!details || details.tabId < 0 || !details.url) {
+    return;
+  }
+
+  // Check if the request was initiated by a Service Worker
+  const initiator = details.initiator || details.documentUrl || "";
+  if (!isServiceWorkerScopeUrl(initiator)) {
+    return;
+  }
+
+  // Check if response has video content-type
+  const contentType = contentTypeFromHeaders(details.responseHeaders);
+  if (!isLikelyVideoRequest(details.url, details.type, contentType)) {
+    return;
+  }
+
+  addDetectedVideo(details.tabId, {
+    url: details.url,
+    format: detectFormat(details.url, contentType),
+    source: "service-worker",
+    pageUrl: details.documentUrl || details.initiator || "",
+    contentType,
+    sizeBytes: contentLengthFromHeaders(details.responseHeaders),
+  });
+}
+
 // ── Web request handlers ─────────────────────────────────────────────────
 
 function handleBeforeRequest(details) {
@@ -463,6 +548,12 @@ browserApi.webRequest.onBeforeRequest.addListener(handleBeforeRequest, {
   urls: VIDEO_REQUEST_PATTERNS,
 });
 
+// WebSocket stream detection — <all_urls> required because WebSocket URLs use ws:///wss://
+browserApi.webRequest.onBeforeRequest.addListener(handleWebSocketRequest, {
+  urls: ["<all_urls>"],
+  types: ["websocket"],
+});
+
 // Request headers for video download context — narrow patterns + extraHeaders
 browserApi.webRequest.onBeforeSendHeaders.addListener(
   handleBeforeSendHeaders,
@@ -474,6 +565,13 @@ browserApi.webRequest.onBeforeSendHeaders.addListener(
 browserApi.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { urls: VIDEO_REQUEST_PATTERNS }, [
   "responseHeaders",
 ]);
+
+// Service Worker video responses — narrow patterns only, check initiator URL
+browserApi.webRequest.onHeadersReceived.addListener(
+  handleServiceWorkerResponse,
+  { urls: VIDEO_REQUEST_PATTERNS },
+  ["responseHeaders"],
+);
 
 // ── Sender validation helpers ────────────────────────────────────────────
 
