@@ -1,5 +1,6 @@
 import threading
 
+from download_logger import get_logger
 from gopeed_adapter import build_gopeed_magnet_command, build_gopeed_torrent_command
 from spotify_resolver import (
     build_youtube_download_command,
@@ -14,7 +15,16 @@ from browser_context import write_cookie_file_from_headers
 from download_task import DownloadTask
 from native_paths import resolve_download_dir, validate_download_url, validate_magnet_url, validate_torrent_file
 from native_protocol import HostError, send_native_message
+from probe_runner import (
+    ProbeConfig,
+    probe_curl_cffi,
+    probe_n_m3u8dl_re,
+    probe_streamlink,
+    probe_yt_dlp,
+    run_parallel_probes,
+)
 from stream_backends import (
+    build_ffmpeg_direct_command,
     build_n_m3u8dl_re_command,
     build_streamlink_command,
     is_stream_manifest_url,
@@ -150,6 +160,136 @@ def cancel_active_downloads():
         task.cancel()
 
 
+def _build_probe_configs(
+    url,
+    message,
+    download_dir,
+    request_headers,
+    cookies_file,
+    yt_dlp_command,
+    ffmpeg_location,
+    aria2c_location,
+    n_m3u8dl_re_location,
+    streamlink_command,
+    extract_audio=False,
+    audio_format=None,
+    download_subtitles=True,
+):
+    """Build the list of probe configs for parallel reachability checks.
+
+    Returns a list of ProbeConfig objects for all applicable backends.
+    The selection matches the spec in parallel-reachability-spec.md:
+
+    - yt-dlp: Always included (primary extractor)
+    - curl_cffi: Only for direct media URLs (not stream manifests, not YouTube)
+    - N_m3u8DL-RE: Only for stream manifest URLs
+    - Streamlink: Only for stream manifest URLs
+    """
+    probes = []
+    requested_backend = str(message.get("backend") or "auto").lower()
+
+    # 1. yt-dlp — always participates
+    probes.append(
+        ProbeConfig(
+            backend="yt-dlp",
+            label="yt-dlp (skip-download)",
+            probe_fn=lambda u, ce: probe_yt_dlp(
+                url=u,
+                cancel_event=ce,
+                yt_dlp_command=yt_dlp_command,
+                ffmpeg_location=ffmpeg_location,
+            ),
+            command=build_yt_dlp_command(
+                url=url,
+                download_dir=download_dir,
+                referer=message.get("pageUrl"),
+                user_agent=message.get("userAgent"),
+                request_headers=request_headers,
+                cookies_file=cookies_file,
+                yt_dlp_command=yt_dlp_command,
+                ffmpeg_location=ffmpeg_location,
+                selected_format=message.get("formatId"),
+                extract_audio=extract_audio,
+                audio_format=audio_format,
+                download_subtitles=download_subtitles,
+                aria2c_location=aria2c_location,
+            ),
+        )
+    )
+
+    # 2. curl_cffi — only for direct media URLs
+    if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
+        probes.append(
+            ProbeConfig(
+                backend="curl_cffi",
+                label="curl-cffi (HEAD)",
+                probe_fn=lambda u, ce: probe_curl_cffi(
+                    url=u,
+                    cancel_event=ce,
+                    headers=request_headers,
+                ),
+                command=_curl_cffi_adapter.download_curl_cffi_command(
+                    url=url,
+                    output_path=stream_output_path(download_dir, message.get("title") or "Video"),
+                    headers=request_headers,
+                ),
+            )
+        )
+
+    # 3. N_m3u8DL-RE — for stream manifest URLs
+    if (
+        requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"}
+        and n_m3u8dl_re_location
+        and is_stream_manifest_url(url, message.get("format"))
+    ):
+        probes.append(
+            ProbeConfig(
+                backend="n_m3u8dl_re",
+                label="N_m3u8DL-RE",
+                probe_fn=lambda u, ce: probe_n_m3u8dl_re(
+                    url=u,
+                    cancel_event=ce,
+                    n_m3u8dl_re_location=n_m3u8dl_re_location,
+                ),
+                command=build_n_m3u8dl_re_command(
+                    url=url,
+                    output_path=stream_output_path(download_dir, message.get("title") or "Video"),
+                    request_headers=request_headers,
+                    n_m3u8dl_re_location=n_m3u8dl_re_location,
+                    ffmpeg_location=ffmpeg_location,
+                ),
+            )
+        )
+
+    # 4. Streamlink — for stream manifest URLs
+    if (
+        requested_backend in {"auto", "streamlink"}
+        and streamlink_command
+        and is_stream_manifest_url(url, message.get("format"))
+    ):
+        probes.append(
+            ProbeConfig(
+                backend="streamlink",
+                label="Streamlink",
+                probe_fn=lambda u, ce: probe_streamlink(
+                    url=u,
+                    cancel_event=ce,
+                    streamlink_command=streamlink_command,
+                ),
+                command=build_streamlink_command(
+                    url=url,
+                    output_path=stream_output_path(download_dir, message.get("title") or "Video"),
+                    request_headers=request_headers,
+                    cookies_file=cookies_file,
+                    streamlink_command=streamlink_command,
+                    ffmpeg_location=ffmpeg_location,
+                ),
+            )
+        )
+
+    return probes
+
+
 def run_download(
     message,
     task_class=DownloadTask,
@@ -158,6 +298,7 @@ def run_download(
     aria2c_location_resolver=require_aria2c_location,
     n_m3u8dl_re_location_resolver=resolve_n_m3u8dl_re_location,
     streamlink_command_resolver=resolve_streamlink_command,
+    probe_runner_fn=run_parallel_probes,
 ):
     request_id = str(message.get("id") or message.get("requestId") or "")
     url = str(message.get("url") or "").strip()
@@ -215,11 +356,61 @@ def run_download(
             kwargs.update(extra)
         return kwargs
 
+    # ---- Parallel probe phase (Tier 1) -------------------------------------------
+    # Launch lightweight reachability probes for all applicable backends in
+    # parallel. If a winner is found, use its command as the primary download
+    # command with an empty fallback list (the winner already verified it can
+    # reach the video). If all probes fail, fall through to the existing
+    # sequential fallback chain (Tier 2).
+    cancel_event = threading.Event()
+    logger = get_logger()
+
+    probe_configs = _build_probe_configs(
+        url=url,
+        message=message,
+        download_dir=download_dir,
+        request_headers=request_headers,
+        cookies_file=cookies_file,
+        yt_dlp_command=yt_dlp_command,
+        ffmpeg_location=ffmpeg_location,
+        aria2c_location=aria2c_location,
+        n_m3u8dl_re_location=n_m3u8dl_re_location,
+        streamlink_command=streamlink_command,
+        extract_audio=extract_audio,
+        audio_format=audio_format,
+        download_subtitles=download_subtitles,
+    )
+
+    probe_result = probe_runner_fn(
+        url=url,
+        probes=probe_configs,
+        cancel_event=cancel_event,
+        send_message=lambda msg: send_native_message({**msg, "id": request_id}),
+        logger=logger,
+    )
+
+    # If a winner was found, use it directly with empty fallbacks
+    if probe_result.winner is not None and probe_result.command is not None:
+        task = task_class(
+            message=message,
+            command=probe_result.command,
+            fallback_command=None,
+            fallback_commands=[],
+            download_dir=download_dir,
+            temp_files=temp_files,
+        )
+        with _active_downloads_lock():
+            ACTIVE_DOWNLOADS[request_id] = task
+        task.start()
+        return
+
+    # ---- Sequential fallback chain (Tier 2) --------------------------------------
+    # All probes failed — fall back to the existing sequential full-download
+    # strategy variants (yt-dlp with aria2c, curl_cffi, yt-dlp variants, etc.).
     command = build_yt_dlp_command(**build_command_kwargs({"aria2c_location": aria2c_location}))
     # aria2c is required — no fallback without it
     fallback_command = None
 
-    # ---- Fallback chain: multiple strategies exhaustively tried -------------------
     fallback_commands = []
 
     # 1. curl-cffi direct download — use curl_cffi's TLS impersonation to bypass
@@ -291,7 +482,29 @@ def run_download(
             }
         )
 
-    # 4. yt-dlp with native downloader (no aria2c) — useful when aria2c
+    # Note: curl_cffi was already tested as a Tier-1 probe above.
+    # If the probe failed, a full download via curl_cffi is unlikely to
+    # succeed, but we keep it in the sequential chain anyway since the
+    # full download (with streaming/chunking) may succeed where a simple
+    # HEAD request failed (e.g., server rejects HEAD but accepts GET).
+
+    # 4. ffmpeg direct stream copy — simplest reliable fallback for HLS/DASH
+    if is_stream_manifest_url(url, message.get("format")):
+        final_path = stream_output_path(download_dir, message.get("title") or "Video")
+        fallback_commands.append(
+            {
+                "command": build_ffmpeg_direct_command(
+                    url=url,
+                    output_path=final_path,
+                    request_headers=request_headers,
+                    ffmpeg_location=ffmpeg_location,
+                ),
+                "label": "ffmpeg (direct stream copy)",
+                "final_path": str(final_path),
+            }
+        )
+
+    # 5. yt-dlp with native downloader (no aria2c) — useful when aria2c
     #    fails on servers that limit parallel connections or reject aria2c's
     #    User-Agent. Also serves as a better last-resort fallback than
     #    gallery-dl, which is designed for image/gallery sites (Pixiv,
