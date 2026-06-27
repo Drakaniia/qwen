@@ -95,6 +95,13 @@ if %ERRORLEVEL% neq 0 (
   echo Downloads will still use yt-dlp and ffmpeg, but some stream-only fallbacks may be unavailable.
 )
 
+echo Installing or checking you-get and lux fallback downloaders...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-you-get-lux.ps1" -RootDir "%ROOT_DIR%"
+if %ERRORLEVEL% neq 0 (
+  echo you-get and lux could not be installed.
+  echo Asian platform downloads (Bilibili, Douyin, etc.) will use yt-dlp instead.
+)
+
 echo Installing or checking Go companion binary for CDM capture and screen recording...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-capture.ps1" -RootDir "%ROOT_DIR%"
 if %ERRORLEVEL% neq 0 (
