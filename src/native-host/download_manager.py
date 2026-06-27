@@ -504,7 +504,34 @@ def run_download(
             }
         )
 
-    # 5. yt-dlp with native downloader (no aria2c) — useful when aria2c
+    # 5. you-get — video downloader for Asian media platforms
+    #    Supports Bilibili, Douyin/TikTok, Weibo, AcFun, Niconico, etc.
+    #    where yt-dlp may have limited support.
+    if not is_stream_manifest_url(url, message.get("format")):
+        from fallback_engines import has_you_get
+
+        if has_you_get():
+            fallback_commands.append(
+                {
+                    "command": ["you-get", "--output-dir", str(download_dir), str(url)],
+                    "label": "you-get",
+                }
+            )
+
+    # 6. lux — Go-based video downloader for Asian platforms
+    #    Supports Bilibili, Douyin/TikTok, etc. as a fast alternative.
+    if not is_stream_manifest_url(url, message.get("format")):
+        from fallback_engines import has_lux
+
+        if has_lux():
+            fallback_commands.append(
+                {
+                    "command": ["lux", "-o", str(download_dir), str(url)],
+                    "label": "lux",
+                }
+            )
+
+    # 7. yt-dlp with native downloader (no aria2c) — useful when aria2c
     #    fails on servers that limit parallel connections or reject aria2c's
     #    User-Agent. Also serves as a better last-resort fallback than
     #    gallery-dl, which is designed for image/gallery sites (Pixiv,

@@ -1,7 +1,7 @@
 import json
 import subprocess
 
-from fallback_engines import list_formats_gallery_dl
+from fallback_engines import list_formats_gallery_dl, list_formats_lux, list_formats_you_get
 from spotify_resolver import is_spotify_url, resolve_spotify_formats
 
 from browser_context import remove_temp_files, write_cookie_file_from_headers
@@ -100,6 +100,38 @@ def run_format_list(
                     "title": "Media",
                     "webpageUrl": url,
                     "formats": gallery_formats,
+                }
+            )
+            return
+
+        # -- you-get fallback ---------------------------------------------------------
+        # For Asian media platforms (Bilibili, Douyin, Weibo, AcFun, Niconico)
+        # that yt-dlp may not support well, try you-get
+        you_get_formats = list_formats_you_get(url)
+        if you_get_formats:
+            send(
+                {
+                    "type": "formats",
+                    "id": request_id,
+                    "title": "Media",
+                    "webpageUrl": url,
+                    "formats": you_get_formats,
+                }
+            )
+            return
+
+        # -- lux fallback -------------------------------------------------------------
+        # For sites that lux handles better (Bilibili, Douyin, etc.),
+        # try lux as another alternative
+        lux_formats = list_formats_lux(url)
+        if lux_formats:
+            send(
+                {
+                    "type": "formats",
+                    "id": request_id,
+                    "title": "Media",
+                    "webpageUrl": url,
+                    "formats": lux_formats,
                 }
             )
             return
