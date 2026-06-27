@@ -347,18 +347,145 @@ function cleanup() {
   disconnectRelay();
 }
 
+// ─── Deep Network Inspection (GAP 8) ────────────────────────────────────────
+
+/**
+ * Configuration for deep network inspection features.
+ *
+ * When enabled, the CDP debugger captures:
+ * - WebSocket frames (Network.webSocketFrameReceived)
+ * - Extra request info (Network.requestWillBeSentExtraInfo) for HTTP/3
+ *
+ * These events are forwarded to the native host for analysis.
+ */
+let deepNetworkInspectionEnabled = false;
+
+/** Set of tabs with active deep network inspection. */
+const deepInspectionTabs = new Set();
+
+/**
+ * Enable deep network inspection on a given tab.
+ *
+ * Attaches the debugger (if not already attached) and enables
+ * Network domain events: WebSocket frame capture and request
+ * extra info for HTTP/3 / QUIC traffic.
+ *
+ * @param {number} tabId - Tab to inspect.
+ * @returns {Promise<{ok: boolean, error?: string}>}
+ */
+async function enableDeepNetworkInspection(tabId) {
+  if (!tabId || !Number.isInteger(tabId)) {
+    return { ok: false, error: "Invalid tabId" };
+  }
+
+  // Attach debugger
+  const attachResult = await attach(tabId);
+  if (!attachResult.ok) {
+    return attachResult;
+  }
+  try {
+    // Enable Network domain for WebSocket frame and request extra info capture
+    await sendCommand(tabId, "Network.enable", {});
+
+    deepInspectionTabs.add(tabId);
+    deepNetworkInspectionEnabled = true;
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: String(error.message || error) };
+  }
+}
+
+/**
+ * Disable deep network inspection on a given tab.
+ *
+ * Disables the Network domain and optionally detaches the debugger.
+ *
+ * @param {number} tabId - Tab to stop inspecting.
+ * @param {boolean} [detachAfter=true] - Detach the debugger after disabling.
+ * @returns {Promise<{ok: boolean}>}
+ */
+async function disableDeepNetworkInspection(tabId, detachAfter = true) {
+  if (!deepInspectionTabs.has(tabId)) {
+    return { ok: true };
+  }
+
+  try {
+    await sendCommand(tabId, "Network.disable", {});
+  } catch (_error) {
+    // Ignore errors if debugger already detached
+  }
+
+  deepInspectionTabs.delete(tabId);
+  if (deepInspectionTabs.size === 0) {
+    deepNetworkInspectionEnabled = false;
+  }
+
+  if (detachAfter) {
+    await detach(tabId);
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Check if deep network inspection is active on a tab.
+ * @param {number} tabId
+ * @returns {boolean}
+ */
+function isDeepInspectionActive(tabId) {
+  return deepInspectionTabs.has(tabId);
+}
+
+/**
+ * Forward a captured CDP event to the native host.
+ *
+ * @param {string} eventType - The CDP event type (e.g. "Network.webSocketFrameReceived").
+ * @param {number} tabId - The tab where the event occurred.
+ * @param {Object} params - The event parameters.
+ */
+function forwardNetworkEvent(eventType, tabId, params) {
+  if (!relayPort || !relayPortConnected) {
+    return;
+  }
+
+  try {
+    relayPort.postMessage({
+      type: "networkEvent",
+      eventType,
+      tabId,
+      params,
+      timestamp: Date.now(),
+    });
+  } catch (_error) {
+    // Silently ignore if relay port is disconnected
+  }
+}
+
 /**
  * Initialize the CDP relay module.
- * Registers a chrome.debugger event listener for detach events.
+ * Registers a chrome.debugger event listener for detach events
+ * and deep network inspection events.
  * Opens the persistent relay port for Go → Python → Extension CDP relay.
  */
 function init() {
   if (typeof chrome !== "undefined" && chrome.debugger) {
     if (chrome.debugger.onEvent) {
       chrome.debugger.onEvent.addListener((source, method, params) => {
-        // Chrome debugger events are forwarded through the relay chain.
-        // Currently no-op in scaffold — will be used for CDM license interception.
-        void source;
+        // Forward deep network inspection events to the native host
+        if (source && source.tabId && deepInspectionTabs.has(source.tabId)) {
+          if (
+            method === "Network.webSocketFrameReceived" ||
+            method === "Network.webSocketFrameSent" ||
+            method === "Network.webSocketFrameError" ||
+            method === "Network.requestWillBeSentExtraInfo" ||
+            method === "Network.responseReceivedExtraInfo"
+          ) {
+            forwardNetworkEvent(method, source.tabId, params || {});
+            return;
+          }
+        }
+
         void method;
         void params;
       });
@@ -367,6 +494,10 @@ function init() {
     if (chrome.debugger.onDetach) {
       chrome.debugger.onDetach.addListener((source) => {
         activeSessions.delete(source.tabId);
+        deepInspectionTabs.delete(source.tabId);
+        if (deepInspectionTabs.size === 0) {
+          deepNetworkInspectionEnabled = false;
+        }
       });
     }
   }
@@ -389,4 +520,8 @@ export {
   connectRelay,
   disconnectRelay,
   isRelayConnected,
+  enableDeepNetworkInspection,
+  disableDeepNetworkInspection,
+  isDeepInspectionActive,
+  forwardNetworkEvent,
 };

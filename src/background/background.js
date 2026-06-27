@@ -935,6 +935,35 @@ messageRouter.handle("cdpStatus", async () => {
   return cdpRelay.handleCdpStatus();
 });
 
+// ── Deep Network Inspection handlers (GAP 8) ────────────────────────────
+
+messageRouter.handle("enableDeepInspection", async (message, sender) => {
+  if (!isExtensionPageSender(sender)) {
+    return { ok: false, error: "Unauthorized: only extension pages may enable deep inspection." };
+  }
+  const tabId = Number(message.tabId) || 0;
+  if (!tabId) {
+    return { ok: false, error: "No tabId provided." };
+  }
+  return cdpRelay.enableDeepNetworkInspection(tabId);
+});
+
+messageRouter.handle("disableDeepInspection", async (message, sender) => {
+  if (!isExtensionPageSender(sender)) {
+    return { ok: false, error: "Unauthorized: only extension pages may disable deep inspection." };
+  }
+  const tabId = Number(message.tabId) || 0;
+  if (!tabId) {
+    return { ok: false, error: "No tabId provided." };
+  }
+  return cdpRelay.disableDeepNetworkInspection(tabId);
+});
+
+messageRouter.handle("isDeepInspectionActive", async (message) => {
+  const tabId = Number(message.tabId) || 0;
+  return { ok: true, active: cdpRelay.isDeepInspectionActive(tabId) };
+});
+
 // ── CDP extraction handler ───────────────────────────────────────────────
 
 messageRouter.handle("cdpExtractVideos", async (message, sender) => {
