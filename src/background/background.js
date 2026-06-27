@@ -271,11 +271,8 @@ function handleWebSocketRequest(details) {
     return;
   }
 
-  // Flag the tab as having WebSocket activity (stored in tab state)
-  // The tab flag is checked by the UI to show WebSocket activity indicators.
-  // We do NOT call addDetectedVideo here because WebSocket URLs (ws:///wss://)
-  // fail isHttpUrl checks in the video pipeline — the tab flag is sufficient.
-  tabState.setTabFlag(details.tabId, "websocket", details.url);
+  // WebSocket URLs (ws:///wss://) fail isHttpUrl checks in the video pipeline,
+  // so we skip addDetectedVideo here — WebSocket delivery is handled separately.
 }
 
 // ── Web request handlers ─────────────────────────────────────────────────
