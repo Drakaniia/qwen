@@ -14,6 +14,7 @@ import * as segmentCapture from "./segment_capture.js";
 import * as batchOrchestration from "./batch_orchestration.js";
 import * as playlistDetection from "../shared/playlist_detection.js";
 import * as downloadSync from "../shared/download_sync.js";
+import * as downloadQueue from "./download_queue.js";
 import { create as createMessageRouter } from "./message_router.js";
 import { create as createDownloadOrchestration } from "./download_orchestration.js";
 
@@ -1375,6 +1376,55 @@ messageRouter.handle("clearDownloadSyncHistory", async () => {
   downloadSync.clearSyncedHistory();
   await tabState.persistSyncHistoryToStorage();
   return { ok: true };
+});
+
+// ── Download queue handlers ────────────────────────────────────────────
+
+function initDownloadQueue() {
+  const settings = tabState.getSettings();
+  downloadQueue.init({
+    startDownload: (tabId, videoId, formatId, variantId, backend) =>
+      startNativeDownload(tabId, videoId, formatId, variantId, backend),
+    maxConcurrent: settings.maxConcurrentDownloads || 3,
+    autoDownload: settings.autoDownload || false,
+  });
+}
+
+messageRouter.handle("getQueueStatus", async () => {
+  return { ok: true, status: downloadQueue.getStatus() };
+});
+
+messageRouter.handle("setAutoDownload", async (message) => {
+  downloadQueue.setAutoDownload(Boolean(message.enabled));
+  await tabState.updateSettings({ autoDownload: Boolean(message.enabled) });
+  return { ok: true, autoDownload: downloadQueue.getAutoDownload() };
+});
+
+messageRouter.handle("setMaxConcurrentDownloads", async (message) => {
+  const limit = Number(message.limit) || 3;
+  downloadQueue.setMaxConcurrent(limit);
+  await tabState.updateSettings({ maxConcurrentDownloads: limit });
+  return { ok: true, maxConcurrent: downloadQueue.getMaxConcurrent() };
+});
+
+messageRouter.handle("downloadAllVideos", async (message, sender) => {
+  const tabId = message.tabId || (sender.tab && sender.tab.id);
+  if (!tabId) {
+    return { ok: false, error: "No tab ID provided." };
+  }
+  const videos = await getTabVideos(tabId);
+  const downloadable = videos.filter((v) => v.downloadable);
+  if (!downloadable.length) {
+    return { ok: false, error: "No downloadable videos found." };
+  }
+  for (const video of downloadable) {
+    downloadQueue.enqueue(tabId, video.id, {
+      formatId: "best",
+      variantId: "",
+      backend: "auto",
+    });
+  }
+  return { ok: true, queued: downloadable.length };
 });
 
 // ── Helper status ────────────────────────────────────────────────────────

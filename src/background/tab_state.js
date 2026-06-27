@@ -10,7 +10,15 @@ const STORAGE_DOWNLOADS = "qwinDownloadsById";
 
 let videosByTab = {};
 let downloadsById = {};
-let settings = { downloadFolder: "", musicMode: false, audioFormat: "mp3", recordingMode: "ask", downloadSyncEnabled: true };
+let settings = {
+  downloadFolder: "",
+  musicMode: false,
+  audioFormat: "mp3",
+  recordingMode: "ask",
+  downloadSyncEnabled: true,
+  autoDownload: false,
+  maxConcurrentDownloads: 3,
+};
 let stateLoaded = false;
 let stateLoadPromise = null;
 const subscribers = [];
