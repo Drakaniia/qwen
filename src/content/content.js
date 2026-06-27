@@ -7,6 +7,7 @@ import * as videoPicker from "../shared/video_picker.js";
 import * as pageDetectionModule from "./page_detection.js";
 import * as mediaSourceIntercept from "./media_source_intercept.js";
 import * as emeIntercept from "./eme_intercept.js";
+import * as p2pDetection from "./p2p_detection.js";
 
 const extensionApi = typeof browser !== "undefined" ? browser : chrome;
 const seenUrls = new Map();
@@ -608,6 +609,9 @@ function start() {
 
   // Initialise EME interception for DRM-protected streams
   emeIntercept.init();
+
+  // Initialise P2P/WebRTC stream detection
+  p2pDetection.init();
 
   publishScan();
   window.setInterval(publishScan, 3000);
