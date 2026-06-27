@@ -5,6 +5,21 @@ from urllib.parse import urlparse
 from browser_context import clean_request_headers
 
 STREAM_URL_RE = re.compile(r"(?:\.m3u8|\.mpd|\.ism(?:/Manifest)?)(?:$|[?#])", re.IGNORECASE)
+
+# ─── LL-HLS & CMAF Detection (GAP 10) ────────────────────────────────────────
+
+# Low-Latency HLS signs use `.m3u8?` with specific query parameters
+# indicating block-download mode, partial segments, or delta playlists.
+# Examples:
+#   - playlist.m3u8?_HLS_ms=... (block-download mode)
+#   - playlist.m3u8?delta=... (delta playlist)
+#   - playlist.m3u8?part=... (partial segment)
+LL_HLS_RE = re.compile(r"\.m3u8(?:$|[?#]).*?(?:_HLS_ms|delta|skip|part=|_HLS_part)", re.IGNORECASE)
+
+# CMAF (Common Media Application Format) uses `.cmf` or `.cmfa` / `.cmfv`
+# extensions for audio/video fragments, or `cmaf` in the URL path.
+CMAF_RE = re.compile(r"(?:\.cmf(?:a|v)?(?:$|[?#])|/cmaf/)", re.IGNORECASE)
+
 RETRYABLE_BACKEND_ERROR_RE = re.compile(
     r"Unsupported URL|did not find any downloadable video formats|No video formats|"
     r"Requested format is not available|Invalid data found when processing input|"
@@ -200,6 +215,56 @@ def build_mp4decrypt_command(
 
     command.extend([str(input_path), str(output_path)])
     return command
+
+
+# ─── LL-HLS / CMAF helpers (GAP 10) ─────────────────────────────────────────────
+
+
+def is_ll_hls_url(url, media_format=""):
+    """Check if a URL is a Low-Latency HLS stream.
+
+    LL-HLS uses partial segments, delta playlists, and block-download
+    mode. Standard HLS downloaders may not handle these correctly.
+
+    Args:
+        url: The URL to check.
+        media_format: Optional format hint (e.g., 'M3U8').
+
+    Returns:
+        True if the URL looks like an LL-HLS stream.
+    """
+    if media_format and media_format.upper() not in {"M3U8", ""}:
+        return False
+    return bool(LL_HLS_RE.search(str(url or "")))
+
+
+def is_cmaf_url(url):
+    """Check if a URL is a CMAF (Common Media Application Format) stream.
+
+    CMAF uses fragmented MP4 with `.cmfa` (audio) and `.cmfv` (video)
+    extensions, or `/cmaf/` in the URL path.
+
+    Args:
+        url: The URL to check.
+
+    Returns:
+        True if the URL looks like a CMAF stream.
+    """
+    return bool(CMAF_RE.search(str(url or "")))
+
+
+def is_low_latency_stream(url, media_format=""):
+    """Check if a URL is any kind of low-latency streaming format
+    (LL-HLS or CMAF).
+
+    Args:
+        url: The URL to check.
+        media_format: Optional format hint.
+
+    Returns:
+        True if the URL is an LL-HLS or CMAF stream.
+    """
+    return is_ll_hls_url(url, media_format) or is_cmaf_url(url)
 
 
 def source_host(url):
