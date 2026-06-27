@@ -221,7 +221,6 @@ if ($chromeCdm) {
         Invoke-CdmInit -TargetDir $cdmDir
       }
       exit 0
-    }
     } else {
       Write-Warning "Could not install a compatible CDM."
       Write-CdmStatus -Available $false -Error "Chrome CDM version $($chromeCdm.version) incompatible, and fallback download failed."
