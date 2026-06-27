@@ -24,6 +24,68 @@ const extensionApi = (typeof browser !== "undefined" ? browser :
                      typeof chrome !== "undefined" ? chrome :
                      { runtime: { sendMessage() {} } });
 
+// ─── WebKit / Safari EME Detection (GAP 9) ──────────────────────────────────
+
+/**
+ * Check if the current browser supports WebKit-specific EME APIs
+ * used by Safari for FairPlay Streaming (FPS) DRM.
+ *
+ * Returns a promise that resolves to an object describing WebKit
+ * EME capabilities, or null if not detected.
+ *
+ * @returns {Promise<{webkitKeys: boolean, webkitMediaKeys: boolean, fairplay: boolean}|null>}
+ */
+async function detectWebKitEmeCapabilities() {
+  if (typeof navigator === "undefined") {
+    return null;
+  }
+
+  const result = {
+    webkitKeys: false,
+    webkitMediaKeys: false,
+    fairplay: false,
+  };
+
+  try {
+    // Check for legacy WebKit EME API (Safari < 12)
+    result.webkitKeys = typeof navigator.webkitKeys !== "undefined";
+
+    // Check for WebKit MediaKeys extension
+    result.webkitMediaKeys = typeof MediaKeys !== "undefined" &&
+      typeof MediaKeys.prototype.webkitSetMediaKeys !== "undefined";
+
+    // Check if FairPlay is available via requestMediaKeySystemAccess
+    if (typeof navigator.requestMediaKeySystemAccess === "function") {
+      try {
+        const access = await navigator.requestMediaKeySystemAccess(
+          "com.apple.fps.1_0",
+          [{ initDataTypes: ["sinf"], videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.64001e"' }] }]
+        );
+        result.fairplay = Boolean(access);
+      } catch (_e) {
+        // FairPlay not available
+      }
+    }
+  } catch (_e) {
+    // Cross-origin or unsupported environment
+  }
+
+  return result;
+}
+
+/**
+ * Check if a key system string is a WebKit/Safari key system.
+ * @param {string} keySystem
+ * @returns {boolean}
+ */
+function isWebKitKeySystem(keySystem) {
+  if (!keySystem || typeof keySystem !== "string") {
+    return false;
+  }
+  const ks = keySystem.toLowerCase();
+  return ks === "com.apple.fps.1_0" || ks === "com.apple.fps.2_0" || ks.startsWith("webkit-");
+}
+
 // ─── State ─────────────────────────────────────────────────────────────────
 
 /** @type {Array<{initDataType: string, initData: string, keySystem: string, sessionId?: string, licenseRequest?: string, licenseResponse?: string, capturedAt: number}>} */
@@ -364,4 +426,6 @@ export {
   getCapturedData,
   getActiveSessions,
   isInitDataType,
+  detectWebKitEmeCapabilities,
+  isWebKitKeySystem,
 };
