@@ -11,7 +11,6 @@
 
 const YOUTUBE_PLAYLIST_PATH_RE = /^\/playlist(?:\/|$)/i;
 const YOUTUBE_MUSIC_PLAYLIST_PATH_RE = /^\/playlist(?:\/|$)/i;
-const YOUTUBE_LIST_PARAM_RE = /[?&]list=([^&#]+)/i;
 const SPOTIFY_PLAYLIST_RE = /^\/playlist\//i;
 const SPOTIFY_ALBUM_RE = /^\/album\//i;
 const SPOTIFY_SHOW_RE = /^\/show\//i;
@@ -313,7 +312,6 @@ function getBatchInfo(video) {
 
   // Check the video URL for playlist status
   const url = video.url || video.pageUrl || "";
-  const pageUrl = video.pageUrl || video.url || "";
 
   if (!isPlaylistUrl(url)) {
     return {

@@ -9,13 +9,8 @@ import {
 
 import {
   normalizeComparableUrl,
-  videoIdentityParts,
   isSameFullVideo,
   enrichVideoVariant,
-  inferResolutionFromText,
-  inferBitrateFromText,
-  isGenericStem,
-  isGenericTitle,
 } from "./video_identity.js";
 
 // ── Format priority ────────────────────────────────────────────────────

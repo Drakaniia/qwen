@@ -16,12 +16,8 @@
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = "qwinDownloadHistory";
 const MAX_SYNCED_ENTRIES = 200;
 const SYNCABLE_STATUSES = new Set(["done", "error", "canceled"]);
-
-// Active statuses that should NEVER be synced
-const ACTIVE_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -35,7 +31,7 @@ let syncEnabled = true;
 let lastSyncTimestamp = null;
 
 /** @type {boolean} */
-let isSyncing = false;
+const isSyncing = false;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -61,15 +57,6 @@ function extractHostname(url) {
  */
 function isSyncableStatus(status) {
   return SYNCABLE_STATUSES.has(status || "");
-}
-
-/**
- * Check if a download status represents an in-progress state.
- * @param {string} status
- * @returns {boolean}
- */
-function isActiveStatus(status) {
-  return ACTIVE_STATUSES.has(status || "");
 }
 
 /**

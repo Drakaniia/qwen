@@ -183,7 +183,7 @@ async function refreshAllLists() {
     try {
       // Check if we have a cached version with ETag
       let cachedEtag = null;
-      let cachedLastModified = null;
+      const cachedLastModified = null;
 
       const cache = await loadFromCache(list.key);
       if (cache) {
