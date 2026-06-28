@@ -34,6 +34,19 @@ elements.recordingMode.addEventListener("change", async () => {
   }
 });
 
+if (elements.backend) {
+  elements.backend.addEventListener("change", async () => {
+    const response = await PopupApi.saveSettings({
+      backend: elements.backend.value,
+    });
+    if (!response || !response.ok) {
+      setSettingsStatus("Could not save download method.", true);
+    } else {
+      setSettingsStatus("Download method saved.");
+    }
+  });
+}
+
 elements.saveSettings.addEventListener("click", async () => {
   const syncEnabled = elements.syncHistoryToggle ? elements.syncHistoryToggle.checked : true;
 
@@ -43,6 +56,7 @@ elements.saveSettings.addEventListener("click", async () => {
     downloadFolder: elements.downloadFolder.value.trim(),
     audioFormat: elements.audioFormat.value,
     recordingMode: elements.recordingMode.value,
+    backend: elements.backend ? elements.backend.value : "auto",
     downloadSubtitles: elements.downloadSubtitles ? elements.downloadSubtitles.checked : true,
     downloadSyncEnabled: syncEnabled,
   });

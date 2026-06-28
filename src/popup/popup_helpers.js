@@ -304,6 +304,9 @@ export async function refresh(options = {}) {
   if (elements.downloadSubtitles) {
     elements.downloadSubtitles.checked = response.settings && response.settings.downloadSubtitles !== false;
   }
+  if (elements.backend) {
+    elements.backend.value = (response.settings && response.settings.backend) || "auto";
+  }
   const syncEnabled = response.settings && response.settings.downloadSyncEnabled !== false;
   if (elements.syncHistoryToggle) {
     elements.syncHistoryToggle.checked = syncEnabled;
@@ -350,7 +353,7 @@ export async function checkHelperStatus() {
 }
 
 export function copyInstallCommand(btn) {
-  const command = "scripts\\install.bat";
+  const command = "scripts/install.sh";
   navigator.clipboard.writeText(command).then(function () {
     const originalText = btn.innerHTML;
     btn.classList.add("copied");

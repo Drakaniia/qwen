@@ -60,7 +60,7 @@
       </button>
       <div id="depBannerBody" class="dep-banner-body" hidden>
         <div id="depBannerList" class="dep-banner-list"></div>
-        <p class="dep-banner-cta">Run <code>scripts\install.bat</code> from the Qwin project directory to install missing tools.</p>
+        <p class="dep-banner-cta">Run <code>scripts/install.sh</code> from the Qwin project directory to install missing tools.</p>
         <button id="depBannerCopyBtn" class="dep-banner-copy-btn" type="button">
           <span class="setup-button-icon">📋</span>
           Copy install command
@@ -91,6 +91,18 @@
       <p class="hint">Downloads BitTorrent content via aria2c (magnet link or a local .torrent file).</p>
 
       <hr class="settings-divider" />
+      <label for="backend">Download method</label>
+      <select id="backend">
+        <option value="auto">Auto (recommended)</option>
+        <option value="yt-dlp">yt-dlp (native helper)</option>
+        <option value="browser">Browser (direct download)</option>
+      </select>
+      <p class="hint">
+        <strong>Auto</strong> lets the helper choose the best backend.
+        <strong>Browser</strong> downloads directly via the browser for
+        simple MP4/WebM URLs without stream processing.
+      </p>
+
       <label for="recordingMode">Recording mode</label>
       <select id="recordingMode">
         <option value="ask">Ask first (recommended)</option>

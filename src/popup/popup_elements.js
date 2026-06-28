@@ -77,6 +77,7 @@ export const elements = {
   downloadMusicLink: document.getElementById("downloadMusicLink"),
   audioFormat: document.getElementById("audioFormat"),
   recordingMode: document.getElementById("recordingMode"),
+  backend: document.getElementById("backend"),
   downloadSubtitles: document.getElementById("downloadSubtitles"),
   // Sync elements
   syncHistoryToggle: document.getElementById("syncHistoryToggle"),
