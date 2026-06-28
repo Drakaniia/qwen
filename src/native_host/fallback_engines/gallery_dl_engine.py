@@ -11,10 +11,9 @@ import sys
 from shutil import which
 from threading import Event
 
+from fallback_engines.helpers import _find_latest_file, _human_size
 from native_protocol import HostError
 from process_control import creation_flags
-
-from fallback_engines.helpers import _find_latest_file, _human_size
 
 
 def resolve_gallery_dl_command():

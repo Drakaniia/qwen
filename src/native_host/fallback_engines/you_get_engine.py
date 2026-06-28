@@ -11,10 +11,9 @@ import sys
 from shutil import which
 from threading import Event
 
+from fallback_engines.helpers import _find_latest_file
 from native_protocol import HostError
 from process_control import creation_flags
-
-from fallback_engines.helpers import _find_latest_file
 
 _YOU_GET_STREAM_RE = re.compile(
     r"-\s*(format|quality|stream)[:\s]+(.+)", re.IGNORECASE

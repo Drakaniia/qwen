@@ -9,10 +9,9 @@ import subprocess
 from shutil import which
 from threading import Event
 
+from fallback_engines.helpers import _find_latest_file
 from native_protocol import HostError
 from process_control import creation_flags
-
-from fallback_engines.helpers import _find_latest_file
 
 _LUX_QUALITY_RE = re.compile(r"Quality[\s:]+(.+)", re.IGNORECASE)
 _LUX_SIZE_RE = re.compile(r"Size[\s:]+([\d.]+)\s*(MiB|GiB|KB|MB|GB)?", re.IGNORECASE)
