@@ -159,7 +159,6 @@ def decrypt_with_mp4decrypt(job_id, encrypted_segments, keys, output_dir="", mp4
     Returns:
         Dict with keys: ok, jobId, decrypted (count), segmentPaths, error.
     """
-    import os as _os
     from pathlib import Path as _Path
 
     decrypted_count = 0

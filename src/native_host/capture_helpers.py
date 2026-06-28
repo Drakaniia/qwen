@@ -4,7 +4,6 @@ Extracted from capture_manager.py for modularity.
 """
 
 import json
-import os
 import struct
 from pathlib import Path
 

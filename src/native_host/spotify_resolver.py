@@ -10,7 +10,7 @@ multi-stage fallback chain built from sub-modules:
 No Spotify API credentials are required.
 """
 
-from spotify_metadata import fetch_spotify_track_metadata, parse_spotify_url
+from spotify_metadata import fetch_spotify_track_metadata, is_spotify_url, parse_spotify_url
 from spotify_youtube import (
     get_youtube_audio_formats,
     search_youtube,

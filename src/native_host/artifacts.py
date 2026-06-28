@@ -3,7 +3,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from native_paths import default_download_dir, has_unexpanded_env_vars, is_safe_resolved_path, resolve_download_dir
+from native_paths import default_download_dir, has_unexpanded_env_vars, resolve_download_dir
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
 
