@@ -25,27 +25,32 @@ from fallback_engines import (
     list_formats_lux,
 )
 
+# Patch targets for each sub-module (used in mock patches below)
+_YOU_GET = "fallback_engines.you_get_engine"
+_LUX = "fallback_engines.lux_engine"
+_GALLERY = "fallback_engines.gallery_dl_engine"
+
 
 class TestYouGetResolution(unittest.TestCase):
     """Tests for you-get command resolution."""
 
     def test_resolve_you_get_command_returns_none_when_not_installed(self):
         """When you-get is not installed, resolve_you_get_command returns None."""
-        with patch("fallback_engines.which", return_value=None), \
-             patch("fallback_engines.importlib.util.find_spec", return_value=None):
+        with patch(_YOU_GET + ".which", return_value=None), \
+             patch(_YOU_GET + ".importlib.util.find_spec", return_value=None):
             result = resolve_you_get_command()
             self.assertIsNone(result)
 
     def test_resolve_you_get_command_finds_binary_on_path(self):
         """When you-get binary is on PATH, return it."""
-        with patch("fallback_engines.which", return_value="/usr/bin/you-get"):
+        with patch(_YOU_GET + ".which", return_value="/usr/bin/you-get"):
             result = resolve_you_get_command()
             self.assertEqual(result, ["/usr/bin/you-get"])
 
     def test_resolve_you_get_command_finds_python_module(self):
         """When you-get is installed as a Python module, return python -m you_get."""
-        with patch("fallback_engines.which", return_value=None), \
-             patch("fallback_engines.importlib.util.find_spec", return_value=MagicMock()):
+        with patch(_YOU_GET + ".which", return_value=None), \
+             patch(_YOU_GET + ".importlib.util.find_spec", return_value=MagicMock()):
             result = resolve_you_get_command()
             self.assertIsNotNone(result)
             self.assertIn("-m", result)
@@ -53,12 +58,12 @@ class TestYouGetResolution(unittest.TestCase):
 
     def test_has_you_get_returns_false_when_not_installed(self):
         """has_you_get returns False when you-get is unavailable."""
-        with patch("fallback_engines.resolve_you_get_command", return_value=None):
+        with patch(_YOU_GET + ".resolve_you_get_command", return_value=None):
             self.assertFalse(has_you_get())
 
     def test_has_you_get_returns_true_when_installed(self):
         """has_you_get returns True when you-get is available."""
-        with patch("fallback_engines.resolve_you_get_command", return_value=["you-get"]):
+        with patch(_YOU_GET + ".resolve_you_get_command", return_value=["you-get"]):
             self.assertTrue(has_you_get())
 
 
@@ -67,39 +72,39 @@ class TestLuxResolution(unittest.TestCase):
 
     def test_resolve_lux_command_returns_none_when_not_installed(self):
         """When lux is not installed, resolve_lux_command returns None."""
-        with patch("fallback_engines.which", return_value=None):
+        with patch(_LUX + ".which", return_value=None):
             result = resolve_lux_command()
             self.assertIsNone(result)
 
     def test_resolve_lux_command_finds_binary_on_path(self):
         """When lux binary is on PATH, return it."""
-        with patch("fallback_engines.which", return_value="/usr/local/bin/lux"):
+        with patch(_LUX + ".which", return_value="/usr/local/bin/lux"):
             result = resolve_lux_command()
             self.assertEqual(result, ["/usr/local/bin/lux"])
 
     def test_has_lux_returns_false_when_not_installed(self):
         """has_lux returns False when lux is unavailable."""
-        with patch("fallback_engines.resolve_lux_command", return_value=None):
+        with patch(_LUX + ".resolve_lux_command", return_value=None):
             self.assertFalse(has_lux())
 
     def test_has_lux_returns_true_when_installed(self):
         """has_lux returns True when lux is available."""
-        with patch("fallback_engines.resolve_lux_command", return_value=["lux"]):
+        with patch(_LUX + ".resolve_lux_command", return_value=["lux"]):
             self.assertTrue(has_lux())
 
 
 class TestYouGetFormatListing(unittest.TestCase):
     """Tests for listing formats via you-get."""
 
-    @patch("fallback_engines.subprocess.run")
+    @patch(_YOU_GET + ".subprocess.run")
     def test_list_formats_you_get_returns_none_when_not_installed(self, mock_run):
         """list_formats_you_get returns None when you-get is unavailable."""
-        with patch("fallback_engines.resolve_you_get_command", return_value=None):
+        with patch(_YOU_GET + ".resolve_you_get_command", return_value=None):
             result = list_formats_you_get("https://www.bilibili.com/video/BV1xx411c7mD")
             self.assertIsNone(result)
         mock_run.assert_not_called()
 
-    @patch("fallback_engines.subprocess.run")
+    @patch(_YOU_GET + ".subprocess.run")
     def test_list_formats_you_get_returns_none_on_unsupported_url(self, mock_run):
         """list_formats_you_get returns None when you-get doesn't support the URL."""
         mock_result = MagicMock()
@@ -107,11 +112,11 @@ class TestYouGetFormatListing(unittest.TestCase):
         mock_result.stderr = "Unsupported URL"
         mock_run.return_value = mock_result
 
-        with patch("fallback_engines.resolve_you_get_command", return_value=["you-get"]):
+        with patch(_YOU_GET + ".resolve_you_get_command", return_value=["you-get"]):
             result = list_formats_you_get("https://example.com/video.mp4")
             self.assertIsNone(result)
 
-    @patch("fallback_engines.subprocess.run")
+    @patch(_YOU_GET + ".subprocess.run")
     def test_list_formats_you_get_parses_supported_url(self, mock_run):
         """list_formats_you_get returns format list for supported URLs."""
         mock_result = MagicMock()
@@ -129,7 +134,7 @@ Stream:
 """
         mock_run.return_value = mock_result
 
-        with patch("fallback_engines.resolve_you_get_command", return_value=["you-get"]):
+        with patch(_YOU_GET + ".resolve_you_get_command", return_value=["you-get"]):
             result = list_formats_you_get("https://www.bilibili.com/video/BV1xx411c7mD")
 
         self.assertIsNotNone(result)
@@ -140,26 +145,26 @@ Stream:
 class TestLuxFormatListing(unittest.TestCase):
     """Tests for listing formats via lux."""
 
-    @patch("fallback_engines.subprocess.run")
+    @patch(_LUX + ".subprocess.run")
     def test_list_formats_lux_returns_none_when_not_installed(self, mock_run):
         """list_formats_lux returns None when lux is unavailable."""
-        with patch("fallback_engines.resolve_lux_command", return_value=None):
+        with patch(_LUX + ".resolve_lux_command", return_value=None):
             result = list_formats_lux("https://www.bilibili.com/video/BV1xx411c7mD")
             self.assertIsNone(result)
         mock_run.assert_not_called()
 
-    @patch("fallback_engines.subprocess.run")
+    @patch(_LUX + ".subprocess.run")
     def test_list_formats_lux_returns_none_on_unsupported_url(self, mock_run):
         """list_formats_lux returns None when lux doesn't support the URL."""
         mock_result = MagicMock()
         mock_result.returncode = 1
         mock_run.return_value = mock_result
 
-        with patch("fallback_engines.resolve_lux_command", return_value=["lux"]):
+        with patch(_LUX + ".resolve_lux_command", return_value=["lux"]):
             result = list_formats_lux("https://example.com/video.mp4")
             self.assertIsNone(result)
 
-    @patch("fallback_engines.subprocess.run")
+    @patch(_LUX + ".subprocess.run")
     def test_list_formats_lux_parses_supported_url(self, mock_run):
         """list_formats_lux returns format list for supported URLs."""
         mock_result = MagicMock()
@@ -176,7 +181,7 @@ class TestLuxFormatListing(unittest.TestCase):
 """
         mock_run.return_value = mock_result
 
-        with patch("fallback_engines.resolve_lux_command", return_value=["lux"]):
+        with patch(_LUX + ".resolve_lux_command", return_value=["lux"]):
             result = list_formats_lux("https://www.bilibili.com/video/BV1xx411c7mD")
 
         self.assertIsNotNone(result)
@@ -187,12 +192,12 @@ class TestLuxFormatListing(unittest.TestCase):
 class TestYouGetDownload(unittest.TestCase):
     """Tests for downloading with you-get."""
 
-    @patch("fallback_engines.subprocess.Popen")
+    @patch(_YOU_GET + ".subprocess.Popen")
     def test_download_with_you_get_raises_when_not_installed(self, mock_popen):
         """download_with_you_get raises HostError when you-get is unavailable."""
         from fallback_engines import HostError
 
-        with patch("fallback_engines.resolve_you_get_command", return_value=None):
+        with patch(_YOU_GET + ".resolve_you_get_command", return_value=None):
             with self.assertRaises(HostError):
                 download_with_you_get(
                     url="https://www.bilibili.com/video/BV1xx411c7mD",
@@ -200,8 +205,8 @@ class TestYouGetDownload(unittest.TestCase):
                 )
         mock_popen.assert_not_called()
 
-    @patch("fallback_engines._find_latest_file", return_value="/tmp/downloads/BV1xx411c7mD.mp4")
-    @patch("fallback_engines.subprocess.Popen")
+    @patch(_YOU_GET + "._find_latest_file", return_value="/tmp/downloads/BV1xx411c7mD.mp4")
+    @patch(_YOU_GET + ".subprocess.Popen")
     def test_download_with_you_get_starts_process(self, mock_popen, mock_find):
         """download_with_you_get starts a you-get subprocess."""
         import io
@@ -211,7 +216,7 @@ class TestYouGetDownload(unittest.TestCase):
         mock_process.wait.return_value = 0
         mock_popen.return_value = mock_process
 
-        with patch("fallback_engines.resolve_you_get_command", return_value=["you-get"]):
+        with patch(_YOU_GET + ".resolve_you_get_command", return_value=["you-get"]):
             result = download_with_you_get(
                 url="https://www.bilibili.com/video/BV1xx411c7mD",
                 download_dir=Path("/tmp/downloads"),
@@ -224,12 +229,12 @@ class TestYouGetDownload(unittest.TestCase):
 class TestLuxDownload(unittest.TestCase):
     """Tests for downloading with lux."""
 
-    @patch("fallback_engines.subprocess.Popen")
+    @patch(_LUX + ".subprocess.Popen")
     def test_download_with_lux_raises_when_not_installed(self, mock_popen):
         """download_with_lux raises HostError when lux is unavailable."""
         from fallback_engines import HostError
 
-        with patch("fallback_engines.resolve_lux_command", return_value=None):
+        with patch(_LUX + ".resolve_lux_command", return_value=None):
             with self.assertRaises(HostError):
                 download_with_lux(
                     url="https://www.bilibili.com/video/BV1xx411c7mD",
@@ -237,8 +242,8 @@ class TestLuxDownload(unittest.TestCase):
                 )
         mock_popen.assert_not_called()
 
-    @patch("fallback_engines._find_latest_file", return_value="/tmp/downloads/BV1xx411c7mD.mp4")
-    @patch("fallback_engines.subprocess.Popen")
+    @patch(_LUX + "._find_latest_file", return_value="/tmp/downloads/BV1xx411c7mD.mp4")
+    @patch(_LUX + ".subprocess.Popen")
     def test_download_with_lux_starts_process(self, mock_popen, mock_find):
         """download_with_lux starts a lux subprocess."""
         import io
@@ -248,7 +253,7 @@ class TestLuxDownload(unittest.TestCase):
         mock_process.wait.return_value = 0
         mock_popen.return_value = mock_process
 
-        with patch("fallback_engines.resolve_lux_command", return_value=["lux"]):
+        with patch(_LUX + ".resolve_lux_command", return_value=["lux"]):
             result = download_with_lux(
                 url="https://www.bilibili.com/video/BV1xx411c7mD",
                 download_dir=Path("/tmp/downloads"),

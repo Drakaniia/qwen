@@ -1,20 +1,17 @@
+"""Download orchestration — probes backends, dispatches download jobs.
+
+This module serves as the main entry point for yt-dlp / streaming / direct
+download orchestration.  The aria2c command builders, BitTorrent/magnet
+download functions, and Spotify fallback pipeline have been extracted into
+sibling modules and are re-exported here for backward compatibility.
+"""
+
 import threading
 
 from download_logger import get_logger
-from gopeed_adapter import build_gopeed_magnet_command, build_gopeed_torrent_command
-from spotify_resolver import (
-    build_youtube_download_command,
-    fetch_spotify_track_metadata,
-    is_spotify_url,
-    parse_spotify_url,
-    search_youtube,
-)
-
-import curl_cffi_adapter as _curl_cffi_adapter
-from browser_context import write_cookie_file_from_headers
 from download_task import DownloadTask
-from native_paths import resolve_download_dir, validate_download_url, validate_magnet_url, validate_torrent_file
-from native_protocol import HostError, send_native_message
+from native_paths import resolve_download_dir, validate_download_url
+from native_protocol import send_native_message
 from probe_runner import (
     ProbeConfig,
     probe_curl_cffi,
@@ -40,124 +37,33 @@ from yt_dlp_dependencies import (
     resolve_yt_dlp_command,
 )
 
-MAGNET_ARIA2_ARGS = {
-    "seed_time": 0,
-    "file_allocation": "none",
-    "continue": True,
-    "bt_max_peers": 100,
-    "bt_piece_length": "2M",
-    "summary_interval": 1,
-    "enable_color": False,
-    "human_readable": True,
-    "console_log_level": "warn",
-}
+import curl_cffi_adapter as _curl_cffi_adapter
+from browser_context import write_cookie_file_from_headers
+
+# ── Re-exports from sub-modules (backward compatibility) ─────────────────
+
+from aria2c_commands import (
+    MAGNET_ARIA2_ARGS,
+    build_aria2c_magnet_command,
+    build_aria2c_torrent_command,
+)
+
+from bittorrent_downloads import (
+    ACTIVE_DOWNLOADS,
+    ACTIVE_DOWNLOADS_LOCK,
+    _active_downloads_lock,
+    cancel_active_downloads,
+    control_download,
+    run_gopeed_magnet_download,
+    run_gopeed_torrent_download,
+    run_magnet_download,
+    run_torrent_download,
+)
+
+from spotify_fallback import run_spotify_fallback_download
 
 
-def _build_aria2c_bittorrent_command(
-    aria2c_location,
-    download_dir,
-    bt_max_peers=None,
-    seed_time=None,
-):
-    """Build the shared aria2c argument list used for BitTorrent downloads.
-
-    Both magnet links and .torrent files share the same seeding, file
-    allocation, and console output options; the caller appends the source
-    (a magnet URL or a --torrent-file path).
-    """
-    return [
-        str(aria2c_location),
-        "--seed-time",
-        str(seed_time if seed_time is not None else MAGNET_ARIA2_ARGS["seed_time"]),
-        "--dir",
-        str(download_dir),
-        "--file-allocation",
-        MAGNET_ARIA2_ARGS["file_allocation"],
-        "--continue",
-        "true",
-        "--bt-max-peers",
-        str(bt_max_peers if bt_max_peers is not None else MAGNET_ARIA2_ARGS["bt_max_peers"]),
-        "--summary-interval",
-        str(MAGNET_ARIA2_ARGS["summary_interval"]),
-        "--console-log-level",
-        MAGNET_ARIA2_ARGS["console_log_level"],
-        "--enable-color",
-        "false",
-        "--human-readable",
-        "true",
-    ]
-
-
-def build_aria2c_magnet_command(
-    url,
-    download_dir,
-    aria2c_location,
-    bt_max_peers=None,
-    seed_time=None,
-):
-    """Build an aria2c command for downloading from a magnet link.
-
-    Returns a list of command arguments suitable for subprocess.Popen.
-    """
-    command = _build_aria2c_bittorrent_command(
-        aria2c_location=aria2c_location,
-        download_dir=download_dir,
-        bt_max_peers=bt_max_peers,
-        seed_time=seed_time,
-    )
-    command.append(str(url))
-    return command
-
-
-def build_aria2c_torrent_command(
-    torrent_path,
-    download_dir,
-    aria2c_location,
-    bt_max_peers=None,
-    seed_time=None,
-):
-    """Build an aria2c command for downloading from a local .torrent file.
-
-    Returns a list of command arguments suitable for subprocess.Popen.
-    """
-    command = _build_aria2c_bittorrent_command(
-        aria2c_location=aria2c_location,
-        download_dir=download_dir,
-        bt_max_peers=bt_max_peers,
-        seed_time=seed_time,
-    )
-    command.extend(["--torrent-file", str(torrent_path)])
-    return command
-
-
-ACTIVE_DOWNLOADS = {}
-ACTIVE_DOWNLOADS_LOCK = None
-
-
-def _active_downloads_lock():
-    global ACTIVE_DOWNLOADS_LOCK
-    if ACTIVE_DOWNLOADS_LOCK is None:
-        ACTIVE_DOWNLOADS_LOCK = threading.Lock()
-    return ACTIVE_DOWNLOADS_LOCK
-
-
-def control_download(message, action, send=send_native_message):
-    request_id = str(message.get("id") or message.get("requestId") or "")
-    with _active_downloads_lock():
-        task = ACTIVE_DOWNLOADS.get(request_id)
-
-    if not task:
-        raise HostError("That download is no longer active. Use Retry to start it again.")
-
-    response = getattr(task, action)()
-    send(response)
-
-
-def cancel_active_downloads():
-    with _active_downloads_lock():
-        tasks = list(ACTIVE_DOWNLOADS.values())
-    for task in tasks:
-        task.cancel()
+# ── Probe config building ────────────────────────────────────────────────
 
 
 def _build_probe_configs(
@@ -290,6 +196,9 @@ def _build_probe_configs(
     return probes
 
 
+# ── Main download orchestration ──────────────────────────────────────────
+
+
 def run_download(
     message,
     task_class=DownloadTask,
@@ -319,21 +228,20 @@ def run_download(
     download_subtitles = bool(message.get("downloadSubtitles", True))
 
     # ---- Spotify YouTube fallback ------------------------------------------------
-    # When the URL is a Spotify track, yt-dlp cannot download it directly (DRM).
-    # Instead we fetch metadata from Spotify, search YouTube for a match, and
-    # download the audio from YouTube with proper Spotify metadata tagging.
+    from spotify_resolver import is_spotify_url
+
     if is_spotify_url(url):
-        _run_spotify_fallback_download(
-            message,
-            url,
-            download_dir,
-            yt_dlp_command,
-            ffmpeg_location,
-            aria2c_location,
-            request_headers,
-            cookies_file,
-            temp_files,
-            task_class,
+        run_spotify_fallback_download(
+            message=message,
+            url=url,
+            download_dir=download_dir,
+            yt_dlp_command=yt_dlp_command,
+            ffmpeg_location=ffmpeg_location,
+            aria2c_location=aria2c_location,
+            request_headers=request_headers,
+            cookies_file=cookies_file,
+            temp_files=temp_files,
+            task_class=task_class,
         )
         return
 
@@ -357,11 +265,6 @@ def run_download(
         return kwargs
 
     # ---- Parallel probe phase (Tier 1) -------------------------------------------
-    # Launch lightweight reachability probes for all applicable backends in
-    # parallel. If a winner is found, use its command as the primary download
-    # command with an empty fallback list (the winner already verified it can
-    # reach the video). If all probes fail, fall through to the existing
-    # sequential fallback chain (Tier 2).
     cancel_event = threading.Event()
     logger = get_logger()
 
@@ -405,20 +308,13 @@ def run_download(
         return
 
     # ---- Sequential fallback chain (Tier 2) --------------------------------------
-    # All probes failed — fall back to the existing sequential full-download
-    # strategy variants (yt-dlp with aria2c, curl_cffi, yt-dlp variants, etc.).
     command = build_yt_dlp_command(**build_command_kwargs({"aria2c_location": aria2c_location}))
     # aria2c is required — no fallback without it
     fallback_command = None
 
     fallback_commands = []
 
-    # 1. curl-cffi direct download — use curl_cffi's TLS impersonation to bypass
-    #    WAF/CDN blocking on direct media URLs (Cloudflare, Akamai, etc.).
-    #    Only applicable for direct media URLs; HLS/DASH manifests are handled
-    #    by N_m3u8DL-RE or Streamlink below.
-    #    Skip for YouTube — yt-dlp has dedicated extractors with fine-grained
-    #    format selection and curl_cffi adds no value here.
+    # 1. curl-cffi direct download
     if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
         fallback_commands.append(
             {
@@ -431,7 +327,7 @@ def run_download(
             }
         )
 
-    # 2. yt-dlp strategy variants (SSL, geo, retries, etc.) — always with aria2c
+    # 2. yt-dlp strategy variants
     fallback_commands.extend(
         build_yt_dlp_fallback_variants(**build_command_kwargs({"aria2c_location": aria2c_location}))
     )
@@ -459,7 +355,7 @@ def run_download(
             }
         )
 
-    # 3. Streamlink for live-stream / HLS manifest URLs
+    # 4. Streamlink for live-stream / HLS manifest URLs
     if (
         requested_backend in {"auto", "streamlink"}
         and streamlink_command
@@ -482,13 +378,7 @@ def run_download(
             }
         )
 
-    # Note: curl_cffi was already tested as a Tier-1 probe above.
-    # If the probe failed, a full download via curl_cffi is unlikely to
-    # succeed, but we keep it in the sequential chain anyway since the
-    # full download (with streaming/chunking) may succeed where a simple
-    # HEAD request failed (e.g., server rejects HEAD but accepts GET).
-
-    # 4. ffmpeg direct stream copy — simplest reliable fallback for HLS/DASH
+    # 5. ffmpeg direct stream copy
     if is_stream_manifest_url(url, message.get("format")):
         final_path = stream_output_path(download_dir, message.get("title") or "Video")
         fallback_commands.append(
@@ -504,9 +394,7 @@ def run_download(
             }
         )
 
-    # 5. you-get — video downloader for Asian media platforms
-    #    Supports Bilibili, Douyin/TikTok, Weibo, AcFun, Niconico, etc.
-    #    where yt-dlp may have limited support.
+    # 6. you-get — video downloader for Asian media platforms
     if not is_stream_manifest_url(url, message.get("format")):
         from fallback_engines import has_you_get
 
@@ -518,8 +406,7 @@ def run_download(
                 }
             )
 
-    # 6. lux — Go-based video downloader for Asian platforms
-    #    Supports Bilibili, Douyin/TikTok, etc. as a fast alternative.
+    # 7. lux — Go-based video downloader for Asian platforms
     if not is_stream_manifest_url(url, message.get("format")):
         from fallback_engines import has_lux
 
@@ -531,11 +418,7 @@ def run_download(
                 }
             )
 
-    # 7. yt-dlp with native downloader (no aria2c) — useful when aria2c
-    #    fails on servers that limit parallel connections or reject aria2c's
-    #    User-Agent. Also serves as a better last-resort fallback than
-    #    gallery-dl, which is designed for image/gallery sites (Pixiv,
-    #    DeviantArt, etc.) and cannot handle direct CDN video URLs.
+    # 8. yt-dlp with native downloader (no aria2c)
     fallback_commands.append(
         {
             "command": build_yt_dlp_command(
@@ -555,289 +438,4 @@ def run_download(
     )
     with _active_downloads_lock():
         ACTIVE_DOWNLOADS[request_id] = task
-    task.start()
-
-
-def run_magnet_download(
-    message,
-    task_class=DownloadTask,
-    aria2c_location_resolver=require_aria2c_location,
-):
-    """Run a magnet link download directly through aria2c.
-
-    Magnet links are BitTorrent downloads that aria2c handles natively.
-    The function validates the magnet URL, builds the aria2c command,
-    and creates a DownloadTask that reports progress just like yt-dlp downloads.
-    """
-    request_id = str(message.get("id") or message.get("requestId") or "")
-    url = str(message.get("url") or "").strip()
-    validate_magnet_url(url)
-
-    aria2c_location = aria2c_location_resolver()
-    if not aria2c_location:
-        raise HostError(
-            "aria2c is not installed. It is required for magnet link downloads. "
-            "Run scripts\\install.bat, then restart your browser."
-        )
-
-    download_dir = resolve_download_dir(message.get("downloadFolder"))
-
-    command = build_aria2c_magnet_command(
-        url=url,
-        download_dir=download_dir,
-        aria2c_location=aria2c_location,
-    )
-
-    task = task_class(
-        message=message,
-        command=command,
-        fallback_command=None,
-        fallback_commands=[],
-        download_dir=download_dir,
-        temp_files=[],
-    )
-    with _active_downloads_lock():
-        ACTIVE_DOWNLOADS[request_id] = task
-    task.start()
-
-
-def run_torrent_download(
-    message,
-    task_class=DownloadTask,
-    aria2c_location_resolver=require_aria2c_location,
-):
-    """Run a download from a local .torrent file directly through aria2c.
-
-    Validates the .torrent file path, builds the aria2c command, and creates
-    a DownloadTask that reports progress just like magnet downloads.
-    """
-    request_id = str(message.get("id") or message.get("requestId") or "")
-    torrent_path = validate_torrent_file(message.get("path"))
-
-    aria2c_location = aria2c_location_resolver()
-    if not aria2c_location:
-        raise HostError(
-            "aria2c is not installed. It is required for .torrent file downloads. "
-            "Run scripts\\install.bat, then restart your browser."
-        )
-
-    download_dir = resolve_download_dir(message.get("downloadFolder"))
-
-    command = build_aria2c_torrent_command(
-        torrent_path=torrent_path,
-        download_dir=download_dir,
-        aria2c_location=aria2c_location,
-    )
-
-    task = task_class(
-        message=message,
-        command=command,
-        fallback_command=None,
-        fallback_commands=[],
-        download_dir=download_dir,
-        temp_files=[],
-    )
-    with _active_downloads_lock():
-        ACTIVE_DOWNLOADS[request_id] = task
-    task.start()
-
-
-def run_gopeed_magnet_download(
-    message,
-    task_class=DownloadTask,
-    gopeed_location_resolver=require_gopeed_location,
-):
-    """Run a magnet link download through Gopeed.
-
-    Gopeed handles BitTorrent (including magnet links) natively with built-in
-    DHT, PEX, uTP, and WebTorrent support. This function validates the magnet
-    URL, builds the Gopeed CLI command, and creates a DownloadTask that reports
-    progress just like other downloads.
-    """
-    request_id = str(message.get("id") or message.get("requestId") or "")
-    url = str(message.get("url") or "").strip()
-    validate_magnet_url(url)
-
-    gopeed_location = gopeed_location_resolver()
-    if not gopeed_location:
-        raise HostError(
-            "gopeed is not installed. It is required for magnet link downloads. "
-            "Run scripts\\install.bat, then restart your browser."
-        )
-
-    download_dir = resolve_download_dir(message.get("downloadFolder"))
-
-    command = build_gopeed_magnet_command(
-        url=url,
-        download_dir=download_dir,
-        gopeed_location=gopeed_location,
-    )
-
-    task = task_class(
-        message=message,
-        command=command,
-        fallback_command=None,
-        fallback_commands=[],
-        download_dir=download_dir,
-        temp_files=[],
-    )
-    with _active_downloads_lock():
-        ACTIVE_DOWNLOADS[request_id] = task
-    task.start()
-
-
-def run_gopeed_torrent_download(
-    message,
-    task_class=DownloadTask,
-    gopeed_location_resolver=require_gopeed_location,
-):
-    """Run a download from a local .torrent file through Gopeed.
-
-    Gopeed accepts a local .torrent file path directly as the download URL,
-    handling the BitTorrent metainfo and peer discovery natively.
-    """
-    request_id = str(message.get("id") or message.get("requestId") or "")
-    torrent_path = validate_torrent_file(message.get("path"))
-
-    gopeed_location = gopeed_location_resolver()
-    if not gopeed_location:
-        raise HostError(
-            "gopeed is not installed. It is required for .torrent file downloads. "
-            "Run scripts\\install.bat, then restart your browser."
-        )
-
-    download_dir = resolve_download_dir(message.get("downloadFolder"))
-
-    command = build_gopeed_torrent_command(
-        torrent_path=torrent_path,
-        download_dir=download_dir,
-        gopeed_location=gopeed_location,
-    )
-
-    task = task_class(
-        message=message,
-        command=command,
-        fallback_command=None,
-        fallback_commands=[],
-        download_dir=download_dir,
-        temp_files=[],
-    )
-    with _active_downloads_lock():
-        ACTIVE_DOWNLOADS[request_id] = task
-    task.start()
-
-
-def _run_spotify_fallback_download(
-    message,
-    url,
-    download_dir,
-    yt_dlp_command,
-    ffmpeg_location,
-    aria2c_location,
-    request_headers,
-    cookies_file,
-    temp_files,
-    task_class,
-):
-    """Run a Spotify→YouTube fallback download.
-
-    Resolves the Spotify URL through the multi-stage pipeline:
-        1. Fetch track metadata from Spotify embed page.
-        2. Search YouTube for a matching video.
-        3. Build a yt-dlp command that downloads audio from YouTube
-           and tags it with Spotify metadata.
-    """
-    request_id = str(message.get("id") or message.get("requestId") or "")
-    selected_format = str(message.get("formatId") or "best").strip()
-    content_type, track_id = parse_spotify_url(url)
-
-    if content_type != "track":
-        raise HostError(f"Qwin can only resolve individual Spotify tracks. {content_type}s are not yet supported.")
-
-    # Stage 1: Fetch Spotify metadata
-    metadata = fetch_spotify_track_metadata(track_id)
-    display_title = f"{metadata['artist']} — {metadata['title']}"
-
-    # Stage 2: Search YouTube for matching audio
-    youtube_entry = search_youtube(metadata["artist"], metadata["title"], yt_dlp_command)
-    if not youtube_entry:
-        raise HostError(
-            f'Could not find "{display_title}" on YouTube. '
-            "The track may be too new, region-restricted, or available only on Spotify."
-        )
-
-    youtube_url = youtube_entry.get("url") or (f"https://www.youtube.com/watch?v={youtube_entry['id']}")
-
-    # Stage 3: Build YouTube download command with audio extraction
-    # If user selected "best", use bestaudio; otherwise use the selected format_id
-    fmt_id = "bestaudio/best" if selected_format == "best" else selected_format
-
-    command = build_youtube_download_command(
-        youtube_url=youtube_url,
-        format_id=fmt_id,
-        download_dir=download_dir,
-        spotify_metadata=metadata,
-        yt_dlp_command=yt_dlp_command,
-        ffmpeg_location=ffmpeg_location,
-        aria2c_location=aria2c_location,
-    )
-
-    # aria2c is required — no fallback without it
-    fallback_command = None
-
-    # Build fallback variants for the YouTube URL
-    fallback_commands = []
-
-    def _yt_base():
-        return build_youtube_download_command(
-            youtube_url=youtube_url,
-            format_id="bestaudio/best",
-            download_dir=download_dir,
-            spotify_metadata=metadata,
-            yt_dlp_command=yt_dlp_command,
-            ffmpeg_location=ffmpeg_location,
-        )
-
-    # 1 — No SSL check
-    no_ssl = _yt_base()
-    no_ssl.insert(no_ssl.index("--ignore-config") + 1, "--no-check-certificate")
-    fallback_commands.append({"command": no_ssl, "label": "yt-dlp (YouTube, no SSL check)"})
-
-    # 2 — Geo bypass
-    geo = _yt_base()
-    geo.insert(geo.index("--ignore-config") + 1, "--geo-bypass")
-    fallback_commands.append({"command": geo, "label": "yt-dlp (YouTube, geo bypass)"})
-
-    # 3 — Max retries
-    retry = _yt_base()
-    retry.extend(["--retries", "infinite", "--fragment-retries", "infinite", "--extractor-retries", "10"])
-    fallback_commands.append({"command": retry, "label": "yt-dlp (YouTube, max retries)"})
-
-    # 4 — Single fragment
-    single = _yt_base()
-    idx = single.index("--ignore-config") + 1
-    single.insert(idx, "1")
-    single.insert(idx, "--concurrent-fragments")
-    fallback_commands.append({"command": single, "label": "yt-dlp (YouTube, single fragment)"})
-
-    task = task_class(
-        message={**message, "url": youtube_url, "spotifyMetadata": metadata},
-        command=command,
-        fallback_command=fallback_command,
-        fallback_commands=fallback_commands,
-        download_dir=download_dir,
-        temp_files=temp_files,
-    )
-    with _active_downloads_lock():
-        ACTIVE_DOWNLOADS[request_id] = task
-
-    # Notify the popup that we're using YouTube fallback
-    task.send_message(
-        {
-            "type": "progress",
-            "stage": "log",
-            "line": f"Spotify track resolved to YouTube: {youtube_entry.get('title', '')}",
-        }
-    )
-
     task.start()
