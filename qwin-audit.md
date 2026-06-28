@@ -408,12 +408,12 @@ Phase 2: File Refactoring
   [x] Split src/background/background.js (1519 lines)
   [x] Split src/native_host/download_manager.py (843 lines)
   [x] Split src/native_host/fallback_engines.py (818 lines)
-  [ ] Split src/popup/popup_helpers.js (755 lines)
-  [ ] Split src/shared/video_filters.js (661 lines)
-  [ ] Split src/background/cdm_network_intercept.js (661 lines)
-  [ ] Split src/content/content.js (652 lines)
-  [ ] Split src/native_host/capture_manager.py (630 lines)
-  [ ] Split src/popup/popup_events.js (622 lines)
+  [x] Split src/popup/popup_helpers.js (755 lines)
+  [x] Split src/shared/video_filters.js (661 lines)
+  [x] Split src/background/cdm_network_intercept.js (661 lines)
+  [x] Split src/content/content.js (652 lines)
+  [x] Split src/native_host/capture_manager.py (630 lines)
+  [x] Split src/popup/popup_events.js (622 lines)
   [ ] Split src/native_host/probe_runner.py (614 lines)
   [ ] Split src/background/download_orchestration.js (582 lines)
   [ ] Split go/cdm.go (566 lines)
@@ -431,7 +431,7 @@ Phase 3: Structural Refactoring
   [ ] Move benchmarks/ into scripts/benchmarks/
   [ ] Consider flattening .agents/skills/ structure
 
-Total: [3] / [20] completed
+Total: [5] / [20] completed
 ```
 
 > **⚠️ Important:** Before implementing any refactoring that splits or moves code, use `skill:test-driven-development`. Write tests for existing behavior first, then refactor. This ensures refactored code preserves all functionality and catches regressions early.
