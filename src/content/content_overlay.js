@@ -222,7 +222,6 @@ async function showAvailableVideosOverlay() {
 // ─── Video selection / download flow ───────────────────────────────────────
 
 let _sendMessageWithResponse = null;
-let _getLastDetectedVideos = null;
 
 /**
  * Initialize overlay with core dependencies from content.js.
@@ -233,7 +232,6 @@ let _getLastDetectedVideos = null;
  */
 function initOverlay(deps) {
   _sendMessageWithResponse = deps.sendMessageWithResponse;
-  _getLastDetectedVideos = deps.getLastDetectedVideos;
   setShowAvailableVideosHandler(deps.sendMessageWithResponse, deps.getLastDetectedVideos);
 }
 
