@@ -8,9 +8,9 @@ via aria2c and Gopeed backends.
 import threading
 
 from aria2c_commands import build_aria2c_magnet_command, build_aria2c_torrent_command
-from download_logger import get_logger
-from download_task import DownloadTask
 from gopeed_adapter import build_gopeed_magnet_command, build_gopeed_torrent_command
+
+from download_task import DownloadTask
 from native_paths import resolve_download_dir, validate_magnet_url, validate_torrent_file
 from native_protocol import HostError, send_native_message
 from yt_dlp_dependencies import require_aria2c_location, require_gopeed_location

@@ -9,7 +9,6 @@ import subprocess
 import threading
 from typing import Optional
 
-
 # ── Individual probe functions ─────────────────────────────────────────────
 
 # Each returns a dict:

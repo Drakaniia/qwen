@@ -23,11 +23,12 @@ import sys
 import threading
 
 from capture_helpers import (
+    read_native_message,
     resolve_capture_binary,
     resolve_cdm_status_file,
-    read_native_message,
     write_native_message,
 )
+
 from native_protocol import HostError
 
 

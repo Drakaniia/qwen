@@ -15,6 +15,7 @@ from pathlib import Path
 from threading import Event
 
 from fallback_engines import download_direct as _download_direct_fallback
+
 from native_protocol import HostError
 
 # ── Detection ──────────────────────────────────────────────────────────────
