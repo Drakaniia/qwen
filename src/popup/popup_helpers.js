@@ -3,17 +3,17 @@
 // ─── Module references ──────────────────────────────────────────────────────
 import * as PopupState from "../shared/popup_state.js";
 import * as PopupApi from "../shared/popup_api.js";
-import * as DownloadList from "./download_list.js";
 import * as PopupUI from "./popup_ui.js";
-import { elements, qualityChooser, INDICATOR_STATES, INDICATOR_TOOLTIPS, INDICATOR_ARIA_LABELS, RESCAN_IDLE_LABEL, RESCAN_BUSY_LABEL, AUDIO_FORMAT } from "./popup_elements.js";
+import { elements, qualityChooser, INDICATOR_STATES, INDICATOR_TOOLTIPS, INDICATOR_ARIA_LABELS, RESCAN_IDLE_LABEL, RESCAN_BUSY_LABEL } from "./popup_elements.js";
 
 // ─── Re-exports from sub-modules (backward compatibility) ────────────────────
+
+import { initBatchHelpers } from "./popup_batch_helpers.js";
 
 export {
   updateBatchUI,
   updatePlaylistPrompt,
   downloadAllPlaylist,
-  initBatchHelpers,
 } from "./popup_batch_helpers.js";
 
 export {
@@ -230,27 +230,6 @@ export async function startRecording(video) {
   }
 
   const jobId = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-
-  const recordingJob = {
-    id: jobId,
-    tabId,
-    title: video.title || "Screen recording",
-    format: "RECORDING",
-    status: "connecting",
-    message: "Starting screen recording...",
-    videoId: video.id || jobId,
-    url: video.url || "",
-    pageUrl: video.pageUrl || "",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    stage: "recording",
-    isRecording: true,
-    recordingDuration: 0,
-    recordingSizeBytes: 0,
-    recordingFps: 0,
-    recordingDroppedFrames: 0,
-    percent: null,
-  };
 
   const response = await PopupApi.startRecording(tabId, {
     jobId,

@@ -33,8 +33,8 @@ export const INDICATOR_ARIA_LABELS = {
 export const INDICATOR_DEBOUNCE_MS = 300;
 
 // ─── Mutable module-level state ─────────────────────────────────────────────
-export let indicatorDebounceTimer = null;
-export let currentIndicatorState = INDICATOR_STATES.CHECKING;
+export const indicatorDebounceTimer = null;
+export const currentIndicatorState = INDICATOR_STATES.CHECKING;
 
 // ─── API reference ──────────────────────────────────────────────────────────
 export const api = typeof browser !== "undefined" ? browser : chrome;

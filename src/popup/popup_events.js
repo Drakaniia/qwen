@@ -8,7 +8,7 @@ import "./popup_background_events.js";
 import * as PopupApi from "../shared/popup_api.js";
 import * as PopupState from "../shared/popup_state.js";
 import * as DownloadList from "./download_list.js";
-import { elements, qualityChooser, INDICATOR_STATES } from "./popup_elements.js";
+import { elements } from "./popup_elements.js";
 import {
   hasActiveTab,
   setMessage,
@@ -52,7 +52,7 @@ function render() {
   DownloadList.renderDownloads(elements.downloadList, state.currentDownloads, { shortenUrl });
   renderSyncedHistory();
   updateIndicatorFromVideos(state.currentVideos);
-  setVideoLayout(state.videoLayoutMode);
+  setVideoLayoutMode(state.videoLayoutMode);
   setViewMode(mode);
   updateBatchUI();
   updatePlaylistPrompt();
@@ -191,8 +191,8 @@ elements.downloadList.addEventListener("click", async (event) => {
 });
 
 // Settings / view toggle events
-elements.settingsToggle.addEventListener("click", () => {
-  const { setSettingsOpen } = await_import_setSettingsOpen();
+elements.settingsToggle.addEventListener("click", async () => {
+  const { setSettingsOpen } = await import("./popup_helpers.js");
   setSettingsOpen(elements.settingsPanel.hidden);
 });
 

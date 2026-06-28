@@ -2,7 +2,6 @@
 
 // ─── Module references ──────────────────────────────────────────────────────
 import * as DownloadList from "./download_list.js";
-import * as PopupState from "../shared/popup_state.js";
 import { elements, AUDIO_FORMAT, ACTIVE_DOWNLOAD_STATUSES } from "./popup_elements.js";
 import { setMessage, videoTitle, displayFormat, sourceLabel, videoSizeLabel, videoThumbnailUrl, startRecording } from "./popup_helpers.js";
 

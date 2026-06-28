@@ -5,7 +5,6 @@ import * as PopupApi from "../shared/popup_api.js";
 import * as PopupState from "../shared/popup_state.js";
 import { elements, qualityChooser } from "./popup_elements.js";
 import {
-  hasActiveTab,
   setMessage,
   setSettingsStatus,
   setViewMode,
