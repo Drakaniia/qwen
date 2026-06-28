@@ -70,7 +70,7 @@ def run_magnet_download(
     if not aria2c_location:
         raise HostError(
             "aria2c is not installed. It is required for magnet link downloads. "
-            "Run scripts\\install.bat, then restart your browser."
+            "Run scripts/install.sh, then restart your browser."
         )
 
     download_dir = resolve_download_dir(message.get("downloadFolder"))
@@ -110,7 +110,7 @@ def run_torrent_download(
     if not aria2c_location:
         raise HostError(
             "aria2c is not installed. It is required for .torrent file downloads. "
-            "Run scripts\\install.bat, then restart your browser."
+            "Run scripts/install.sh, then restart your browser."
         )
 
     download_dir = resolve_download_dir(message.get("downloadFolder"))
@@ -151,7 +151,7 @@ def run_gopeed_magnet_download(
     if not gopeed_location:
         raise HostError(
             "gopeed is not installed. It is required for magnet link downloads. "
-            "Run scripts\\install.bat, then restart your browser."
+            "Run scripts/install.sh, then restart your browser."
         )
 
     download_dir = resolve_download_dir(message.get("downloadFolder"))
@@ -191,7 +191,7 @@ def run_gopeed_torrent_download(
     if not gopeed_location:
         raise HostError(
             "gopeed is not installed. It is required for .torrent file downloads. "
-            "Run scripts\\install.bat, then restart your browser."
+            "Run scripts/install.sh, then restart your browser."
         )
 
     download_dir = resolve_download_dir(message.get("downloadFolder"))

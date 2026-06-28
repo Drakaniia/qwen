@@ -70,7 +70,7 @@ def require_gopeed_location(extra_paths=None, _which=None):
     if not location:
         raise HostError(
             "gopeed is not installed. It is required for BitTorrent and magnet downloads. "
-            "Run scripts\\install.bat, then restart your browser."
+            "Run scripts/install.sh, then restart your browser."
         )
     return location
 

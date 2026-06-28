@@ -29,7 +29,7 @@ def resolve_yt_dlp_command():
     if importlib.util.find_spec("yt_dlp") is not None:
         return [sys.executable, "-m", "yt_dlp"]
 
-    raise HostError("yt-dlp is not installed. Run scripts\\install.bat, then restart your browser.")
+    raise HostError("yt-dlp is not installed. Run scripts/install.sh, then restart your browser.")
 
 
 def resolve_ffmpeg_location(imageio_resolver=None):
@@ -42,7 +42,7 @@ def resolve_ffmpeg_location(imageio_resolver=None):
     if imageio_ffmpeg and Path(imageio_ffmpeg).exists():
         return imageio_ffmpeg
 
-    raise HostError("ffmpeg is not installed. Run scripts\\install.bat, then restart your browser.")
+    raise HostError("ffmpeg is not installed. Run scripts/install.sh, then restart your browser.")
 
 
 def resolve_aria2c_location(local_aria2c=None):
@@ -77,7 +77,7 @@ def require_aria2c_location(local_aria2c=None):
     if not location:
         raise HostError(
             "aria2c is not installed. It is required for all downloads. "
-            "Run scripts\\install.bat, then restart your browser."
+            "Run scripts/install.sh, then restart your browser."
         )
     return location
 
@@ -152,7 +152,7 @@ def require_gopeed_location(extra_paths=None):
     if not location:
         raise HostError(
             "gopeed is not installed. It is required for BitTorrent and magnet downloads. "
-            "Run scripts\\install.bat, then restart your browser."
+            "Run scripts/install.sh, then restart your browser."
         )
     return location
 

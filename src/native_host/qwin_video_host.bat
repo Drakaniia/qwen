@@ -9,7 +9,7 @@ if not %ERRORLEVEL%==0 (
   where py >nul 2>nul
   if not %ERRORLEVEL%==0 (
     echo [%DATE% %TIME%] ERROR: Python 3 not found >> "%LOG_FILE%"
-    >&2 echo Python 3 was not found. Run scripts\install.bat and restart the browser.
+    >&2 echo Python 3 was not found. Run scripts/install.sh and restart the browser.
     exit /b 1
   )
   echo [%DATE% %TIME%] Using py -3 (python not on PATH) >> "%LOG_FILE%"
