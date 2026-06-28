@@ -37,9 +37,14 @@ function userFriendlyDownloadError(error) {
     return `The video server returned an HTTP ${code} server error. The site may be temporarily unavailable or overloaded.`;
   }
 
+  // aria2c unknown option errors — config/compatibility issue, not network
+  if (/aria2c.*unknown option/i.test(text)) {
+    return 'The download helper has an invalid configuration option. Please report this as a bug.';
+  }
+
   // Connection / timeout / transport errors
   if (
-    /timed? out|timeout|ConnectionError|connection.*refused|no route to host|ConnectionResetError|TransportError|RemoteDisconnected|connection.*reset|10054/i.test(
+    /timed? out|timeout|ConnectionError|connection.*refused|no route to host|ConnectionResetError|TransportError|RemoteDisconnect|connection.*reset|10054/i.test(
       text,
     )
   ) {
