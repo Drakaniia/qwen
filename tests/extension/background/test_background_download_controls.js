@@ -13,6 +13,8 @@ const source = [
   fs.readFileSync(path.join(__dirname, "../../../src/background/format_helpers.js"), "utf8"),
   fs.readFileSync(path.join(__dirname, "../../../src/background/recording.js"), "utf8"),
   fs.readFileSync(path.join(__dirname, "../../../src/background/background.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../../src/background/background_message_handlers.js"), "utf8"),
+  fs.readFileSync(path.join(__dirname, "../../../src/background/background_webrequest.js"), "utf8"),
   fs.readFileSync(path.join(__dirname, "../../../src/background/download_orchestration.js"), "utf8"),
 ].join("\n");
 const downloadStateSource = fs.readFileSync(path.join(__dirname, "../../../src/background/download_state.js"), "utf8");

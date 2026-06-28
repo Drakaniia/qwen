@@ -15,18 +15,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const backgroundJsPath = path.resolve(__dirname, "../../../src/background/background.js");
 
-// Read and parse background.js to find all webRequest listener registrations
-const source = fs.readFileSync(backgroundJsPath, "utf8");
+// WebSocket handlers moved to background_webrequest.js in Phase 2 refactoring
+const backgroundWebRequestPath = path.resolve(__dirname, "../../../src/background/background_webrequest.js");
+
+// Read background_webrequest.js to find webRequest listener registrations
+const source = fs.readFileSync(backgroundWebRequestPath, "utf8");
 
 // ─── Test 1: handleWebSocketRequest function exists ─────────────────────────
 
 assert.ok(
   source.includes("function handleWebSocketRequest"),
-  "handleWebSocketRequest function must be defined in background.js",
+  "handleWebSocketRequest function must be defined in background_webrequest.js",
 );
-console.log("✓ handleWebSocketRequest function is defined in background.js");
+console.log("✓ handleWebSocketRequest function is defined in background_webrequest.js");
 
 // ─── Test 2: A webRequest listener is registered for 'websocket' type ───────
 
