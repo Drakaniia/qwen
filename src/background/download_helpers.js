@@ -10,6 +10,20 @@ import * as headerUtils from "./header_utils.js";
 // ── Constants ────────────────────────────────────────────────────────────
 
 const BLOCKING_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
+
+// ── Formatting helpers ────────────────────────────────────────────────────
+
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
 const HOST_NAME = "com.qwin.video_downloader";
 
 // ── Download ports (shared mutable state) ────────────────────────────────
@@ -251,6 +265,7 @@ export {
   HOST_NAME,
 
   downloadPortsById,
+  formatBytes,
   getDownloadPortsById,
 
   updateDownload,
