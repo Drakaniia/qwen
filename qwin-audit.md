@@ -419,7 +419,7 @@ Phase 2: File Refactoring
   [x] Split go/cdm.go (566 lines)
   [x] Split src/background/cdp_relay.js (527 lines)
   [x] Split src/native_host/download_task.py (477 lines)
-  [ ] Split src/native_host/spotify_resolver.py (453 lines)
+  [x] Split src/native_host/spotify_resolver.py (453 lines)
   [ ] Split src/background/recording.js (450 lines)
   [ ] Split src/popup/download_list.js (447 lines)
   [ ] Split go/commands.go (445 lines)
