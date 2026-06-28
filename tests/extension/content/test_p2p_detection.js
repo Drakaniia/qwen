@@ -17,8 +17,8 @@ globalThis.window = {};
 globalThis.window.RTCPeerConnection = function MockRTCPeerConnection() {
   this.createOffer = async () => ({ sdp: "" });
   this.createAnswer = async () => ({ sdp: "" });
-  this.setLocalDescription = async (desc) => {};
-  this.setRemoteDescription = async (desc) => {};
+  this.setLocalDescription = async (_desc) => {};
+  this.setRemoteDescription = async (_desc) => {};
 };
 // Also set global RTCPeerConnection for `typeof RTCPeerConnection` check
 globalThis.RTCPeerConnection = globalThis.window.RTCPeerConnection;
