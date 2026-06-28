@@ -175,22 +175,89 @@ to_win_path() {
 }
 
 # ---------------------------------------------------------------------------
+# PATH repair for MSYS2 / Git Bash
+# ---------------------------------------------------------------------------
+# MSYS2 puts /mingw64/bin and /usr/bin first on PATH, which can hide Windows
+# executables.  We add known Windows tool directories so that node, go, reg,
+# powershell, etc. are findable even when the inherited Windows PATH differs.
+repair_msys2_path() {
+  if is_windows; then
+    local added=0
+    # Core Windows system directories
+    local win_sysdirs=(
+      "/c/WINDOWS"
+      "/c/WINDOWS/system32"
+      "/c/WINDOWS/System32/WindowsPowerShell/v1.0"
+      "/c/WINDOWS/System32/Wbem"
+      "/c/WINDOWS/System32/OpenSSH"
+    )
+    for d in "${win_sysdirs[@]}"; do
+      if [[ -d "$d" ]] && [[ ":$PATH:" != *":$d:"* ]]; then
+        PATH="$d:$PATH"
+        ((added++))
+      fi
+    done
+
+    # Common tool install locations (only if directory exists)
+    local tool_dirs=(
+      "/c/Program Files/nodejs"
+      "/c/Program Files/Go/bin"
+      "/c/ProgramData/chocolatey/bin"
+    )
+    for d in "${tool_dirs[@]}"; do
+      if [[ -d "$d" ]] && [[ ":$PATH:" != *":$d:"* ]]; then
+        PATH="$PATH:$d"
+        ((added++))
+      fi
+    done
+
+    export PATH
+    if [[ $added -gt 0 ]]; then
+      : # paths were added to PATH silently
+    fi
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Python detection
 # ---------------------------------------------------------------------------
 detect_python() {
-  if check_cmd py; then
-    PYTHON_CMD="py -3"
-    PYTHON_EXE="py"
-  elif check_cmd python3; then
-    PYTHON_CMD="python3"
-    PYTHON_EXE="python3"
-  elif check_cmd python; then
-    PYTHON_CMD="python"
-    PYTHON_EXE="python"
-  else
+  # Collect candidates: pair of (command, executable)
+  local -a candidates=()
+
+  if check_cmd py;         then candidates+=("py -3" "py"); fi
+  if check_cmd python3;    then candidates+=("python3" "python3"); fi
+  if check_cmd python;     then candidates+=("python" "python"); fi
+
+  if [[ ${#candidates[@]} -eq 0 ]]; then
     die "Python 3 is not installed or not on PATH."$'\n'"Install Python 3 from https://www.python.org/downloads/windows/ and enable \"Add python.exe to PATH\"."
   fi
-  ok "Using Python: $(eval "$PYTHON_CMD --version 2>&1")"
+
+  local found=false
+  local -i i
+  for ((i=0; i<${#candidates[@]}; i+=2)); do
+    local cmd="${candidates[i]}"
+    local exe="${candidates[i+1]}"
+    if eval "$cmd -m pip --version" &>/dev/null 2>&1; then
+      PYTHON_CMD="$cmd"
+      PYTHON_EXE="$exe"
+      found=true
+      ok "Using Python: $(eval "$PYTHON_CMD --version 2>&1") [pip available]"
+      break
+    fi
+  done
+
+  if ! $found; then
+    # All candidates lack pip — use first candidate anyway (some features will
+    # be degraded) but give a clear remediation hint.
+    PYTHON_CMD="${candidates[0]}"
+    PYTHON_EXE="${candidates[1]}"
+    warn "Using Python: $(eval "$PYTHON_CMD --version 2>&1") [pip NOT available]"
+    warn "pip is not installed for the detected Python."
+    warn "Python packages (yt-dlp, curl-cffi, streamlink, etc.) will NOT be installed."
+    warn "To fix, run:  $PYTHON_EXE -m ensurepip --upgrade"
+    warn "Then re-run this install script."
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -590,6 +657,11 @@ build_extension() {
   local bundles_dir="$dist_root/bundled"
 
   info "Running esbuild ..."
+  if ! check_cmd node; then
+    warn "node is not on PATH.  Skipping extension build."
+    warn "Install Node.js from https://nodejs.org/ and re-run."
+    return
+  fi
   (cd "$ROOT_DIR" && node scripts/build-bundles.js --target all) || {
     warn "esbuild failed.  Check for Node.js / npm issues."
     return
@@ -648,12 +720,14 @@ register_native_hosts() {
 
   ensure_dir "$NATIVE_DIR"
 
-  # Write manifest JSONs — use PowerShell on Windows, Python elsewhere
-  if is_windows; then
+  # ── Write manifest JSON files ────────────────────────────────────────────
+  # Try PowerShell first on Windows; fall back to Python on any platform.
+
+  local manifests_written=false
+
+  if is_windows && check_cmd powershell; then
     local win_launcher
     win_launcher="$(to_win_path "$HOST_LAUNCHER")"
-    local win_native_dir
-    win_native_dir="$(to_win_path "$NATIVE_DIR")"
     local win_chrome_manifest
     win_chrome_manifest="$(to_win_path "$CHROME_MANIFEST")"
     local win_yandex_manifest
@@ -661,7 +735,7 @@ register_native_hosts() {
     local win_firefox_manifest
     win_firefox_manifest="$(to_win_path "$FIREFOX_MANIFEST")"
 
-    powershell -NoProfile -Command "
+    if powershell -NoProfile -Command "
 \$ErrorActionPreference = 'Stop'
 \$chromePath = '$win_chrome_manifest'
 \$yandexPath = '$win_yandex_manifest'
@@ -690,11 +764,15 @@ register_native_hosts() {
 [System.IO.File]::WriteAllText(\$yandexPath, (\$chrome | ConvertTo-Json -Depth 5), \$utf8)
 [System.IO.File]::WriteAllText(\$firefoxPath, (\$firefox | ConvertTo-Json -Depth 5), \$utf8)
 Write-Output 'Manifest files written'
-" 2>&1 || {
-      warn "Could not write native messaging manifest files."
-      return
-    }
-  else
+" 2>&1; then
+      manifests_written=true
+      ok "Manifest files written"
+    else
+      warn "PowerShell could not write manifest files.  Falling back to Python..."
+    fi
+  fi
+
+  if ! $manifests_written; then
     py_inline "
 import json, os
 
@@ -728,69 +806,97 @@ print('Manifest files written')
       warn "Could not write native messaging manifest files."
       return
     }
+    ok "Manifest files written"
   fi
-  ok "Manifest files written"
 
-  # Register in Windows Registry (only on Windows)
-  if is_windows; then
-    local win_manifest
-    win_manifest="$(to_win_path "$CHROME_MANIFEST")"
-    local win_manifest_yandex
-    win_manifest_yandex="$(to_win_path "$YANDEX_MANIFEST")"
-    local win_manifest_firefox
-    win_manifest_firefox="$(to_win_path "$FIREFOX_MANIFEST")"
+  # ── Register in Windows Registry ────────────────────────────────────────
+  if ! is_windows; then
+    info "Skipping Windows Registry registration (non-Windows OS)."
+    return
+  fi
 
-    # MSYS2_ARG_CONV_EXCL prevents Git Bash/MSYS2 from mangling backslash
-    # paths when passing arguments to Windows executables.
-    reg_add() {
-      MSYS2_ARG_CONV_EXCL='*' reg.exe add "$1" /ve /t REG_SZ /d "$2" /f &>/dev/null
+  local win_launcher
+  win_launcher="$(to_win_path "$HOST_LAUNCHER")"
+  local win_manifest_chrome
+  win_manifest_chrome="$(to_win_path "$CHROME_MANIFEST")"
+  local win_manifest_yandex
+  win_manifest_yandex="$(to_win_path "$YANDEX_MANIFEST")"
+  local win_manifest_firefox
+  win_manifest_firefox="$(to_win_path "$FIREFOX_MANIFEST")"
+
+  local registered_via=""
+
+  # Try PowerShell (preferred) — avoids MSYS2 path-mangling issues.
+  if check_cmd powershell; then
+    if powershell -NoProfile -Command "
+\$hostName = '$HOST_NAME'
+\$chromeManifest = '$win_manifest_chrome'
+\$yandexManifest = '$win_manifest_yandex'
+\$firefoxManifest = '$win_manifest_firefox'
+\$launcher = '$win_launcher'
+\$chromeId = '$CHROME_EXTENSION_ID'
+\$firefoxId = '$FIREFOX_EXTENSION_ID'
+
+\$browsers = @(
+    @{ Name = 'Chrome';  RegPath = 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\' + \$hostName;  Manifest = \$chromeManifest },
+    @{ Name = 'Edge';    RegPath = 'HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\' + \$hostName;  Manifest = \$chromeManifest },
+    @{ Name = 'Brave';   RegPath = 'HKCU:\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\' + \$hostName;  Manifest = \$chromeManifest },
+    @{ Name = 'Chromium'; RegPath = 'HKCU:\Software\Chromium\NativeMessagingHosts\' + \$hostName;  Manifest = \$yandexManifest },
+    @{ Name = 'Yandex';  RegPath = 'HKCU:\Software\Yandex\YandexBrowser\NativeMessagingHosts\' + \$hostName;  Manifest = \$yandexManifest },
+    @{ Name = 'Firefox'; RegPath = 'HKCU:\Software\Mozilla\NativeMessagingHosts\' + \$hostName;  Manifest = \$firefoxManifest }
+)
+
+\$registered = 0
+foreach (\$b in \$browsers) {
+    \$parent = Split-Path \$b.RegPath -Parent
+    if (-not (Test-Path \$parent)) {
+        \$null = New-Item -Path \$parent -Force 2>\$null
     }
+    if (Test-Path \$b.RegPath) {
+        Set-Item -Path \$b.RegPath -Value \$b.Manifest -ErrorAction SilentlyContinue 2>\$null
+    } else {
+        \$null = New-Item -Path \$b.RegPath -Value \$b.Manifest -Force -ErrorAction SilentlyContinue 2>\$null
+    }
+    if (\$?) { \$registered++ } else { Write-Warning \"Could not register \$('\"' + \$b.Name + '\"') native messaging host.\" }
+}
 
-    local any_registered=false
-
-    if reg_add "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\$HOST_NAME" "$win_manifest"; then
-      any_registered=true
+if (\$registered -gt 0) {
+    Write-Output \"Registered native host for \$registered browser(s).\"
+} else {
+    Write-Warning \"No browsers were registered. Install Chrome/Firefox/Edge/Brave/Yandex and re-run.\"
+    exit 1
+}
+" 2>&1; then
+      registered_via="PowerShell"
     else
-      warn "Could not register Chrome native messaging host."
-    fi
-
-    if reg_add "HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\$HOST_NAME" "$win_manifest"; then
-      any_registered=true
-    else
-      warn "Could not register Edge native messaging host."
-    fi
-
-    if reg_add "HKCU\\Software\\BraveSoftware\\Brave-Browser\\NativeMessagingHosts\\$HOST_NAME" "$win_manifest"; then
-      any_registered=true
-    else
-      warn "Could not register Brave native messaging host."
-    fi
-
-    if reg_add "HKCU\\Software\\Chromium\\NativeMessagingHosts\\$HOST_NAME" "$win_manifest_yandex"; then
-      any_registered=true
-    else
-      warn "Could not register Chromium native messaging host."
-    fi
-
-    if reg_add "HKCU\\Software\\Yandex\\YandexBrowser\\NativeMessagingHosts\\$HOST_NAME" "$win_manifest_yandex"; then
-      any_registered=true
-    else
-      warn "Could not register Yandex native messaging host."
-    fi
-
-    if reg_add "HKCU\\Software\\Mozilla\\NativeMessagingHosts\\$HOST_NAME" "$win_manifest_firefox"; then
-      any_registered=true
-    else
-      warn "Could not register Firefox native messaging host."
-    fi
-
-    if $any_registered; then
-      ok "Native host registered for one or more browsers"
-    else
-      warn "No browsers were registered. Install Chrome/Firefox/Edge/Brave/Yandex and re-run."
+      warn "PowerShell registry registration failed.  Trying reg.exe fallback..."
     fi
   else
-    info "Skipping Windows Registry registration (non-Windows OS)."
+    warn "PowerShell not found.  Trying reg.exe fallback..."
+  fi
+
+  # Fallback: reg.exe (with MSYS2_ARG_CONV_EXCL to prevent path mangling)
+  if [[ -z "$registered_via" ]]; then
+    local win_manifest
+    win_manifest="$win_manifest_chrome"
+    local any_registered=false
+
+    MSYS2_ARG_CONV_EXCL='*' reg.exe add "HKCU\Software\Google\Chrome\NativeMessagingHosts\$HOST_NAME" /ve /t REG_SZ /d "$win_manifest" /f &>/dev/null && any_registered=true
+    MSYS2_ARG_CONV_EXCL='*' reg.exe add "HKCU\Software\Microsoft\Edge\NativeMessagingHosts\$HOST_NAME" /ve /t REG_SZ /d "$win_manifest" /f &>/dev/null && any_registered=true
+    MSYS2_ARG_CONV_EXCL='*' reg.exe add "HKCU\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\$HOST_NAME" /ve /t REG_SZ /d "$win_manifest" /f &>/dev/null && any_registered=true
+    MSYS2_ARG_CONV_EXCL='*' reg.exe add "HKCU\Software\Chromium\NativeMessagingHosts\$HOST_NAME" /ve /t REG_SZ /d "$win_manifest_yandex" /f &>/dev/null && any_registered=true
+    MSYS2_ARG_CONV_EXCL='*' reg.exe add "HKCU\Software\Yandex\YandexBrowser\NativeMessagingHosts\$HOST_NAME" /ve /t REG_SZ /d "$win_manifest_yandex" /f &>/dev/null && any_registered=true
+    MSYS2_ARG_CONV_EXCL='*' reg.exe add "HKCU\Software\Mozilla\NativeMessagingHosts\$HOST_NAME" /ve /t REG_SZ /d "$win_manifest_firefox" /f &>/dev/null && any_registered=true
+
+    if $any_registered; then
+      registered_via="reg.exe"
+    else
+      warn "No browsers were registered.  Install Chrome/Firefox/Edge/Brave/Yandex and re-run."
+    fi
+  fi
+
+  if [[ -n "$registered_via" ]]; then
+    ok "Native host registered via $registered_via"
   fi
 }
 
@@ -820,6 +926,9 @@ main() {
   if ! check_cmd unzip; then
     info "unzip not found — will use Python's zipfile module for extraction."
   fi
+
+  # --- PATH repair for MSYS2 ---
+  repair_msys2_path
 
   # --- main flow ---
   detect_python

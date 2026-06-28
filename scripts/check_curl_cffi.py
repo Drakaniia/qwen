@@ -1,6 +1,6 @@
 """Verify curl_cffi is importable and print its version.
 
-Called from install.bat — avoids CMD parser choking on inline -c code
+Called from install.sh — avoids shell parser choking on inline -c code
 that contains periods and special characters.
 """
 import sys
