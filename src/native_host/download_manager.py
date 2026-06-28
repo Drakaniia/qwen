@@ -8,7 +8,28 @@ sibling modules and are re-exported here for backward compatibility.
 
 import threading
 
+# ── Re-exports from sub-modules (backward compatibility) ─────────────────
+from aria2c_commands import (
+    MAGNET_ARIA2_ARGS,
+    build_aria2c_magnet_command,
+    build_aria2c_torrent_command,
+)
+from bittorrent_downloads import (  # noqa: F401 — re-exports, consumed via _download_manager.X in host.py
+    ACTIVE_DOWNLOADS,
+    ACTIVE_DOWNLOADS_LOCK,
+    _active_downloads_lock,
+    cancel_active_downloads,
+    control_download,
+    run_gopeed_magnet_download,
+    run_gopeed_torrent_download,
+    run_magnet_download,
+    run_torrent_download,
+)
 from download_logger import get_logger
+from spotify_fallback import run_spotify_fallback_download
+
+import curl_cffi_adapter as _curl_cffi_adapter
+from browser_context import write_cookie_file_from_headers
 from download_task import DownloadTask
 from native_paths import resolve_download_dir, validate_download_url
 from native_protocol import send_native_message
@@ -30,38 +51,11 @@ from stream_backends import (
 from yt_dlp_command import build_yt_dlp_command, build_yt_dlp_fallback_variants, is_youtube_url
 from yt_dlp_dependencies import (
     require_aria2c_location,
-    require_gopeed_location,
     resolve_ffmpeg_location,
     resolve_n_m3u8dl_re_location,
     resolve_streamlink_command,
     resolve_yt_dlp_command,
 )
-
-import curl_cffi_adapter as _curl_cffi_adapter
-from browser_context import write_cookie_file_from_headers
-
-# ── Re-exports from sub-modules (backward compatibility) ─────────────────
-
-from aria2c_commands import (
-    MAGNET_ARIA2_ARGS,
-    build_aria2c_magnet_command,
-    build_aria2c_torrent_command,
-)
-
-from bittorrent_downloads import (
-    ACTIVE_DOWNLOADS,
-    ACTIVE_DOWNLOADS_LOCK,
-    _active_downloads_lock,
-    cancel_active_downloads,
-    control_download,
-    run_gopeed_magnet_download,
-    run_gopeed_torrent_download,
-    run_magnet_download,
-    run_torrent_download,
-)
-
-from spotify_fallback import run_spotify_fallback_download
-
 
 # ── Probe config building ────────────────────────────────────────────────
 
