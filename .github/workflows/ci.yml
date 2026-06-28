@@ -34,10 +34,10 @@ jobs:
         run: npx prettier --check "src/**/*.{js,css,json}" "tests/**/*.js" "*.{json,js}"
 
       - name: Ruff lint (Python)
-        run: python -m ruff check src/native-host/ tests/native-host/
+        run: python -m ruff check src/native_host/ tests/native-host/
 
       - name: Ruff format check (Python)
-        run: python -m ruff format --check src/native-host/ tests/native-host/
+        run: python -m ruff format --check src/native_host/ tests/native-host/
 
   test-native:
     name: Native (Python) Tests

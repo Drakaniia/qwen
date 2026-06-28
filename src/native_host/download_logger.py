@@ -34,7 +34,7 @@ def _default_log_path() -> Path:
 
     In development, logs are written to <project-root>/logs/downloads.jsonl.
     The project root is determined by walking up from this file's location
-    (src/native-host/download_logger.py → src/native-host/ → src/ → project root).
+    (src/native_host/download_logger.py → src/native_host/ → src/ → project root).
 
     If the resolved path is not writable (e.g. installed read-only), falls
     back to %TEMP%\\qwin_logs\\downloads.jsonl.

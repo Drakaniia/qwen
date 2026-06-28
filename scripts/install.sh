@@ -48,8 +48,8 @@ CHROME_EXTENSION_ID="dbjddokdmkodnkiaccmbjagfalmmmkmi"
 FIREFOX_EXTENSION_ID="qwin-video-downloader@example.com"
 
 TOOLS_DIR="$ROOT_DIR/tools"
-HOST_SCRIPT="$ROOT_DIR/src/native-host/host.py"
-HOST_LAUNCHER="$ROOT_DIR/src/native-host/qwin_video_host.bat"
+HOST_SCRIPT="$ROOT_DIR/src/native_host/host.py"
+HOST_LAUNCHER="$ROOT_DIR/src/native_host/qwin_video_host.bat"
 NATIVE_DIR="$ROOT_DIR/config/native-host"
 
 CHROME_MANIFEST="$NATIVE_DIR/$HOST_NAME.chrome.json"
@@ -805,10 +805,10 @@ main() {
 
   # --- pre-flight checks ---
   if [[ ! -f "$HOST_SCRIPT" ]]; then
-    die "src/native-host/host.py was not found at: $HOST_SCRIPT"
+    die "src/native_host/host.py was not found at: $HOST_SCRIPT"
   fi
   if [[ ! -f "$HOST_LAUNCHER" ]]; then
-    die "src/native-host/qwin_video_host.bat was not found at: $HOST_LAUNCHER"
+    die "src/native_host/qwin_video_host.bat was not found at: $HOST_LAUNCHER"
   fi
   ok "Source files verified"
 
