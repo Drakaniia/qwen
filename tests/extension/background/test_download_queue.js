@@ -72,8 +72,8 @@ try {
       let lastStarted = null;
       DownloadQueue.init({ startDownload: async (...args) => { lastStarted = args; return { jobId: "test_job" }; } });
 
-      const jobId1 = DownloadQueue.enqueue(1, "video_1");
-      const jobId2 = DownloadQueue.enqueue(1, "video_2");
+      DownloadQueue.enqueue(1, "video_1");
+      DownloadQueue.enqueue(1, "video_2");
 
       // Jobs start immediately when slots are available (maxConcurrent=3)
       assert.equal(DownloadQueue.getActiveCount(), 2, "2 jobs should be actively starting");

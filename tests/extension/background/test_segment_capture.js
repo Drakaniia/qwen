@@ -64,24 +64,6 @@ const mockRuntime = {
   },
 };
 
-const mockNativePort = {
-  postMessageCalls: [],
-  onMessageListeners: [],
-  onDisconnectListeners: [],
-
-  postMessage(message) {
-    this.postMessageCalls.push(message);
-  },
-
-  disconnect() {},
-
-  reset() {
-    this.postMessageCalls = [];
-    this.onMessageListeners = [];
-    this.onDisconnectListeners = [];
-  },
-};
-
 // Set up global chrome mock
 globalThis.chrome = {
   runtime: mockRuntime,
@@ -98,12 +80,6 @@ try {
 }
 
 // ─── Test helpers ──────────────────────────────────────────────────────────
-
-async function flushMicrotasks() {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-}
 
 function createMockSegment(streamId, index, data = "dGVzdF9zZWdtZW50") {
   return {
@@ -361,7 +337,7 @@ function createMockSegment(streamId, index, data = "dGVzdF9zZWdtZW50") {
 
     // Stop and verify the data is forwarded
     mockRuntime.sendMessageResult = { ok: true, jobId: "seg_job" };
-    const stopResult = await segmentCapture.stopCapture(42);
+    await segmentCapture.stopCapture(42);
 
     const assembleMsg = mockRuntime.sendMessageCalls.find((m) => m.type === "assembleSegments");
     assert.ok(assembleMsg, "assembleSegments must be called");

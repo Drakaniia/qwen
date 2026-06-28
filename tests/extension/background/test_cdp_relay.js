@@ -11,7 +11,7 @@
  * 4. The module structure is correct (exports, init, etc.)
  */
 
-import { describe, it, before, after, mock } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 
 // ─── Mock chrome.debugger API ──────────────────────────────────────────────
@@ -84,7 +84,7 @@ globalThis.chrome = {
 let cdpRelay;
 try {
   cdpRelay = await import("../../../src/background/cdp_relay.js");
-} catch (err) {
+} catch (_err) {
   // The import might fail in test environment due to bundler/module resolution.
   // We'll define the interface contract tests that the source module must satisfy.
   console.warn("Could not import cdp_relay.js directly. Running structural tests.");

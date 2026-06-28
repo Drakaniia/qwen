@@ -223,8 +223,6 @@ assert.ok(
 
 // ─── Download List Helper Tests ─────────────────────────────────────────────
 
-import * as DownloadList from "../../../src/popup/download_list.js";
-
 {
   assert.ok(downloadListJs.includes("function formatDuration"), "download_list.js must define formatDuration helper");
   assert.ok(downloadListJs.includes("function formatFileSize"), "download_list.js must define formatFileSize helper");
