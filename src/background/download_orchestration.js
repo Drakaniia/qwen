@@ -2,6 +2,7 @@
 
 import { formatBytes } from "./download_helpers.js";
 import { createOperations } from "./download_operations.js";
+import { isBrowserDownloadableFormat, filenameFromVideo } from "./browser_download.js";
 
 function create(deps) {
   // ── Operations (download control, file ops, management) ──────────────
@@ -55,6 +56,141 @@ function create(deps) {
     );
   }
 
+  // ── Browser download (chrome.downloads API) ──────────────────────────
+
+  /**
+   * Start a download directly via the browser's chrome.downloads API.
+   * Tracks progress and completion via chrome.downloads.onChanged.
+   */
+  async function browserDownload(tabId, video, formatId, options) {
+    const { jobId } = options;
+    const filename = filenameFromVideo(video);
+
+    deps.updateDownload(jobId, {
+      status: "running",
+      message: "Starting browser download...",
+      stage: "downloading",
+      speed: "",
+      eta: "",
+    });
+
+    let onChangedHandler = null;
+    let downloadId = null;
+
+    function cleanup() {
+      if (onChangedHandler) {
+        try {
+          deps.api.downloads.onChanged.removeListener(onChangedHandler);
+        } catch (_e) { /* ignore */ }
+        onChangedHandler = null;
+      }
+    }
+
+    return new Promise((resolve) => {
+      // ── Progress listener ──────────────────────────────────────────
+      onChangedHandler = function (delta) {
+        if (delta.id !== downloadId) return;
+
+        if (delta.state && delta.state.current === "complete") {
+          cleanup();
+          deps.updateDownload(jobId, {
+            status: "done",
+            percent: 100,
+            rawPercent: 100,
+            speed: "",
+            eta: "",
+            stage: "done",
+            message: "Download complete.",
+          });
+          resolve({ jobId });
+          return;
+        }
+
+        if (delta.state && delta.state.current === "interrupted") {
+          cleanup();
+          const errMsg = delta.error ? delta.error.current || "Unknown error" : "Download interrupted";
+          deps.updateDownload(jobId, {
+            status: "error",
+            error: `Browser download interrupted: ${errMsg}`,
+            stage: "",
+          });
+          resolve({ jobId });
+          return;
+        }
+
+        // Progress
+        const current = deps.getDownloadsById()[jobId] || {};
+        const bytesReceived = delta.bytesReceived ? delta.bytesReceived.current : current.rawDownloadedBytes;
+        const totalBytes = delta.totalBytes ? delta.totalBytes.current : current.rawTotalBytes;
+        if (typeof bytesReceived === "number" || typeof totalBytes === "number") {
+          const patch = {};
+          if (typeof bytesReceived === "number") patch.rawDownloadedBytes = bytesReceived;
+          if (typeof totalBytes === "number") patch.rawTotalBytes = totalBytes;
+          if (typeof totalBytes === "number" && totalBytes > 0) {
+            const pct = Math.min(100, Math.round((bytesReceived || 0) / totalBytes * 100));
+            patch.percent = deps.normalizeDownloadProgress(jobId, pct);
+            patch.message = deps.downloadProgressMessage(pct);
+          }
+          deps.updateDownload(jobId, patch);
+        }
+      };
+
+      // ── Initiate download ──────────────────────────────────────────
+      try {
+        const api = deps.api;
+
+        function onDownloadStarted(id) {
+          downloadId = id;
+          try {
+            api.downloads.onChanged.addListener(onChangedHandler);
+          } catch (_e) {
+            // Downloads.onChanged not supported; no progress tracking
+          }
+          deps.updateDownload(jobId, {
+            status: "running",
+            message: "Downloading via browser...",
+          });
+          resolve({ jobId });
+        }
+
+        if (typeof browser !== "undefined" && typeof api.downloads.download.then === "function") {
+          // Firefox promise-based
+          api.downloads.download({ url: video.url, filename, conflictAction: "uniquify" })
+            .then(onDownloadStarted)
+            .catch(function (err) {
+              deps.updateDownload(jobId, {
+                status: "error",
+                error: `Browser download failed: ${err.message || err}`,
+              });
+              resolve({ jobId });
+            });
+        } else {
+          // Chrome callback-based
+          api.downloads.download(
+            { url: video.url, filename, conflictAction: "uniquify" },
+            function (id) {
+              if (api.runtime.lastError) {
+                deps.updateDownload(jobId, {
+                  status: "error",
+                  error: `Browser download failed: ${api.runtime.lastError.message}`,
+                });
+                resolve({ jobId });
+                return;
+              }
+              onDownloadStarted(id);
+            },
+          );
+        }
+      } catch (error) {
+        deps.updateDownload(jobId, {
+          status: "error",
+          error: `Browser download error: ${error.message || error}`,
+        });
+        resolve({ jobId });
+      }
+    });
+  }
+
   async function startNativeDownloadFromVideo(tabId, video, formatId = "best", options = {}) {
     const tabs = await deps.callTabsQuery({ active: true, currentWindow: true });
     const activeTab = tabs && tabs[0] ? tabs[0] : {};
@@ -72,6 +208,51 @@ function create(deps) {
     const backend = options.backend || video.backend || "auto";
     let port;
     let finished = false;
+
+    // ── Browser backend shortcut ──────────────────────────────────────
+    if (backend === "browser") {
+      if (!isBrowserDownloadableFormat(video.format)) {
+        deps.updateDownload(jobId, {
+          status: "error",
+          error:
+            "Browser download does not support streaming formats (HLS, DASH, Smooth Streaming). " +
+            'Select "Auto" or "yt-dlp" as the download method.',
+        });
+        return { jobId };
+      }
+
+      // Create minimal job entry
+      deps.updateDownload(jobId, {
+        id: jobId,
+        tabId,
+        videoId: video.groupId || video.id,
+        variantId: video.groupId ? video.id : "",
+        url: video.url,
+        format: video.format,
+        title: video.title || "Video",
+        formatId: formatId || "best",
+        downloadFolder: settings().downloadFolder || "",
+        requestHeaders: requestHeaders,
+        pageUrl,
+        backend,
+        filepath: existingJob.filepath || "",
+        artifactRoot: existingJob.artifactRoot || "",
+        status: "connecting",
+        message: "Starting browser download...",
+        ...deps.resetDownloadProgressDetails(),
+        totalSize: "",
+        percent: options.resume && typeof existingJob.percent === "number" ? existingJob.percent : null,
+        createdAt: existingJob.createdAt || Date.now(),
+      });
+
+      return browserDownload(tabId, video, formatId, {
+        jobId,
+        pageUrl,
+        requestHeaders,
+        attemptedUrls: Array.from(attemptedUrls),
+        backend,
+      });
+    }
 
     // Determine the initial total size for the download list.
     const rawSizeBytes = video.sizeBytes || video.filesize || 0;
@@ -226,6 +407,23 @@ function create(deps) {
             }
             const fallbackVideo = await deps.fallbackVideoForDownload(tabId, video, attemptedUrls);
             if (!fallbackVideo) {
+              // All native-host sources exhausted; try browser download as last resort
+              if (isBrowserDownloadableFormat(video.format)) {
+                deps.updateDownload(jobId, {
+                  status: "connecting",
+                  error: "",
+                  message: "All native sources failed; trying browser download...",
+                  ...artifactPatch,
+                });
+                await browserDownload(tabId, video, "best", {
+                  jobId,
+                  pageUrl,
+                  requestHeaders,
+                  attemptedUrls: Array.from(attemptedUrls),
+                  backend: "browser",
+                });
+                return;
+              }
               deps.updateDownload(jobId, {
                 status: "error",
                 error: deps.exhaustedSourcesError(errorText, attemptedUrls),
@@ -268,7 +466,7 @@ function create(deps) {
           status: "error",
           error:
             runtimeError ||
-            "Native messaging helper disconnected. Run scripts\\install.bat, restart the browser, and try again.",
+            "Native messaging helper disconnected. Run scripts/install.sh, restart the browser, and try again.",
         });
       }
     });

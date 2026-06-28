@@ -115,6 +115,7 @@ export function createOperations(deps) {
     return deps.startNativeDownloadFromVideo(job.tabId || tabId, videoFromDownloadJob(job), job.formatId || "best", {
       jobId,
       resume: true,
+      backend: job.backend || "auto",
     });
   }
 
@@ -151,7 +152,9 @@ export function createOperations(deps) {
       throw new Error("That download does not have a URL to retry.");
     }
 
-    return deps.startNativeDownloadFromVideo(job.tabId || tabId, videoFromDownloadJob(job), job.formatId || "best");
+    return deps.startNativeDownloadFromVideo(job.tabId || tabId, videoFromDownloadJob(job), job.formatId || "best", {
+      backend: job.backend || "auto",
+    });
   }
 
   async function openDownloadedPath(jobId, nativeType) {
