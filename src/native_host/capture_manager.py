@@ -16,100 +16,19 @@ Architecture:
   routed to a separate queue for external consumption.
 """
 
-import json
 import os
 import queue
-import struct
 import subprocess
 import sys
 import threading
-from pathlib import Path
 
+from capture_helpers import (
+    resolve_capture_binary,
+    resolve_cdm_status_file,
+    read_native_message,
+    write_native_message,
+)
 from native_protocol import HostError
-
-
-def _resolve_capture_binary():
-    """Locate the qwin-capture binary relative to the project root.
-
-    Search order:
-    1. tools/capture/qwin-capture.exe (installed by install-capture.ps1)
-    2. go/qwin-capture.exe (development build)
-    """
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "tools").is_dir() and (parent / "go").is_dir():
-            break
-    else:
-        parent = current.parent
-
-    candidates = [
-        parent / "tools" / "capture" / "qwin-capture.exe",
-        parent / "go" / "qwin-capture.exe",
-    ]
-
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
-
-    return None
-
-
-def _resolve_cdm_status_file():
-    """Locate the CDM status.json file written by install-cdm.ps1.
-
-    Returns the parsed status dict, or None if not found or invalid.
-    """
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "tools").is_dir() and (parent / "go").is_dir():
-            break
-    else:
-        parent = current.parent
-
-    status_path = parent / "tools" / "cdm" / "status.json"
-    if not status_path.is_file():
-        return None
-
-    try:
-        raw = status_path.read_text("utf-8", errors="replace")
-        data = json.loads(raw)
-        if data.get("cdmAvailable") and data.get("cdmPath"):
-            return {
-                "cdmPath": str(data["cdmPath"]),
-                "cdmVersion": str(data.get("cdmVersion", "")),
-                "l1Only": bool(data.get("l1Only", False)),
-            }
-    except (json.JSONDecodeError, OSError):
-        pass
-
-    return None
-
-
-def _read_native_message(stream):
-    """Read one JSON message from a native messaging framed stream."""
-    raw_length = stream.read(4)
-    if raw_length == b"":
-        return None
-    if len(raw_length) != 4:
-        raise HostError("Capture binary sent an incomplete length prefix.")
-
-    message_length = struct.unpack("=I", raw_length)[0]
-    if message_length > 64 * 1024 * 1024:
-        raise HostError("Capture binary sent a message that is too large.")
-
-    raw_payload = stream.read(message_length)
-    if len(raw_payload) != message_length:
-        raise HostError("Capture binary sent an incomplete payload.")
-
-    return json.loads(raw_payload.decode("utf-8"))
-
-
-def _write_native_message(stream, message):
-    """Write a JSON message with native messaging framing to a stream."""
-    payload = json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    stream.write(struct.pack("=I", len(payload)))
-    stream.write(payload)
-    stream.flush()
 
 
 class CaptureManager:
@@ -134,7 +53,7 @@ class CaptureManager:
     @property
     def is_available(self):
         """Check if the capture binary exists on disk."""
-        return _resolve_capture_binary() is not None
+        return resolve_capture_binary() is not None
 
     @property
     def is_running(self):
@@ -150,7 +69,7 @@ class CaptureManager:
         if self.is_running:
             return
 
-        binary_path = _resolve_capture_binary()
+        binary_path = resolve_capture_binary()
         if not binary_path:
             raise HostError("qwin-capture binary not found. Run scripts\\install-capture.ps1 or build from go/.")
 
@@ -202,7 +121,7 @@ class CaptureManager:
         forward the CDM path to the Go binary via cdmInit so that subsequent
         cdmStatus / status queries return accurate availability information.
         """
-        cdm_info = _resolve_cdm_status_file()
+        cdm_info = resolve_cdm_status_file()
         if cdm_info is None:
             return
 
@@ -229,8 +148,6 @@ class CaptureManager:
                     file=sys.stderr,
                 )
         except HostError as exc:
-            # CDM init may fail if the Go binary doesn't support it yet,
-            # or if the CDM path is invalid. Non-fatal.
             print(
                 f"[capture_manager] CDM auto-init error: {exc}",
                 file=sys.stderr,
@@ -257,7 +174,7 @@ class CaptureManager:
 
                 while not self._reader_stop.is_set():
                     try:
-                        message = _read_native_message(stdout)
+                        message = read_native_message(stdout)
                     except Exception:
                         break
 
@@ -373,7 +290,7 @@ class CaptureManager:
         if data is not None:
             message["data"] = data
 
-        _write_native_message(stdin, message)
+        write_native_message(stdin, message)
 
         # Read from the incoming queue until we find our response
         import time as _time
@@ -419,7 +336,7 @@ class CaptureManager:
         Flow:
           1. Send 'cdp_relay' to Go via stdin
           2. Go writes 'cdpRelayForward' to stdout (caught by background reader)
-          3. Python forwards to extension → chrome.debugger
+          3. Python forwards to extension -> chrome.debugger
           4. Extension sends result back to Python
           5. Python calls send_cdp_relay_result() to write result to Go's stdin
           6. Go reads the result and returns it as the response
@@ -473,7 +390,7 @@ class CaptureManager:
         if error:
             message["error"] = error
 
-        _write_native_message(stdin, message)
+        write_native_message(stdin, message)
 
     def get_pending_cdp_forward(self, block=False, timeout=1.0):
         """Get the next pending CDP relay forward from Go (non-blocking by default).
@@ -538,7 +455,7 @@ class CaptureManager:
 
             # If Go reports CDM unavailable but the installer status file
             # says CDM is available, attempt auto-init and re-query.
-            if not response.get("cdmAvailable") and _resolve_cdm_status_file() is not None:
+            if not response.get("cdmAvailable") and resolve_cdm_status_file() is not None:
                 try:
                     self._auto_init_cdm()
                     # Re-query after init
@@ -621,10 +538,3 @@ def send_cdp_relay_result(forward_id, result=None, error=""):
 def get_pending_cdp_forward(block=False, timeout=1.0):
     """Get the next pending CDP relay forward from Go."""
     return get_capture_manager().get_pending_cdp_forward(block=block, timeout=timeout)
-
-
-# ─── Re-export CDM API from cdm_capture ─────────────────────────────────────
-#
-# These functions are defined in cdm_capture.py but re-exported here so that
-# host.py and other consumers can continue to import them from capture_manager.
-

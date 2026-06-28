@@ -25,6 +25,10 @@ from probe_runner import (
     run_parallel_probes,
 )
 
+# Individual probe functions live in probe_backends now.
+# Tests that patch internals target the backend module directly.
+_PROBE_BACKENDS_MODULE = "probe_backends"
+
 
 class TestProbeConfig(unittest.TestCase):
     """ProbeConfig dataclass — simple value object."""
@@ -345,7 +349,7 @@ class TestRunParallelProbes(unittest.TestCase):
 class TestProbeYtDlp(unittest.TestCase):
     """probe_yt_dlp — the yt-dlp skip-download probe."""
 
-    @patch("probe_runner.subprocess.run")
+    @patch(f"{_PROBE_BACKENDS_MODULE}.subprocess.run")
     def test_probe_yt_dlp_success_returns_ok(self, mock_run):
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -365,7 +369,7 @@ class TestProbeYtDlp(unittest.TestCase):
         self.assertEqual(result["backend"], "yt-dlp")
         self.assertIsNone(result["error_type"])
 
-    @patch("probe_runner.subprocess.run")
+    @patch(f"{_PROBE_BACKENDS_MODULE}.subprocess.run")
     def test_probe_yt_dlp_failure_on_nonzero_exit(self, mock_run):
         mock_result = MagicMock()
         mock_result.returncode = 1
@@ -386,7 +390,7 @@ class TestProbeYtDlp(unittest.TestCase):
         self.assertEqual(result["error_type"], "exit_code")
         self.assertIn("HTTP", result.get("raw_output", ""))
 
-    @patch("probe_runner.subprocess.run")
+    @patch(f"{_PROBE_BACKENDS_MODULE}.subprocess.run")
     def test_probe_yt_dlp_failure_on_empty_formats(self, mock_run):
         """yt-dlp exit 0 but empty formats list should be treated as failure."""
         from unittest.mock import MagicMock
@@ -408,7 +412,7 @@ class TestProbeYtDlp(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error_type"], "no_formats")
 
-    @patch("probe_runner.subprocess.run")
+    @patch(f"{_PROBE_BACKENDS_MODULE}.subprocess.run")
     def test_probe_yt_dlp_failure_on_invalid_json(self, mock_run):
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -427,7 +431,7 @@ class TestProbeYtDlp(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error_type"], "parse_error")
 
-    @patch("probe_runner.subprocess.run")
+    @patch(f"{_PROBE_BACKENDS_MODULE}.subprocess.run")
     def test_probe_yt_dlp_checks_cancel_event_before_running(self, mock_run):
         cancel_event = threading.Event()
         cancel_event.set()
@@ -447,7 +451,7 @@ class TestProbeYtDlp(unittest.TestCase):
 class TestProbeCurlCffi(unittest.TestCase):
     """probe_curl_cffi — the curl_cffi HEAD request probe."""
 
-    @patch("probe_runner.curl_cffi_available", return_value=True)
+    @patch(f"{_PROBE_BACKENDS_MODULE}.curl_cffi_available", return_value=True)
     @patch("curl_cffi.requests")
     def test_probe_curl_cffi_success_returns_ok(self, mock_curl_requests, mock_available):
         mock_response = MagicMock()
@@ -466,7 +470,7 @@ class TestProbeCurlCffi(unittest.TestCase):
         self.assertEqual(result["backend"], "curl_cffi")
         self.assertEqual(result["status_code"], 200)
 
-    @patch("probe_runner.curl_cffi_available", return_value=True)
+    @patch(f"{_PROBE_BACKENDS_MODULE}.curl_cffi_available", return_value=True)
     @patch("curl_cffi.requests")
     def test_probe_curl_cffi_http_error_returns_failure(self, mock_curl_requests, mock_available):
         mock_response = MagicMock()
@@ -485,7 +489,7 @@ class TestProbeCurlCffi(unittest.TestCase):
         self.assertEqual(result["error_type"], "http_error")
         self.assertEqual(result["status_code"], 403)
 
-    @patch("probe_runner.curl_cffi_available", return_value=False)
+    @patch(f"{_PROBE_BACKENDS_MODULE}.curl_cffi_available", return_value=False)
     def test_probe_curl_cffi_fallback_when_curl_cffi_unavailable(self, mock_available):
         """When curl_cffi is not installed, the probe should fall back to urllib."""
         cancel_event = threading.Event()
@@ -516,7 +520,7 @@ class TestProbeCurlCffi(unittest.TestCase):
 class TestProbeStreamManifests(unittest.TestCase):
     """Probe functions for stream manifest backends."""
 
-    @patch("probe_runner.subprocess.run")
+    @patch(f"{_PROBE_BACKENDS_MODULE}.subprocess.run")
     def test_probe_n_m3u8dl_re_success_on_parseable_manifest(self, mock_run):
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -533,7 +537,7 @@ class TestProbeStreamManifests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["backend"], "n_m3u8dl_re")
 
-    @patch("probe_runner.subprocess.run")
+    @patch(f"{_PROBE_BACKENDS_MODULE}.subprocess.run")
     def test_probe_n_m3u8dl_re_failure_on_nonzero_exit(self, mock_run):
         mock_result = MagicMock()
         mock_result.returncode = 1
@@ -562,7 +566,7 @@ class TestProbeStreamManifests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error_type"], "cancelled")
 
-    @patch("probe_runner.subprocess.run")
+    @patch(f"{_PROBE_BACKENDS_MODULE}.subprocess.run")
     def test_probe_streamlink_success_returns_ok(self, mock_run):
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -579,7 +583,7 @@ class TestProbeStreamManifests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["backend"], "streamlink")
 
-    @patch("probe_runner.subprocess.run")
+    @patch(f"{_PROBE_BACKENDS_MODULE}.subprocess.run")
     def test_probe_streamlink_failure_on_nonzero_exit(self, mock_run):
         mock_result = MagicMock()
         mock_result.returncode = 1
