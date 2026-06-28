@@ -7,11 +7,11 @@
  * Architecture:
  *   Go binary → (stdio JSON) → Python host → (native msg port) → Extension → chrome.debugger
  *
- * The relay port is a persistent chrome.runtime.connectNative connection
- * that stays open for the lifetime of the extension. CDP commands arrive
- * as messages on this port, get executed via chrome.debugger, and results
- * are sent back through the same port.
+ * Deep network inspection has been extracted into cdp_deep_inspection.js
+ * and is composed via dependency injection.
  */
+
+import { createDeepInspection } from "./cdp_deep_inspection.js";
 
 const HOST_NAME = "com.qwin.video_downloader";
 
@@ -19,15 +19,13 @@ const HOST_NAME = "com.qwin.video_downloader";
 const activeSessions = new Map();
 
 // Persistent native messaging port for the CDP relay chain.
-// Opened by connectRelay() and kept alive until disconnectRelay().
 let relayPort = null;
 let relayPortConnected = false;
 
+// ─── Relay port management ────────────────────────────────────────────────
+
 /**
  * Open a persistent native messaging port for the CDP relay chain.
- * This port stays open so Python can push CDP commands to the extension
- * asynchronously (triggered by Go binary's CDP relay messages).
- *
  * @returns {boolean} True if the port was opened successfully.
  */
 function connectRelay() {
@@ -53,17 +51,12 @@ function connectRelay() {
       return;
     }
 
-    // Handle CDP relay commands forwarded from Python/Go
     if (message.type === "cdpRelayForward") {
       handleRelayForward(message);
       return;
     }
 
-    // Handle CDP relay results coming back from chrome.debugger
-    // (sent back through the port when the debugger responds)
     if (message.type === "cdpRelayResult" || message.type === "cdpRelayError") {
-      // These are received when the extension sends a result back.
-      // The response is already handled inline in handleRelayForward's callback.
       return;
     }
   });
@@ -86,9 +79,7 @@ function disconnectRelay() {
   if (relayPort) {
     try {
       relayPort.disconnect();
-    } catch (_error) {
-      // Ignore disconnect errors
-    }
+    } catch (_error) {}
   }
   relayPort = null;
   relayPortConnected = false;
@@ -102,11 +93,11 @@ function isRelayConnected() {
   return relayPortConnected && relayPort !== null;
 }
 
+// ─── Relay forwarding ─────────────────────────────────────────────────────
+
 /**
  * Handle a CDP relay forward message from the Python host.
- * Executes the CDP command via chrome.debugger and sends the result back.
- *
- * @param {Object} message - The relay forward message with tabId, method, params, forwardId
+ * @param {Object} message - With tabId, method, params, forwardId
  */
 function handleRelayForward(message) {
   const tabId = Number(message.tabId) || 0;
@@ -137,11 +128,9 @@ function handleRelayForward(message) {
 
 /**
  * Send a CDP relay result back through the native messaging port.
- * This goes back to Python, which forwards it to the Go binary.
- *
- * @param {string} forwardId - The original forward ID from the relay message.
- * @param {Object|null} result - The CDP command result.
- * @param {string} error - Error message, if any.
+ * @param {string} forwardId
+ * @param {Object|null} result
+ * @param {string} error
  */
 function sendRelayResult(forwardId, result, error) {
   if (!relayPort || !relayPortConnected) {
@@ -169,13 +158,14 @@ function sendRelayResult(forwardId, result, error) {
   }
 }
 
+// ─── CDP wrappers ────────────────────────────────────────────────────────
+
 /**
  * Attach the debugger to a tab.
  * @param {number} tabId
- * @param {string} [targetUrl] - Optional URL to match for the target.
  * @returns {Promise<{ok: boolean, error?: string}>}
  */
-async function attach(tabId, _targetUrl) {
+async function attach(tabId) {
   if (activeSessions.has(tabId)) {
     return { ok: true };
   }
@@ -227,8 +217,8 @@ async function detach(tabId) {
 /**
  * Send a CDP command via chrome.debugger.sendCommand.
  * @param {number} tabId
- * @param {string} method - CDP method name (e.g. "Network.enable")
- * @param {Object} [params] - CDP method parameters
+ * @param {string} method
+ * @param {Object} [params]
  * @returns {Promise<{ok: boolean, result?: any, error?: string}>}
  */
 function sendCommand(tabId, method, params) {
@@ -253,12 +243,12 @@ function sendCommand(tabId, method, params) {
   });
 }
 
+// ─── Message handlers ────────────────────────────────────────────────────
+
 /**
- * Handle a CDP command received from the native host (via Python → Go relay).
- * This is called from the background message router when "cdpCommand" is received.
- *
- * @param {Object} message - The message from the native host
- * @returns {Promise<Object>} Response to send back through the relay chain
+ * Handle a "cdpCommand" message from the native host.
+ * @param {Object} message
+ * @returns {Promise<Object>}
  */
 async function handleCdpCommand(message) {
   const tabId = Number(message.tabId) || 0;
@@ -269,7 +259,6 @@ async function handleCdpCommand(message) {
     return { ok: false, error: "Invalid CDP command: tabId and method are required." };
   }
 
-  // Auto-attach if not already attached
   if (!activeSessions.has(tabId)) {
     const attachResult = await attach(tabId);
     if (!attachResult.ok) {
@@ -281,7 +270,7 @@ async function handleCdpCommand(message) {
 }
 
 /**
- * Handle a "cdpAttach" message to explicitly attach to a tab.
+ * Handle a "cdpAttach" message.
  * @param {Object} message
  * @returns {Promise<Object>}
  */
@@ -290,7 +279,7 @@ async function handleCdpAttach(message) {
   if (!tabId) {
     return { ok: false, error: "Invalid tabId." };
   }
-  return attach(tabId, message.url);
+  return attach(tabId);
 }
 
 /**
@@ -307,7 +296,7 @@ async function handleCdpDetach(message) {
 }
 
 /**
- * Handle a "cdpStatus" message — check if debugger is available.
+ * Handle a "cdpStatus" message.
  * @returns {Promise<Object>}
  */
 async function handleCdpStatus() {
@@ -331,118 +320,74 @@ function getActiveSessionTabIds() {
 }
 
 /**
- * Clean up all active debugger sessions (used for testing and error recovery).
- * Detaches the debugger from each active tab before clearing session state.
+ * Clean up all active debugger sessions.
  */
 function cleanup() {
   const tabIds = Array.from(activeSessions.keys());
   for (const tabId of tabIds) {
     try {
       chrome.debugger.detach({ tabId });
-    } catch (_error) {
-      // Session may already be detached by the browser
-    }
+    } catch (_error) {}
     activeSessions.delete(tabId);
   }
   disconnectRelay();
 }
 
-// ─── Deep Network Inspection (GAP 8) ────────────────────────────────────────
+// ─── Deep Network Inspection (via injected module) ───────────────────────
+
+const deepInspection = createDeepInspection({ attach, detach, sendCommand });
+
+const {
+  enableDeepNetworkInspection,
+  disableDeepNetworkInspection,
+  isDeepInspectionActive,
+} = deepInspection;
+
+// ─── Init ────────────────────────────────────────────────────────────────
 
 /**
- * Configuration for deep network inspection features.
- *
- * When enabled, the CDP debugger captures:
- * - WebSocket frames (Network.webSocketFrameReceived)
- * - Extra request info (Network.requestWillBeSentExtraInfo) for HTTP/3
- *
- * These events are forwarded to the native host for analysis.
+ * Initialize the CDP relay module.
+ * Registers debugger event listeners and opens the relay port.
  */
-let deepNetworkInspectionEnabled = false;
+function init() {
+  if (typeof chrome !== "undefined" && chrome.debugger) {
+    if (chrome.debugger.onEvent) {
+      chrome.debugger.onEvent.addListener((source, method, params) => {
+        // Forward deep network inspection events to the native host
+        if (source && source.tabId && deepInspection.isDeepInspectionActive(source.tabId)) {
+          if (
+            method === "Network.webSocketFrameReceived" ||
+            method === "Network.webSocketFrameSent" ||
+            method === "Network.webSocketFrameError" ||
+            method === "Network.requestWillBeSentExtraInfo" ||
+            method === "Network.responseReceivedExtraInfo"
+          ) {
+            forwardNetworkEvent(method, source.tabId, params || {});
+            return;
+          }
+        }
+      });
+    }
 
-/** Set of tabs with active deep network inspection. */
-const deepInspectionTabs = new Set();
-
-/**
- * Enable deep network inspection on a given tab.
- *
- * Attaches the debugger (if not already attached) and enables
- * Network domain events: WebSocket frame capture and request
- * extra info for HTTP/3 / QUIC traffic.
- *
- * @param {number} tabId - Tab to inspect.
- * @returns {Promise<{ok: boolean, error?: string}>}
- */
-async function enableDeepNetworkInspection(tabId) {
-  if (!tabId || !Number.isInteger(tabId)) {
-    return { ok: false, error: "Invalid tabId" };
+    if (chrome.debugger.onDetach) {
+      chrome.debugger.onDetach.addListener((source) => {
+        activeSessions.delete(source.tabId);
+        deepInspection.onDebuggerDetach(source.tabId);
+      });
+    }
   }
 
-  // Attach debugger
-  const attachResult = await attach(tabId);
-  if (!attachResult.ok) {
-    return attachResult;
-  }
-  try {
-    // Enable Network domain for WebSocket frame and request extra info capture
-    await sendCommand(tabId, "Network.enable", {});
-
-    deepInspectionTabs.add(tabId);
-    deepNetworkInspectionEnabled = true;
-
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: String(error.message || error) };
-  }
+  // Open persistent relay port for Go → Python → Extension CDP relay
+  connectRelay();
 }
 
-/**
- * Disable deep network inspection on a given tab.
- *
- * Disables the Network domain and optionally detaches the debugger.
- *
- * @param {number} tabId - Tab to stop inspecting.
- * @param {boolean} [detachAfter=true] - Detach the debugger after disabling.
- * @returns {Promise<{ok: boolean}>}
- */
-async function disableDeepNetworkInspection(tabId, detachAfter = true) {
-  if (!deepInspectionTabs.has(tabId)) {
-    return { ok: true };
-  }
-
-  try {
-    await sendCommand(tabId, "Network.disable", {});
-  } catch (_error) {
-    // Ignore errors if debugger already detached
-  }
-
-  deepInspectionTabs.delete(tabId);
-  if (deepInspectionTabs.size === 0) {
-    deepNetworkInspectionEnabled = false;
-  }
-
-  if (detachAfter) {
-    await detach(tabId);
-  }
-
-  return { ok: true };
-}
-
-/**
- * Check if deep network inspection is active on a tab.
- * @param {number} tabId
- * @returns {boolean}
- */
-function isDeepInspectionActive(tabId) {
-  return deepInspectionTabs.has(tabId);
-}
+// ─── Network event forwarding ────────────────────────────────────────────
 
 /**
  * Forward a captured CDP event to the native host.
- *
- * @param {string} eventType - The CDP event type (e.g. "Network.webSocketFrameReceived").
- * @param {number} tabId - The tab where the event occurred.
- * @param {Object} params - The event parameters.
+ * @param {string} eventType
+ * @param {number} tabId
+ * @param {Object} params
  */
 function forwardNetworkEvent(eventType, tabId, params) {
   if (!relayPort || !relayPortConnected) {
@@ -457,53 +402,7 @@ function forwardNetworkEvent(eventType, tabId, params) {
       params,
       timestamp: Date.now(),
     });
-  } catch (_error) {
-    // Silently ignore if relay port is disconnected
-  }
-}
-
-/**
- * Initialize the CDP relay module.
- * Registers a chrome.debugger event listener for detach events
- * and deep network inspection events.
- * Opens the persistent relay port for Go → Python → Extension CDP relay.
- */
-function init() {
-  if (typeof chrome !== "undefined" && chrome.debugger) {
-    if (chrome.debugger.onEvent) {
-      chrome.debugger.onEvent.addListener((source, method, params) => {
-        // Forward deep network inspection events to the native host
-        if (source && source.tabId && deepInspectionTabs.has(source.tabId)) {
-          if (
-            method === "Network.webSocketFrameReceived" ||
-            method === "Network.webSocketFrameSent" ||
-            method === "Network.webSocketFrameError" ||
-            method === "Network.requestWillBeSentExtraInfo" ||
-            method === "Network.responseReceivedExtraInfo"
-          ) {
-            forwardNetworkEvent(method, source.tabId, params || {});
-            return;
-          }
-        }
-
-        void method;
-        void params;
-      });
-    }
-
-    if (chrome.debugger.onDetach) {
-      chrome.debugger.onDetach.addListener((source) => {
-        activeSessions.delete(source.tabId);
-        deepInspectionTabs.delete(source.tabId);
-        if (deepInspectionTabs.size === 0) {
-          deepNetworkInspectionEnabled = false;
-        }
-      });
-    }
-  }
-
-  // Open persistent relay port for Go → Python → Extension CDP relay
-  connectRelay();
+  } catch (_error) {}
 }
 
 export {
