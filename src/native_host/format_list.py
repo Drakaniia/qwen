@@ -2,7 +2,8 @@ import json
 import subprocess
 
 from fallback_engines import list_formats_gallery_dl, list_formats_lux, list_formats_you_get
-from spotify_resolver import is_spotify_url, resolve_spotify_formats
+from spotify_metadata import is_spotify_url
+from spotify_resolver import resolve_spotify_formats
 
 from browser_context import remove_temp_files, write_cookie_file_from_headers
 from native_paths import validate_download_url

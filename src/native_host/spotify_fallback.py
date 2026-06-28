@@ -9,14 +9,11 @@ This module resolves the Spotify URL through a multi-stage pipeline:
 """
 
 from bittorrent_downloads import ACTIVE_DOWNLOADS, _active_downloads_lock
+from spotify_metadata import fetch_spotify_track_metadata, parse_spotify_url
+from spotify_youtube import build_youtube_download_command, search_youtube
+
 from download_task import DownloadTask
 from native_protocol import HostError
-from spotify_resolver import (
-    build_youtube_download_command,
-    fetch_spotify_track_metadata,
-    parse_spotify_url,
-    search_youtube,
-)
 
 
 def run_spotify_fallback_download(

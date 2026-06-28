@@ -228,7 +228,7 @@ def run_download(
     download_subtitles = bool(message.get("downloadSubtitles", True))
 
     # ---- Spotify YouTube fallback ------------------------------------------------
-    from spotify_resolver import is_spotify_url
+    from spotify_metadata import is_spotify_url
 
     if is_spotify_url(url):
         run_spotify_fallback_download(
