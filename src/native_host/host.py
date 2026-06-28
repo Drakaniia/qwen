@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+import importlib
+import os
+import shutil
+import sys
 from urllib.request import urlopen
 
 import capture_manager as _capture_manager
@@ -10,16 +14,24 @@ import media_resolver as _media_resolver
 import process_control as _process_control
 import yt_dlp_adapter as _yt_dlp_adapter
 from artifacts import (
+    build_open_path_command,
     delete_download_artifacts,
     open_download_path,
 )
+from browser_context import clean_request_headers, write_cookie_file_from_headers
 from folder_picker import (
     choose_download_folder,
     choose_torrent_file,
 )
+from native_paths import (
+    default_download_dir,
+    sanitize_filename,
+    validate_download_url,
+)
 from native_protocol import (
     HostError,
     configure_binary_stdio,
+    encode_native_message,
     error_response,
     file_response,
     folder_response,
@@ -30,8 +42,17 @@ from native_protocol import (
     send_native_message,
     unexpected_error_response,
 )
+from progress_parser import iter_process_output_lines, parse_yt_dlp_line
+from stream_backends import build_n_m3u8dl_re_command, build_streamlink_command
 from yt_dlp_adapter import (
     has_yt_dlp,
+)
+from yt_dlp_command import (
+    MAX_ARIA2_CONNECTIONS,
+    MAX_FAST_CONNECTIONS,
+    build_formats_command,
+    build_yt_dlp_command,
+    summarize_formats,
 )
 
 DownloadTask = _download_task.DownloadTask
