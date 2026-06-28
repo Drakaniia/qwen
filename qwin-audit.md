@@ -400,26 +400,26 @@ Use this checklist to track completion. Mark `[x]` when a task is done:
 
 ```
 Phase 1: Quick Cleanup
-  [ ] Standardize naming in src/popup/ (kebab-case → snake_case)
-  [ ] Rename background-helper-ping.js → background_helper_ping.js
-  [ ] Rename src/native-host/ → src/native_host/ (consider impact)
+  [x] Standardize naming in src/popup/ (kebab-case → snake_case)
+  [x] Rename background-helper-ping.js → background_helper_ping.js
+  [x] Rename src/native-host/ → src/native_host/ (consider impact)
 
 Phase 2: File Refactoring
-  [ ] Split src/background/background.js (1519 lines)
-  [ ] Split src/native-host/download_manager.py (843 lines)
-  [ ] Split src/native-host/fallback_engines.py (818 lines)
-  [ ] Split src/popup/popup-helpers.js (755 lines)
+  [x] Split src/background/background.js (1519 lines)
+  [x] Split src/native_host/download_manager.py (843 lines)
+  [x] Split src/native_host/fallback_engines.py (818 lines)
+  [ ] Split src/popup/popup_helpers.js (755 lines)
   [ ] Split src/shared/video_filters.js (661 lines)
   [ ] Split src/background/cdm_network_intercept.js (661 lines)
   [ ] Split src/content/content.js (652 lines)
-  [ ] Split src/native-host/capture_manager.py (630 lines)
-  [ ] Split src/popup/popup-events.js (622 lines)
-  [ ] Split src/native-host/probe_runner.py (614 lines)
+  [ ] Split src/native_host/capture_manager.py (630 lines)
+  [ ] Split src/popup/popup_events.js (622 lines)
+  [ ] Split src/native_host/probe_runner.py (614 lines)
   [ ] Split src/background/download_orchestration.js (582 lines)
   [ ] Split go/cdm.go (566 lines)
   [ ] Split src/background/cdp_relay.js (527 lines)
-  [ ] Split src/native-host/download_task.py (477 lines)
-  [ ] Split src/native-host/spotify_resolver.py (453 lines)
+  [ ] Split src/native_host/download_task.py (477 lines)
+  [ ] Split src/native_host/spotify_resolver.py (453 lines)
   [ ] Split src/background/recording.js (450 lines)
   [ ] Split src/popup/download_list.js (447 lines)
   [ ] Split go/commands.go (445 lines)
@@ -431,7 +431,7 @@ Phase 3: Structural Refactoring
   [ ] Move benchmarks/ into scripts/benchmarks/
   [ ] Consider flattening .agents/skills/ structure
 
-Total: [ ] / [ ] completed
+Total: [3] / [20] completed
 ```
 
 > **⚠️ Important:** Before implementing any refactoring that splits or moves code, use `skill:test-driven-development`. Write tests for existing behavior first, then refactor. This ensures refactored code preserves all functionality and catches regressions early.
