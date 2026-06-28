@@ -4,9 +4,9 @@
 import * as PopupState from "../shared/popup_state.js";
 import * as PopupApi from "../shared/popup_api.js";
 import * as DownloadList from "./download_list.js";
-import * as PopupUI from "./popup-ui.js";
+import * as PopupUI from "./popup_ui.js";
 import * as playlistDetection from "../shared/playlist_detection.js";
-import { elements, qualityChooser, INDICATOR_STATES, INDICATOR_TOOLTIPS, INDICATOR_ARIA_LABELS, INDICATOR_DEBOUNCE_MS, AUDIO_FORMAT, RESCAN_IDLE_LABEL, RESCAN_BUSY_LABEL, ACTIVE_DOWNLOAD_STATUSES } from "./popup-elements.js";
+import { elements, qualityChooser, INDICATOR_STATES, INDICATOR_TOOLTIPS, INDICATOR_ARIA_LABELS, INDICATOR_DEBOUNCE_MS, AUDIO_FORMAT, RESCAN_IDLE_LABEL, RESCAN_BUSY_LABEL, ACTIVE_DOWNLOAD_STATUSES } from "./popup_elements.js";
 
 // ─── Mutable indicator state ────────────────────────────────────────────────
 let indicatorDebounceTimer = null;
@@ -751,5 +751,5 @@ export function renderSyncedHistory() {
 
 // ─── Active download jobs helper (re-export) ──────────────────────────────
 // Re-exported for convenience, see popup-state.js for the canonical definition
-import { activeDownloadJobs, isUnknownMessageTypeError } from "./popup-state.js";
+import { activeDownloadJobs, isUnknownMessageTypeError } from "./popup_state.js";
 export { activeDownloadJobs, isUnknownMessageTypeError };

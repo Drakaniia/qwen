@@ -4,7 +4,7 @@
 import * as PopupApi from "../shared/popup_api.js";
 import * as PopupState from "../shared/popup_state.js";
 import * as DownloadList from "./download_list.js";
-import { elements, qualityChooser, api, INDICATOR_STATES } from "./popup-elements.js";
+import { elements, qualityChooser, api, INDICATOR_STATES } from "./popup_elements.js";
 import {
   hasActiveTab,
   setMessage,
@@ -35,8 +35,8 @@ import {
   updateIndicatorFromVideos,
   setVideoLayoutMode as setVideoLayout,
   isUnknownMessageTypeError,
-} from "./popup-helpers.js";
-import { renderVideos as renderVideosFn } from "./popup-renderer.js";
+} from "./popup_helpers.js";
+import { renderVideos as renderVideosFn } from "./popup_renderer.js";
 
 // ─── Orchestrator: render ───────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@
 import * as qualityFormat from "../shared/quality_format.js";
 import * as videoFilters from "../shared/video_filters.js";
 import * as qualityDialog from "../shared/quality_dialog.js";
-import * as PopupStateHelpers from "./popup-state.js";
+import * as PopupStateHelpers from "./popup_state.js";
 
 // ─── Re-export for convenience ──────────────────────────────────────────────
 export { PopupStateHelpers };

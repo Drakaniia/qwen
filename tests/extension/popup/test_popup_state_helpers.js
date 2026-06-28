@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 
 // ─── These imports will fail — the modules don't exist yet (RED phase) ──────
-import * as PopupStateHelpers from "../../../src/popup/popup-state.js";
+import * as PopupStateHelpers from "../../../src/popup/popup_state.js";
 
 // ─── activeDownloadJobs ─────────────────────────────────────────────────────
 

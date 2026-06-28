@@ -12,8 +12,8 @@ const css = fs.readFileSync(path.join(popupDir, "popup.css"), "utf8");
 const overlayCss = fs.readFileSync(path.join(__dirname, "../../../src/shared/qwin_overlay.css"), "utf8");
 const qualityDialogJs = fs.readFileSync(path.join(__dirname, "../../../src/shared/quality_dialog.js"), "utf8");
 const downloadListJs = fs.readFileSync(path.join(popupDir, "download_list.js"), "utf8");
-const popupUiJs = fs.readFileSync(path.join(popupDir, "popup-ui.js"), "utf8");
-const popupStateJs = fs.readFileSync(path.join(popupDir, "popup-state.js"), "utf8");
+const popupUiJs = fs.readFileSync(path.join(popupDir, "popup_ui.js"), "utf8");
+const popupStateJs = fs.readFileSync(path.join(popupDir, "popup_state.js"), "utf8");
 
 function popupLabelHelpers() {
   return {

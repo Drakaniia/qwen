@@ -454,7 +454,7 @@ async function clearDownloads() {
 }
 
 // ── Imported helper-ping module ────────────────────────────────────────
-import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, startHelperPing, pingNativeHost } from "./background-helper-ping.js";
+import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, startHelperPing, pingNativeHost } from "./background_helper_ping.js";
 
 // ── Video URL patterns for webRequest listeners ────────────────────────
 
