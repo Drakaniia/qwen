@@ -1,20 +1,20 @@
 import errno
-import shutil
 import subprocess
 import threading
 import time
 from collections import deque
 from pathlib import Path
 
-from artifacts import unique_delete_targets
-from browser_context import remove_temp_files
 from download_logger import get_logger
+from download_task_control import DownloadTaskControl
+
+from browser_context import remove_temp_files
 from native_protocol import HostError, send_native_message
-from process_control import creation_flags, terminate_process_tree
+from process_control import creation_flags
 from progress_parser import iter_process_output_lines, parse_yt_dlp_line
 
 
-class DownloadTask:
+class DownloadTask(DownloadTaskControl):
     def __init__(
         self,
         message,
@@ -82,127 +82,6 @@ class DownloadTask:
             "downloadFolder": str(self.download_dir),
         }
 
-    def cleanup_canceled_artifacts(self):
-        cleanup = {
-            "artifactCleanupDeleted": [],
-            "artifactCleanupMissing": [],
-        }
-        artifact_message = self.artifact_message()
-        if not artifact_message["path"] and not artifact_message["artifactRoot"]:
-            return cleanup
-
-        try:
-            targets = unique_delete_targets(artifact_message, Path(self.download_dir).resolve())
-        except HostError as exc:
-            cleanup["artifactCleanupError"] = str(exc)
-            return cleanup
-
-        errors = []
-        for target in targets:
-            if not target.exists():
-                cleanup["artifactCleanupMissing"].append(str(target))
-                continue
-            try:
-                if target.is_dir():
-                    shutil.rmtree(target)
-                else:
-                    target.unlink()
-            except OSError as exc:
-                errors.append(f"{target}: {exc}")
-                continue
-            cleanup["artifactCleanupDeleted"].append(str(target))
-
-        if errors:
-            cleanup["artifactCleanupError"] = "; ".join(errors)
-        return cleanup
-
-    def send_canceled(self):
-        self.set_state("canceled")
-        self.logger.cancel(self.id, message="Download canceled.")
-        self.send_message(
-            {
-                "type": "canceled",
-                "status": "canceled",
-                "filepath": self.current_path or self.final_path or "",
-                "artifactRoot": self.artifact_root or "",
-                "message": "Download canceled.",
-                **self.cleanup_canceled_artifacts(),
-            }
-        )
-
-    def pause(self):
-        with self.lock:
-            if self.state == "paused":
-                self.logger.pause(self.id, message="Download is already paused.")
-                return {
-                    "type": "paused",
-                    "id": self.id,
-                    "status": "paused",
-                    "message": "Download is already paused.",
-                }
-            if self.state not in {"queued", "running", "starting", "pausing"}:
-                return {
-                    "type": "control",
-                    "id": self.id,
-                    "status": self.state,
-                    "message": "This download cannot be paused now.",
-                }
-            self.state = "pausing"
-            self.pause_requested.set()
-            process = self.process
-
-        self.logger.pause(self.id, message="Pausing download...")
-        terminate_process_tree(process)
-        return {
-            "type": "control",
-            "id": self.id,
-            "status": "pausing",
-            "message": "Pausing download...",
-        }
-
-    def resume(self):
-        with self.lock:
-            if self.state not in {"paused", "pausing"}:
-                return {
-                    "type": "control",
-                    "id": self.id,
-                    "status": self.state,
-                    "message": "This download is not paused.",
-                }
-            self.state = "running"
-            self.pause_requested.clear()
-            self.resume_requested.set()
-
-        return {
-            "type": "resumed",
-            "id": self.id,
-            "status": "running",
-            "message": "Resuming download...",
-        }
-
-    def cancel(self):
-        with self.lock:
-            if self.state in {"done", "error", "canceled"}:
-                return {
-                    "type": "control",
-                    "id": self.id,
-                    "status": self.state,
-                    "message": "This download is no longer active.",
-                }
-            self.state = "canceling"
-            self.cancel_requested.set()
-            self.pause_requested.clear()
-            self.resume_requested.set()
-            process = self.process
-
-        terminate_process_tree(process)
-        return {
-            "type": "control",
-            "id": self.id,
-            "status": "canceling",
-            "message": "Canceling download...",
-        }
-
     def run_process_once(self, command=None):
         active_command = command or self.command
         if self.active_command_meta:
@@ -261,25 +140,6 @@ class DownloadTask:
             attempts.append({"command": self.fallback_command, "label": "yt-dlp"})
         attempts.extend(self.fallback_commands)
         return attempts
-
-    def wait_for_resume_or_cancel(self):
-        self.resume_requested.clear()
-        self.set_state("paused")
-        self.send_message(
-            {
-                "type": "paused",
-                "status": "paused",
-                "filepath": self.current_path or self.final_path or "",
-                "artifactRoot": self.artifact_root or "",
-                "message": "Download paused. Resume will continue the partial file when yt-dlp can reuse it.",
-            }
-        )
-
-        while not self.cancel_requested.is_set():
-            if self.resume_requested.wait(0.2):
-                self.resume_requested.clear()
-                return True
-        return False
 
     def run(self):
         self.start_time = time.time()
