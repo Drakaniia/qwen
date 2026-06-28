@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
+sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
 
 import download_manager as dm
 from probe_runner import ProbeError, ProbeResult
