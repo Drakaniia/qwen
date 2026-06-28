@@ -6,15 +6,33 @@
       "sourceType": "autoskills-registry",
       "computedHash": "bffe3d08cfe92ebad63699f74ce29e35c19850ebfbf474c1463183cfe34d6a09"
     },
+    "audit-codebase": {
+      "source": "Drakaniia/skills",
+      "sourceType": "github",
+      "skillPath": "skills/audit-codebase/SKILL.md",
+      "computedHash": "5ea10de9b38092013fdcc81c60bbae653d075cb423f3bbb97dec35c52b1ef66f"
+    },
     "chrome-extension-development": {
       "source": "mindrally/skills",
       "sourceType": "autoskills-registry",
       "computedHash": "6c561d2efc102fa5b7447cc85285f95676ec12868e69eabafc7189b107a84b93"
     },
+    "folder-architecture": {
+      "source": "Drakaniia/skills",
+      "sourceType": "github",
+      "skillPath": "skills/folder-architecture/SKILL.md",
+      "computedHash": "2dfdcd0900b8c174b344fac287a2d319843ccceed84684ec91d682321cb9bdf9"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "autoskills-registry",
       "computedHash": "82fb11a63fb1e35ee2469516ed02d54695f783115b1540c0e783197af4240a3a"
+    },
+    "implement-folder-architecture": {
+      "source": "Drakaniia/skills",
+      "sourceType": "github",
+      "skillPath": "skills/implement-folder-architecture/SKILL.md",
+      "computedHash": "683c42857db5e9656abe8441061e49c5d8d9c8c21cb1402f4d72cc36072144a7"
     },
     "improve-codebase-architecture": {
       "source": "mattpocock/skills",
