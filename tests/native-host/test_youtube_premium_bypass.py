@@ -15,21 +15,19 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from urllib.parse import urlparse
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
+sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
 
 from browser_context import (
     clean_request_headers,
     cookie_header_from_request_headers,
     parse_cookie_header,
     write_cookie_file_from_headers,
-    append_browser_context_options,
 )
 from yt_dlp_command import (
-    build_yt_dlp_command,
     build_formats_command,
+    build_yt_dlp_command,
     is_youtube_url,
 )
 

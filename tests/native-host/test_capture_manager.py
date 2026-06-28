@@ -4,16 +4,14 @@ These tests require the Go binary to be built first.
 Run `go build -o ../go/qwin-capture.exe ../go/` before running this test.
 """
 
-import os
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 
-
 # Add the native-host source to the Python path
 HERE = Path(__file__).resolve().parent
-SRC = HERE.parent.parent / "src" / "native-host"
+SRC = HERE.parent.parent / "src" / "native_host"
 GO_DIR = HERE.parent.parent / "go"
 
 sys.path.insert(0, str(SRC))
@@ -32,7 +30,6 @@ if not GO_BINARY.exists():
         print(f"Warning: Could not build Go binary: {exc}", file=sys.stderr)
         print("Tests that spawn the Go binary will be skipped.", file=sys.stderr)
 
-from capture_helpers import read_native_message, write_native_message
 from capture_manager import CaptureManager
 
 

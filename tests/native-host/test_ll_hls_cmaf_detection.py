@@ -4,13 +4,13 @@ Tests the is_ll_hls_url(), is_cmaf_url(), and is_low_latency_stream()
 functions in stream_backends.py.
 """
 
-import unittest
-import sys
 import os
+import sys
+import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src/native-host"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src/native_host"))
 
-from stream_backends import is_ll_hls_url, is_cmaf_url, is_low_latency_stream
+from stream_backends import is_cmaf_url, is_ll_hls_url, is_low_latency_stream
 
 
 class LlHlsCmafDetectionTests(unittest.TestCase):

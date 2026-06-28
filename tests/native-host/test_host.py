@@ -7,11 +7,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
+sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
 
 import host
 
 import native_protocol
+
 
 class HostHelperTests(unittest.TestCase):
 
@@ -25,7 +26,6 @@ class HostHelperTests(unittest.TestCase):
         import process_control
         import progress_parser
         import stream_backends
-        import yt_dlp_adapter
         import yt_dlp_command
 
         self.assertIs(host.HostError, native_protocol.HostError)

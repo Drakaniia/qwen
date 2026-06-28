@@ -4,16 +4,17 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[2]
 import sys
 
-sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
+sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
 
-import native_protocol
 from gopeed_adapter import (
-    resolve_gopeed_command,
+    build_gopeed_http_command,
     build_gopeed_magnet_command,
     build_gopeed_torrent_command,
-    build_gopeed_http_command,
     parse_gopeed_line,
+    resolve_gopeed_command,
 )
+
+import native_protocol
 
 
 class GopeedCommandResolutionTests(unittest.TestCase):
@@ -261,6 +262,7 @@ class RunGopeedMagnetDownloadTests(unittest.TestCase):
     def test_gopeed_magnet_download_starts_task_with_gopeed_command(self):
         """GIVEN a magnet URL, run_gopeed_magnet_download creates a task."""
         import tempfile
+
         from download_manager import run_gopeed_magnet_download
 
         captured = {}
@@ -323,6 +325,7 @@ class RunGopeedTorrentDownloadTests(unittest.TestCase):
     def test_gopeed_torrent_download_starts_task(self):
         """GIVEN a .torrent file, run_gopeed_torrent_download creates a task."""
         import tempfile
+
         from download_manager import run_gopeed_torrent_download
 
         captured = {}
@@ -355,6 +358,7 @@ class RunGopeedTorrentDownloadTests(unittest.TestCase):
     def test_gopeed_torrent_download_requires_gopeed(self):
         """GIVEN no gopeed, run_gopeed_torrent_download raises."""
         import tempfile
+
         from download_manager import run_gopeed_torrent_download
 
         with tempfile.TemporaryDirectory() as tmp:

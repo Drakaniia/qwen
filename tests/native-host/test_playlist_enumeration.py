@@ -2,14 +2,14 @@
 
 import json
 import subprocess
-import unittest
-from unittest.mock import MagicMock, patch, call
 
 # Ensure the native-host module is importable
 import sys
+import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src" / "native-host"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src" / "native_host"))
 
 
 class TestPlaylistEnumeration(unittest.TestCase):
@@ -228,7 +228,7 @@ class TestPlaylistEnumeration(unittest.TestCase):
         mock_subprocess_run,
     ):
         """Test that a yt-dlp error propagates as a HostError."""
-        from format_list import run_playlist_enumeration, HostError
+        from format_list import HostError, run_playlist_enumeration
 
         mock_resolve_yt_dlp.return_value = ["yt-dlp"]
         mock_resolve_ffmpeg.return_value = None

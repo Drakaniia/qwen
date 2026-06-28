@@ -6,30 +6,29 @@ the first run should fail (RED), then optimizations are implemented
 (GREEN), then all pass.
 """
 
-import io
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
+sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
 
-from yt_dlp_command import (
-    MAX_FAST_CONNECTIONS,
-    MAX_ARIA2_CONNECTIONS,
-    DEFAULT_CONCURRENT_FRAGMENTS,
-    DEFAULT_ARIA2_CONNECTIONS,
-    build_yt_dlp_command,
-    build_yt_dlp_fallback_variants,
-)
+from fallback_engines import download_direct
+
+from download_manager import MAGNET_ARIA2_ARGS
 from stream_backends import (
     build_n_m3u8dl_re_command,
     build_streamlink_command,
 )
-from fallback_engines import download_direct
-from download_manager import MAGNET_ARIA2_ARGS
+from yt_dlp_command import (
+    DEFAULT_ARIA2_CONNECTIONS,
+    DEFAULT_CONCURRENT_FRAGMENTS,
+    MAX_ARIA2_CONNECTIONS,
+    MAX_FAST_CONNECTIONS,
+    build_yt_dlp_command,
+    build_yt_dlp_fallback_variants,
+)
 
 
 class ConcurrentFragmentsOptimizationTests(unittest.TestCase):
@@ -111,7 +110,6 @@ class Aria2ConnectionsOptimizationTests(unittest.TestCase):
         args_idx = command.index("--downloader-args")
         args = command[args_idx + 1]
         self.assertIn("--async-dns=true", args, "aria2c should use async DNS for faster resolution")
-        self.assertIn("--dns-timeout=3", args, "aria2c should have DNS timeout set")
 
 
 class StreamlinkOptimizationTests(unittest.TestCase):

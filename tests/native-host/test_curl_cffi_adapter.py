@@ -1,6 +1,5 @@
 """Tests for curl_cffi_adapter module."""
 
-import json
 import sys
 import tempfile
 import unittest
@@ -9,11 +8,10 @@ from threading import Event
 from unittest.mock import MagicMock, patch
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
-
-from native_protocol import HostError
+sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
 
 import curl_cffi_adapter as cca
+from native_protocol import HostError
 
 
 class TestCurlCffiAvailable(unittest.TestCase):

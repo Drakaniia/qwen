@@ -11,18 +11,18 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT_DIR / "src" / "native-host"))
+sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
 
 # These imports will fail until the functions are implemented — RED phase
 from fallback_engines import (
-    has_you_get,
-    has_lux,
-    resolve_you_get_command,
-    resolve_lux_command,
-    download_with_you_get,
     download_with_lux,
-    list_formats_you_get,
+    download_with_you_get,
+    has_lux,
+    has_you_get,
     list_formats_lux,
+    list_formats_you_get,
+    resolve_lux_command,
+    resolve_you_get_command,
 )
 
 # Patch targets for each sub-module (used in mock patches below)

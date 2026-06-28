@@ -15,11 +15,10 @@ import unittest
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-SRC_DIR = ROOT_DIR / "src" / "native-host"
+SRC_DIR = ROOT_DIR / "src" / "native_host"
 sys.path.insert(0, str(SRC_DIR))
 
 import curl_cffi_adapter as cca
-
 
 # ── Test endpoints ─────────────────────────────────────────────────────────
 # httpbin.org is unreachable in this environment; we use tls.browserleaks.com
@@ -202,6 +201,7 @@ class TestDownloadImpersonation(unittest.TestCase):
     def test_download_streaming_large(self):
         """Should handle larger downloads (> 100 KB) with streaming."""
         import warnings
+
         from curl_cffi import requests as curl_requests
 
         resp = curl_requests.get(
@@ -309,6 +309,7 @@ class TestDownloadFallbackChain(unittest.TestCase):
         """When downloading a direct media URL (not HLS/DASH, not YouTube),
         run_download() should include curl-cffi in the fallback command labels."""
         import importlib
+
         import download_manager
 
         importlib.reload(download_manager)
