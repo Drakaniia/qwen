@@ -5,8 +5,20 @@ import * as PopupState from "../shared/popup_state.js";
 import * as PopupApi from "../shared/popup_api.js";
 import * as DownloadList from "./download_list.js";
 import * as PopupUI from "./popup_ui.js";
-import * as playlistDetection from "../shared/playlist_detection.js";
-import { elements, qualityChooser, INDICATOR_STATES, INDICATOR_TOOLTIPS, INDICATOR_ARIA_LABELS, INDICATOR_DEBOUNCE_MS, AUDIO_FORMAT, RESCAN_IDLE_LABEL, RESCAN_BUSY_LABEL, ACTIVE_DOWNLOAD_STATUSES } from "./popup_elements.js";
+import { elements, qualityChooser, INDICATOR_STATES, INDICATOR_TOOLTIPS, INDICATOR_ARIA_LABELS, RESCAN_IDLE_LABEL, RESCAN_BUSY_LABEL, AUDIO_FORMAT } from "./popup_elements.js";
+
+// ─── Re-exports from sub-modules (backward compatibility) ────────────────────
+
+export {
+  updateBatchUI,
+  updatePlaylistPrompt,
+  downloadAllPlaylist,
+  initBatchHelpers,
+} from "./popup_batch_helpers.js";
+
+export {
+  renderSyncedHistory,
+} from "./popup_sync_history.js";
 
 // ─── Mutable indicator state ────────────────────────────────────────────────
 let indicatorDebounceTimer = null;
@@ -35,7 +47,7 @@ export function setDownloadIndicator(status, { immediate = false } = {}) {
   if (immediate || nextStatus === INDICATOR_STATES.CHECKING) {
     apply();
   } else {
-    indicatorDebounceTimer = window.setTimeout(apply, INDICATOR_DEBOUNCE_MS);
+    indicatorDebounceTimer = window.setTimeout(apply, 300);
   }
 }
 
@@ -417,7 +429,12 @@ export function renderDepBanner(dependencies) {
   }
 }
 
+// ─── Init ───────────────────────────────────────────────────────────────────
+
 export async function init() {
+  // Initialize batch helpers with core UI function references
+  initBatchHelpers({ setMessage, setViewMode, refresh });
+
   await updateActiveTabContext();
 
   if (!hasActiveTab()) {
@@ -507,249 +524,6 @@ export async function clearActiveTabVideos() {
   }
 }
 
-// ─── Batch/playlist UI ─────────────────────────────────────────────────────
-
-export function updateBatchUI() {
-  if (!elements.batchBar) {
-    return;
-  }
-
-  const batchInfo = PopupState.get("batchInfo");
-  if (!batchInfo || batchInfo.status === "idle" || batchInfo.status === "completed" || batchInfo.status === "canceled") {
-    elements.batchBar.hidden = true;
-    return;
-  }
-
-  elements.batchBar.hidden = false;
-
-  if (elements.batchLabel) {
-    elements.batchLabel.textContent = batchInfo.label || "";
-  }
-
-  if (elements.batchProgressFill) {
-    const percent = batchInfo.percent || 0;
-    elements.batchProgressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
-  }
-
-  if (elements.batchStatus) {
-    const completed = batchInfo.completedItems || 0;
-    const total = batchInfo.totalItems || 0;
-    const failed = (batchInfo.failedItems && batchInfo.failedItems.length) || 0;
-
-    if (batchInfo.status === "paused") {
-      elements.batchStatus.textContent = `Paused — ${completed}/${total} complete`;
-    } else if (failed > 0) {
-      elements.batchStatus.textContent = `Downloading — ${completed}/${total} (${failed} failed)`;
-    } else {
-      elements.batchStatus.textContent = `Downloading — ${completed}/${total}`;
-    }
-  }
-
-  if (elements.batchCancelBtn) {
-    elements.batchCancelBtn.hidden = batchInfo.status === "completed" || batchInfo.status === "canceled";
-  }
-}
-
-export function updatePlaylistPrompt() {
-  if (!elements.playlistPrompt) {
-    return;
-  }
-
-  const activeTabUrl = PopupState.get("activeTabUrl");
-  if (!activeTabUrl) {
-    elements.playlistPrompt.hidden = true;
-    return;
-  }
-
-  if (!playlistDetection.isPlaylistPage(activeTabUrl)) {
-    elements.playlistPrompt.hidden = true;
-    return;
-  }
-
-  const batchInfo = PopupState.get("batchInfo");
-  if (batchInfo && (batchInfo.status === "running" || batchInfo.status === "paused")) {
-    elements.playlistPrompt.hidden = true;
-    return;
-  }
-
-  const playlistTitle = playlistDetection.getPlaylistTitle(activeTabUrl);
-  const source = playlistDetection.getPlaylistSource(activeTabUrl);
-
-  elements.playlistPrompt.hidden = false;
-  if (elements.playlistTitle) {
-    elements.playlistTitle.textContent = playlistTitle || `${source.charAt(0).toUpperCase() + source.slice(1)} Playlist Detected`;
-  }
-}
-
-export async function downloadAllPlaylist() {
-  const activeTabUrl = PopupState.get("activeTabUrl");
-  const tabId = PopupState.get("activeTabId");
-
-  if (!activeTabUrl || !tabId) {
-    setMessage("No active tab found.", true);
-    return;
-  }
-
-  elements.downloadAllBtn.disabled = true;
-  elements.downloadAllBtn.textContent = "Enumerating...";
-
-  const enumerateResponse = await PopupApi.enumeratePlaylist(activeTabUrl, tabId);
-
-  if (!enumerateResponse || !enumerateResponse.ok) {
-    setMessage(
-      enumerateResponse && enumerateResponse.error
-        ? `Playlist enumeration failed: ${enumerateResponse.error}`
-        : "Could not enumerate playlist items.",
-      true,
-    );
-    elements.downloadAllBtn.disabled = false;
-    elements.downloadAllBtn.textContent = "Download All";
-    return;
-  }
-
-  const items = enumerateResponse.items || [];
-  if (items.length === 0) {
-    setMessage("No items found in this playlist.", true);
-    elements.downloadAllBtn.disabled = false;
-    elements.downloadAllBtn.textContent = "Download All";
-    return;
-  }
-
-  const videos = items.map((item) => ({
-    id: item.id || `playlist_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-    url: item.url,
-    title: item.title || "Untitled",
-    format: "",
-    source: "playlist",
-    pageUrl: activeTabUrl,
-    downloadable: true,
-  }));
-
-  const batchResponse = await PopupApi.startBatchDownload(tabId, videos);
-
-  if (!batchResponse || !batchResponse.ok) {
-    setMessage(
-      batchResponse && batchResponse.error ? batchResponse.error : "Could not start batch download.",
-      true,
-    );
-    elements.downloadAllBtn.disabled = false;
-    elements.downloadAllBtn.textContent = "Download All";
-    return;
-  }
-
-  elements.playlistPrompt.hidden = true;
-  setViewMode("downloads");
-  await refresh();
-}
-
-// ─── Synced History ───────────────────────────────────────────────────────
-
-export function renderSyncedHistory() {
-  const state = PopupState.getState();
-  const isDownloadView = state.viewMode === "downloads";
-
-  if (!isDownloadView) {
-    return;
-  }
-
-  const syncedHistory = state.syncedHistory || [];
-  const syncInfo = state.syncInfo || {};
-
-  const existingSection = document.getElementById("syncedHistorySection");
-  if (existingSection) {
-    existingSection.remove();
-  }
-
-  if (!syncedHistory.length) {
-    return;
-  }
-
-  const section = document.createElement("div");
-  section.id = "syncedHistorySection";
-  section.className = "synced-section";
-
-  const header = document.createElement("div");
-  header.className = "synced-header";
-
-  const title = document.createElement("span");
-  title.className = "synced-title";
-  title.textContent = "Synced History";
-  header.append(title);
-
-  if (syncInfo.totalCount > 0) {
-    const count = document.createElement("span");
-    count.className = "synced-count";
-    count.textContent = syncInfo.syncEnabled
-      ? String(syncInfo.totalCount) + " entries"
-      : "Syncing paused";
-    header.append(count);
-  }
-
-  section.append(header);
-
-  const maxShow = Math.min(5, syncedHistory.length);
-  for (let i = 0; i < maxShow; i++) {
-    const entry = syncedHistory[i];
-    const item = document.createElement("div");
-    item.className = "synced-item";
-
-    const entryTitle = document.createElement("div");
-    entryTitle.className = "synced-item-title";
-    entryTitle.textContent = entry.title || "Unknown";
-    entryTitle.title = entry.url || "";
-    item.append(entryTitle);
-
-    const meta = document.createElement("div");
-    meta.className = "synced-item-meta";
-
-    if (entry.format) {
-      const formatBadge = document.createElement("span");
-      formatBadge.className = "badge";
-      formatBadge.textContent = entry.format;
-      meta.append(formatBadge);
-    }
-
-    const statusBadge = document.createElement("span");
-    statusBadge.className = "badge " + (entry.status === "error" ? "warning" : "");
-    statusBadge.textContent = (entry.status || "").toUpperCase();
-    meta.append(statusBadge);
-
-    if (entry.sourceHost) {
-      const source = document.createElement("span");
-      source.className = "synced-source";
-      source.textContent = entry.sourceHost;
-      meta.append(source);
-    }
-
-    if (entry.completedAt) {
-      const time = document.createElement("span");
-      time.className = "synced-time";
-      time.textContent = new Date(entry.completedAt).toLocaleDateString();
-      meta.append(time);
-    }
-
-    if (entry.totalSize) {
-      const size = document.createElement("span");
-      size.className = "synced-size";
-      size.textContent = entry.totalSize;
-      meta.append(size);
-    }
-
-    item.append(meta);
-    section.append(item);
-  }
-
-  if (syncedHistory.length > maxShow) {
-    const more = document.createElement("div");
-    more.className = "synced-more";
-    more.textContent = "+ " + String(syncedHistory.length - maxShow) + " more";
-    section.append(more);
-  }
-
-  elements.downloadList.parentNode.insertBefore(section, elements.downloadList.nextSibling);
-}
-
 // ─── Active download jobs helper (re-export) ──────────────────────────────
-// Re-exported for convenience, see popup-state.js for the canonical definition
 import { activeDownloadJobs, isUnknownMessageTypeError } from "./popup_state.js";
 export { activeDownloadJobs, isUnknownMessageTypeError };
