@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "scripts\\install.bat",
-    "install:native": "scripts\\install.bat",
+    "setup": "\"C:\\Program Files\\Git\\bin\\bash.exe\" scripts/install.sh",
+    "install:native": "\"C:\\Program Files\\Git\\bin\\bash.exe\" scripts/install.sh",
     "install:aria2": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\install-aria2.ps1",
     "build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-extension.ps1 -Target all",
     "build:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-extension.ps1 -Target all",
