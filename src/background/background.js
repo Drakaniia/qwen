@@ -1,18 +1,14 @@
 "use strict";
 
 import { browserApi } from "../shared/browser_api.js";
-import * as mediaCandidates from "../shared/media_candidates.js";
 import * as videoFilters from "../shared/video_filters.js";
-import * as downloadState from "./download_state.js";
 import * as tabState from "./tab_state.js";
 import * as nativeRequestsMod from "./native_requests.js";
-import * as downloadFallbacks from "./download_fallbacks.js";
 import * as cdpRelay from "./cdp_relay.js";
 import * as cdpExtraction from "./cdp_extraction.js";
 import * as cdmNetworkIntercept from "./cdm_network_intercept.js";
 import * as segmentCapture from "./segment_capture.js";
 import * as batchOrchestration from "./batch_orchestration.js";
-import * as playlistDetection from "../shared/playlist_detection.js";
 import * as downloadSync from "../shared/download_sync.js";
 import * as downloadQueue from "./download_queue.js";
 import { create as createMessageRouter } from "./message_router.js";
@@ -61,13 +57,11 @@ const {
   updateDownload,
   normalizeDownloadProgress,
   downloadProgressMessage,
-  cleanProgressText,
   resetDownloadProgressDetails,
   progressDetailPatchFromMessage,
   artifactPatchFromMessage,
   cleanupPatchFromMessage,
   clearedArtifactPatch,
-  hasDownloadArtifacts,
   cleanupDownloadArtifacts,
   isHardAccessError,
   isRetryableSourceError,
@@ -75,23 +69,13 @@ const {
   userFriendlyDownloadError,
   markVideoUrlUnavailable,
   variantsForVideo,
-  preferredNativeVideo,
-  findGroupedVideoForAnyVariant,
-  findGroupedVideoForVariant,
   findVariant,
-  downloadableVariants,
-  isExtractorPageVideo,
   pageFallbackVideoForSource,
-  resolveMediaCandidatesForSource,
   fallbackVideoForDownload,
   buildDownloadFallbackDeps,
 } = downloadHelpers;
 
-const {
-  detectedVariantOption,
-  normalizeNativeFormatOption,
-  getNativeFormatsForVideo,
-} = formatHelpers;
+// formatHelpers destructured directly at usage sites
 
 // ── Raw API object for native_requests.js ────────────────────────────────
 
@@ -370,7 +354,7 @@ async function clearDownloads() {
 
 // ── Imported helper-ping module ────────────────────────────────────────
 
-import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, startHelperPing, pingNativeHost } from "./background_helper_ping.js";
+import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, pingNativeHost } from "./background_helper_ping.js";
 
 // ── CDP relay init ───────────────────────────────────────────────────────
 

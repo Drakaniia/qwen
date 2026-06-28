@@ -19,12 +19,11 @@
 
 const DEFAULT_MAX_CONCURRENT = 3;
 const DEFAULT_AUTO_DOWNLOAD = false;
-const ACTIVE_STATUSES = new Set(["queued", "connecting", "running", "pausing", "canceling"]);
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
 /** @type {Map<string, Object>} */
-let queue = new Map();
+const queue = new Map();
 
 /** @type {number} */
 let maxConcurrent = DEFAULT_MAX_CONCURRENT;

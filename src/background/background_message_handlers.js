@@ -35,7 +35,6 @@ export function registerMessageHandlers(messageRouter, ctx) {
     chooseDownloadFolder,
     removeDownload,
     clearDownloads,
-    downloadOrchestrationDeps,
 
     // Imported modules
     downloadQueue,
@@ -51,7 +50,6 @@ export function registerMessageHandlers(messageRouter, ctx) {
     videoUtils,
     downloadHelpers,
     formatHelpers,
-    backgroundHelperPing,
 
     // Background helper ping exports
     cachedHelperStatus,
@@ -61,14 +59,11 @@ export function registerMessageHandlers(messageRouter, ctx) {
 
     // Shared constants
     HOST_NAME,
-    videoFilters,
-    normalizeUrl,
-    nativeRequestHeadersForVideo,
   } = ctx;
 
-  const { detectFormat, isPlaylistVideo, isDownloadableUrl } = videoUtils;
-  const { updateDownload, variantsForVideo, findGroupedVideoForVariant, findVariant } = downloadHelpers;
-  const { detectedVariantOption, normalizeNativeFormatOption, getNativeFormatsForVideo } = formatHelpers;
+  const { detectFormat } = videoUtils;
+  const { variantsForVideo, findGroupedVideoForVariant } = downloadHelpers;
+  const { getNativeFormatsForVideo } = formatHelpers;
 
   // ── Folder picker handler (used by multiple aliases) ──────────────────
 
@@ -377,7 +372,7 @@ export function registerMessageHandlers(messageRouter, ctx) {
         message: "Recording... (native capture not yet available, placeholder mode)",
       });
       return { ok: true, jobId };
-    } catch (error) {
+    } catch (_error) {
       tabState.updateDownload(jobId, {
         status: "running",
         message: "Recording... (native capture not yet available, placeholder mode)",

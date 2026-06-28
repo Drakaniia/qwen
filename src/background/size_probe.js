@@ -86,7 +86,7 @@ async function probeVideoSize(video) {
   }
 }
 
-async function updateVideoSize(tabId, videoId, sizeBytes, notify = false) {
+async function updateVideoSize(tabId, videoId, sizeBytes, _notify = false) {
   const size = Number(sizeBytes || 0);
   if (!Number.isFinite(size) || size <= 0) {
     return false;

@@ -1,7 +1,6 @@
 "use strict";
 
 import * as tabState from "./tab_state.js";
-import * as segmentCapture from "./segment_capture.js";
 import * as downloadHelpers from "./download_helpers.js";
 import * as downloadState from "./download_state.js";
 

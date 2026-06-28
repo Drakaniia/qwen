@@ -3,7 +3,6 @@
 import * as tabState from "./tab_state.js";
 import * as downloadFallbacks from "./download_fallbacks.js";
 import * as downloadState from "./download_state.js";
-import * as videoFilters from "../shared/video_filters.js";
 import * as videoUtils from "./video_utils.js";
 import * as headerUtils from "./header_utils.js";
 
