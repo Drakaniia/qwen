@@ -18,6 +18,15 @@
  * CDM-proxy pipeline (or the Go binary when available).
  */
 
+import { attach, detach, sendCommand } from "./cdm_cdp_debugger.js";
+import {
+  checkRateLimit,
+  resetRateLimit,
+  EXCHANGE_MAX_AGE_MS,
+  pruneStaleExchanges,
+  wipeSensitiveData,
+} from "./cdm_memory_safety.js";
+
 // ─── Active sessions ───────────────────────────────────────────────────────
 
 /** @type {Map<number, {tabId: number, attached: boolean}>} */
@@ -93,76 +102,6 @@ function isWidevineUrl(url, method, headers) {
   // Without Content-Type headers, still match on URL + POST
   // (Some DRM providers don't set the expected Content-Type)
   return true;
-}
-
-// ─── CDP Integration ───────────────────────────────────────────────────────
-
-/**
- * Attach the debugger to a tab.
- * @param {number} tabId
- * @returns {Promise<{ok: boolean, error?: string}>}
- */
-function attach(tabId) {
-  return new Promise((resolve) => {
-    try {
-      chrome.debugger.attach({ tabId }, "1.3", () => {
-        const lastError = chrome.runtime.lastError;
-        if (lastError) {
-          resolve({ ok: false, error: lastError.message || "Failed to attach debugger" });
-          return;
-        }
-        resolve({ ok: true });
-      });
-    } catch (error) {
-      resolve({ ok: false, error: String(error.message || error) });
-    }
-  });
-}
-
-/**
- * Detach the debugger from a tab.
- * @param {number} tabId
- * @returns {Promise<{ok: boolean, error?: string}>}
- */
-function detach(tabId) {
-  return new Promise((resolve) => {
-    try {
-      chrome.debugger.detach({ tabId }, () => {
-        const lastError = chrome.runtime.lastError;
-        if (lastError) {
-          resolve({ ok: false, error: lastError.message || "Failed to detach debugger" });
-          return;
-        }
-        resolve({ ok: true });
-      });
-    } catch (error) {
-      resolve({ ok: false, error: String(error.message || error) });
-    }
-  });
-}
-
-/**
- * Send a CDP command via chrome.debugger.sendCommand.
- * @param {number} tabId
- * @param {string} method - CDP method name
- * @param {Object} [params] - CDP method parameters
- * @returns {Promise<{ok: boolean, result?: any, error?: string}>}
- */
-function sendCommand(tabId, method, params) {
-  return new Promise((resolve) => {
-    try {
-      chrome.debugger.sendCommand({ tabId }, method, params || {}, (result) => {
-        const lastError = chrome.runtime.lastError;
-        if (lastError) {
-          resolve({ ok: false, error: lastError.message || "CDP command failed" });
-          return;
-        }
-        resolve({ ok: true, result });
-      });
-    } catch (error) {
-      resolve({ ok: false, error: String(error.message || error) });
-    }
-  });
 }
 
 // ─── Event handlers ────────────────────────────────────────────────────────
@@ -301,112 +240,6 @@ function registerDetachHandler() {
 /** @type {boolean} */
 let _detachHandlerRegistered = false;
 
-// ─── Rate Limiting ──────────────────────────────────────────────────────────
-
-/**
- * Rate limiter for getCapturedExchanges() to prevent exfiltration.
- * Limits to RATE_LIMIT_MAX_CALLS calls per RATE_LIMIT_WINDOW_MS window.
- */
-const RATE_LIMIT_WINDOW_MS = 30000; // 30 seconds
-const RATE_LIMIT_MAX_CALLS = 5; // max 5 calls per window
-
-// ─── Memory Protection for Captured License Data ────────────────────────────
-
-/**
- * Maximum age (ms) for a completed exchange before it is auto-pruned.
- * Exchanges older than this are automatically removed from memory to limit
- * the window of exposure for DRM key material.
- */
-const EXCHANGE_MAX_AGE_MS = 300000; // 5 minutes
-
-/**
- * Prune completed exchanges that have exceeded the maximum age.
- * Also removes any timed-out pending tracked requests.
- */
-function _pruneStaleExchanges() {
-  const now = Date.now();
-
-  // Prune completed exchanges
-  for (let i = completedExchanges.length - 1; i >= 0; i--) {
-    if (now - completedExchanges[i].completedAt > EXCHANGE_MAX_AGE_MS) {
-      // Overwrite sensitive data before removing reference
-      completedExchanges[i].responseBody = "";
-      completedExchanges[i].postData = "";
-      completedExchanges.splice(i, 1);
-    }
-  }
-
-  // Prune stale pending tracked requests (older than 2x the max age)
-  for (const [requestId, tracked] of trackedRequests) {
-    if (tracked.status === "pending" && now - tracked.capturedAt > EXCHANGE_MAX_AGE_MS * 2) {
-      trackedRequests.delete(requestId);
-    }
-  }
-}
-
-/**
- * Schedule periodic pruning of stale exchanges.
- * Runs every EXCHANGE_MAX_AGE_MS / 2 to keep memory footprint small.
- */
-let _pruneTimer = null;
-
-function _startAutoPrune() {
-  if (_pruneTimer) {
-    return;
-  }
-  _pruneTimer = setInterval(_pruneStaleExchanges, EXCHANGE_MAX_AGE_MS / 2);
-}
-
-function _stopAutoPrune() {
-  if (_pruneTimer) {
-    clearInterval(_pruneTimer);
-    _pruneTimer = null;
-  }
-}
-
-/**
- * Overwrite sensitive fields (responseBody, postData) on all stored exchanges
- * with empty strings before removing references. This reduces the window during
- * which key material exists in memory.
- */
-function _wipeSensitiveData() {
-  for (const exchange of completedExchanges) {
-    exchange.responseBody = "";
-    exchange.postData = "";
-  }
-  for (const tracked of trackedRequests.values()) {
-    tracked.responseBody = "";
-    tracked.postData = "";
-  }
-}
-
-/** @type {number[]} */
-let _callTimestamps = [];
-
-/**
- * Check if the current call is within the rate limit.
- * @returns {boolean} True if the call is allowed
- */
-function _checkRateLimit() {
-  const now = Date.now();
-  // Purge expired timestamps outside the window
-  _callTimestamps = _callTimestamps.filter(function (t) {
-    return now - t < RATE_LIMIT_WINDOW_MS;
-  });
-  if (_callTimestamps.length >= RATE_LIMIT_MAX_CALLS) {
-    return false;
-  }
-  _callTimestamps.push(now);
-  return true;
-}
-
-/**
- * Reset the rate limiter (for testing or session end).
- */
-function _resetRateLimit() {
-  _callTimestamps = [];
-}
-
 /**
  * Unregister CDP event listeners for the tab.
  *
@@ -422,6 +255,27 @@ function unregisterEventListeners(tabId) {
       // Some Chrome versions don't support removeListener on debugger events
     }
     delete session.eventHandler;
+  }
+}
+
+// ─── Schedule pruning ──────────────────────────────────────────────────────
+
+/** @type {number|null} */
+let _pruneTimer = null;
+
+function startAutoPrune() {
+  if (_pruneTimer) {
+    return;
+  }
+  _pruneTimer = setInterval(() => {
+    pruneStaleExchanges(trackedRequests, completedExchanges);
+  }, EXCHANGE_MAX_AGE_MS / 2);
+}
+
+function stopAutoPrune() {
+  if (_pruneTimer) {
+    clearInterval(_pruneTimer);
+    _pruneTimer = null;
   }
 }
 
@@ -471,7 +325,7 @@ async function initIntercept(tabId) {
   registerDetachHandler();
 
   // Start periodic pruning of stale license data
-  _startAutoPrune();
+  startAutoPrune();
 
   return { ok: true };
 }
@@ -519,9 +373,9 @@ function stopAll() {
     }
     activeSessions.delete(tabId);
   }
-  _wipeSensitiveData();
+  wipeSensitiveData(completedExchanges, trackedRequests);
   trackedRequests.clear();
-  _stopAutoPrune();
+  stopAutoPrune();
 }
 
 /**
@@ -538,7 +392,7 @@ function stopAll() {
  */
 function getCapturedExchanges() {
   // Rate limit access to prevent bulk exfiltration by compromised contexts
-  if (!_checkRateLimit()) {
+  if (!checkRateLimit()) {
     return [];
   }
 
@@ -560,10 +414,10 @@ function getCapturedExchanges() {
 function clearCapturedExchanges() {
   // Wipe sensitive data before removing references to minimize
   // the window during which DRM key material exists in memory.
-  _wipeSensitiveData();
+  wipeSensitiveData(completedExchanges, trackedRequests);
   completedExchanges.length = 0;
   trackedRequests.clear();
-  _resetRateLimit();
+  resetRateLimit();
 }
 
 /**
@@ -580,74 +434,6 @@ function getStatus() {
   };
 }
 
-// ─── Key Extraction Pipeline Integration ────────────────────────────────────
-
-/**
- * Send a captured license exchange through the Go binary's key extraction pipeline.
- *
- * This should be called after a license exchange is completed (response received).
- * It sends the request through: extension → native host → Go binary for key extraction.
- *
- * @param {Object} exchange - A completed exchange from getCapturedExchanges().
- * @param {Function} nativeRequestFn - Function to send native messaging requests.
- * @returns {Promise<{ok: boolean, keys?: Array, l1Only?: boolean, error?: string}>}
- */
-async function extractKeysFromExchange(exchange, nativeRequestFn) {
-  if (!exchange || !exchange.responseBody) {
-    return { ok: false, error: "Completed license exchange with responseBody required." };
-  }
-
-  const sessionId = `${exchange.tabId || 0}_${exchange.requestId || Date.now()}`;
-
-  try {
-    const response = await nativeRequestFn(
-      {
-        type: "extractKeys",
-        id: `extract_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-        sessionId,
-        responseB64: exchange.responseBody,
-        challengeB64: exchange.postData || "",
-        initDataB64: "",
-      },
-      60000,
-    );
-
-    return {
-      ok: response?.ok !== false,
-      sessionId: response?.sessionId || sessionId,
-      keys: response?.keys || [],
-      l1Only: Boolean(response?.l1Only),
-      error: response?.error || "",
-    };
-  } catch (error) {
-    return { ok: false, error: `Key extraction failed: ${error.message || error}` };
-  }
-}
-
-/**
- * Extract keys from ALL completed exchanges.
- *
- * @param {Function} nativeRequestFn - Function to send native messaging requests.
- * @returns {Promise<Array<{exchange: Object, result: Object}>>}
- */
-async function extractKeysFromAllExchanges(nativeRequestFn) {
-  const exchanges = getCapturedExchanges();
-  const completed = exchanges.filter((ex) => ex.status === "completed" && ex.responseBody);
-
-  const results = [];
-  for (const exchange of completed) {
-    const result = await extractKeysFromExchange(exchange, nativeRequestFn);
-    results.push({ exchange, result });
-  }
-
-  // Auto-clear after extraction to minimize the window during which
-  // DRM key material exists in memory. Once keys are extracted, the
-  // raw license responses are no longer needed.
-  clearCapturedExchanges();
-
-  return results;
-}
-
 export {
   isWidevineUrl,
   initIntercept,
@@ -656,6 +442,4 @@ export {
   getCapturedExchanges,
   clearCapturedExchanges,
   getStatus,
-  extractKeysFromExchange,
-  extractKeysFromAllExchanges,
 };
