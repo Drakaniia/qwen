@@ -31,7 +31,7 @@ python -m unittest tests.native-host.test_host
 - Use 2-space indentation in JavaScript and CSS.
 - Use 4-space indentation in Python.
 - Prefer plain JS (no build step, no transpiler, no bundler). The extension loads raw `.js` files.
-- Shared JS contracts between the extension and content scripts live in `src/shared/`. The Python native host mirrors some of these in `src/native-host/` — keep both sides in sync.
+- Shared JS contracts between the extension and content scripts live in `src/shared/`. The Python native host mirrors some of these in `src/native_host/` — keep both sides in sync.
 
 ## Lint and Format
 

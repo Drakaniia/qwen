@@ -48,29 +48,29 @@
 
 ### Native Host (Python)
 
-- `src/native-host/host.py` — Python native messaging host entry point.
-- `src/native-host/host_dispatch.py` — Native-host message dispatch and main-loop module with CDP relay forwarding.
-- `src/native-host/capture_manager.py` — Manages the `qwin-capture` Go subprocess lifecycle: spawn, stop, send commands, background reader thread, CDP relay forwarding, CDM auto-init. Provides Python API for `cdm_init`, `extract_keys`, `decrypt_segments`, `assemble_segments`.
-- `src/native-host/media_candidates.py` — Python mirror of the JS media URL classification patterns.
-- `src/native-host/download_manager.py` — Download job management and progress reporting.
-- `src/native-host/download_task.py` — Individual download task runner (yt-dlp, aria2c, streamlink wrappers).
-- `src/native-host/download_logger.py` — Structured JSONL download logger.
-- `src/native-host/yt_dlp_adapter.py` — yt-dlp command construction and output parsing.
-- `src/native-host/yt_dlp_command.py` — yt-dlp subprocess management.
-- `src/native-host/yt_dlp_dependencies.py` — yt-dlp dependency detection.
-- `src/native-host/stream_backends.py` — Stream fallback backends (N_m3u8DL-RE, Streamlink).
-- `src/native-host/format_list.py` — Format list parsing from yt-dlp output.
-- `src/native-host/media_resolver.py` — Media URL resolution.
-- `src/native-host/fallback_engines.py` — Fallback stream resolution engines.
-- `src/native-host/browser_context.py` — Browser context header reconstruction.
-- `src/native-host/folder_picker.py` — Windows folder picker integration.
-- `src/native-host/process_control.py` — Subprocess lifecycle management.
-- `src/native-host/progress_parser.py` — yt-dlp progress output parser.
-- `src/native-host/native_paths.py` — Native file path resolution.
-- `src/native-host/native_protocol.py` — Native messaging framing protocol.
-- `src/native-host/artifacts.py` — Download artifact cleanup.
-- `src/native-host/spotify_resolver.py` — Spotify URL resolution for music downloads.
-- `src/native-host/qwin_video_host.bat` — Windows batch launcher for the native host.
+- `src/native_host/host.py` — Python native messaging host entry point.
+- `src/native_host/host_dispatch.py` — Native-host message dispatch and main-loop module with CDP relay forwarding.
+- `src/native_host/capture_manager.py` — Manages the `qwin-capture` Go subprocess lifecycle: spawn, stop, send commands, background reader thread, CDP relay forwarding, CDM auto-init. Provides Python API for `cdm_init`, `extract_keys`, `decrypt_segments`, `assemble_segments`.
+- `src/native_host/media_candidates.py` — Python mirror of the JS media URL classification patterns.
+- `src/native_host/download_manager.py` — Download job management and progress reporting.
+- `src/native_host/download_task.py` — Individual download task runner (yt-dlp, aria2c, streamlink wrappers).
+- `src/native_host/download_logger.py` — Structured JSONL download logger.
+- `src/native_host/yt_dlp_adapter.py` — yt-dlp command construction and output parsing.
+- `src/native_host/yt_dlp_command.py` — yt-dlp subprocess management.
+- `src/native_host/yt_dlp_dependencies.py` — yt-dlp dependency detection.
+- `src/native_host/stream_backends.py` — Stream fallback backends (N_m3u8DL-RE, Streamlink).
+- `src/native_host/format_list.py` — Format list parsing from yt-dlp output.
+- `src/native_host/media_resolver.py` — Media URL resolution.
+- `src/native_host/fallback_engines.py` — Fallback stream resolution engines.
+- `src/native_host/browser_context.py` — Browser context header reconstruction.
+- `src/native_host/folder_picker.py` — Windows folder picker integration.
+- `src/native_host/process_control.py` — Subprocess lifecycle management.
+- `src/native_host/progress_parser.py` — yt-dlp progress output parser.
+- `src/native_host/native_paths.py` — Native file path resolution.
+- `src/native_host/native_protocol.py` — Native messaging framing protocol.
+- `src/native_host/artifacts.py` — Download artifact cleanup.
+- `src/native_host/spotify_resolver.py` — Spotify URL resolution for music downloads.
+- `src/native_host/qwin_video_host.bat` — Windows batch launcher for the native host.
 
 ### Scripts
 

@@ -14,7 +14,7 @@ Qwin Video Downloader — Chrome/Firefox/Yandex browser extension + Python nativ
 - **`src/content/content.js`** — Content script: video detection, page detection, MSE intercept
 - **`src/popup/`** — Popup UI (popup.html + CSS + 3 JS modules for UI/state/download list)
 - **`src/shared/`** — Shared modules: batch state, media candidates, quality dialog, video picker, filters, overlay CSS
-- **`src/native-host/`** — Python native messaging host (host.py dispatches to modules: download_manager, capture_manager, media_resolver, yt_dlp_adapter, etc.)
+- **`src/native_host/`** — Python native messaging host (host.py dispatches to modules: download_manager, capture_manager, media_resolver, yt_dlp_adapter, etc.)
 - **`go/`** — Go companion binary (`qwin-capture`): IPC loop in main.go, CDM init/key extraction in cdm.go, AES-128 CTR decrypt in decrypt.go, CDP relay in commands.go
 - **`config/extension/`** — Manifest V3 templates per browser (manifest.chromium.json, manifest.firefox.json)
 - **`scripts/`** — Install (.bat), build/test (.ps1), and bundle scripts

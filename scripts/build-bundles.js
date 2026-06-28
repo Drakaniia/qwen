@@ -22,8 +22,8 @@ const targets = {
  * Copy native-host assets (bat, ps1) into the bundled output.
  */
 function copyNativeHostAssets(outDir) {
-  const srcNativeHost = resolve(rootDir, "src", "native-host");
-  const outNativeHost = resolve(outDir, "src", "native-host");
+  const srcNativeHost = resolve(rootDir, "src", "native_host");
+  const outNativeHost = resolve(outDir, "src", "native_host");
 
   mkdirSync(outNativeHost, { recursive: true });
 

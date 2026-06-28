@@ -161,7 +161,7 @@ function Invoke-CdmInit {
   param([string]$TargetDir)
 
   Write-Output "Attempting to initialize CDM with native host (if running)..."
-  $nativeHostDir = Join-Path $PSScriptRoot ".." "src" "native-host"
+  $nativeHostDir = Join-Path $PSScriptRoot ".." "src" "native_host"
   $pythonCode = @"
 import sys, json
 sys.path.insert(0, r"$($nativeHostDir -replace '\\', '/')")

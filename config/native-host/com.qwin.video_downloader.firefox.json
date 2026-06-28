@@ -1,7 +1,7 @@
 {
     "name":  "com.qwin.video_downloader",
     "description":  "Qwin Video Downloader native host",
-    "path":  "C:\\Users\\Qwenzy\\Desktop\\qwin\\src\\native-host\\qwin_video_host.bat",
+    "path":  "C:\\Users\\Qwenzy\\Desktop\\qwin\\src\\native_host\\qwin_video_host.bat",
     "type":  "stdio",
     "allowed_extensions":  [
                                "qwin-video-downloader@example.com"

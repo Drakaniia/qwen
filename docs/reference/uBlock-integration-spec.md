@@ -36,7 +36,7 @@ Qwin Video Downloader already uses regex-based URL classification in:
 
 - `src/shared/media_candidates.js` — Core URL blocking/classification patterns
 - `src/shared/video_filters.js` — Video quality detection and filtering
-- `src/native-host/media_candidates.py` — Python mirror of the JS patterns
+- `src/native_host/media_candidates.py` — Python mirror of the JS patterns
 
 These patterns have been hand-curated and cover the most common cases. However, uBlock Origin (uBO) is the gold standard for URL-based content classification, with **10+ years of community-maintained filter lists** covering hundreds of thousands of ad servers, tracking domains, CDNs, and streaming platforms.
 
@@ -757,11 +757,11 @@ Qwin's use of these patterns is **transformative** — we're not redistributing 
 |---|---|
 | `src/shared/media_candidates.js` | Update `AD_RE`, `CDN_HINT_RE`, add new `*_RE` constants, update `isBlockedMediaUrl()` for exceptions |
 | `src/shared/video_filters.js` | Add video player SDK patterns, update `isLikelyFullLengthVideoCandidate()` for new domains |
-| `src/native-host/media_candidates.py` | Mirror JS pattern changes for the Python native host |
+| `src/native_host/media_candidates.py` | Mirror JS pattern changes for the Python native host |
 | `src/background/background.js` | Add filter list initialization at startup, schedule refresh |
 | `src/shared/filter_list_loader.js` | **New file**: filter list download, parse, cache, compile |
 | `tests/extension/test_filter_integration.js` | **New test file**: all pattern matching tests |
-| `tests/native-host/test_media_candidate_rules.py` | Python-side test updates |
+| `tests/native_host/test_media_candidate_rules.py` | Python-side test updates |
 
 ---
 

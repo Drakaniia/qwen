@@ -4,7 +4,7 @@
 
 ## Overview
 
-The Go binary communicates with the Python native host (`src/native-host/host.py`) through **native messaging framing** (4-byte little-endian length prefix + UTF-8 JSON payload) over stdin/stdout. The Python `CaptureManager` in `src/native-host/capture_manager.py` manages the subprocess lifecycle and routes commands.
+The Go binary communicates with the Python native host (`src/native_host/host.py`) through **native messaging framing** (4-byte little-endian length prefix + UTF-8 JSON payload) over stdin/stdout. The Python `CaptureManager` in `src/native_host/capture_manager.py` manages the subprocess lifecycle and routes commands.
 
 ## Architecture
 

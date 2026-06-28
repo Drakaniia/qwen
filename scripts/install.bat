@@ -6,8 +6,8 @@ set "CHROME_EXTENSION_ID=dbjddokdmkodnkiaccmbjagfalmmmkmi"
 set "FIREFOX_EXTENSION_ID=qwin-video-downloader@example.com"
 set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%..") do set "ROOT_DIR=%%~fI"
-set "HOST_SCRIPT=%ROOT_DIR%\src\native-host\host.py"
-set "HOST_LAUNCHER=%ROOT_DIR%\src\native-host\qwin_video_host.bat"
+set "HOST_SCRIPT=%ROOT_DIR%\src\native_host\host.py"
+set "HOST_LAUNCHER=%ROOT_DIR%\src\native_host\qwin_video_host.bat"
 set "NATIVE_DIR=%ROOT_DIR%\config\native-host"
 set "CHROME_MANIFEST=%NATIVE_DIR%\%HOST_NAME%.chrome.json"
 set "YANDEX_MANIFEST=%NATIVE_DIR%\%HOST_NAME%.yandex.json"
@@ -16,12 +16,12 @@ set "FIREFOX_MANIFEST=%NATIVE_DIR%\%HOST_NAME%.firefox.json"
 echo Installing Qwin Video Downloader native helper...
 
 if not exist "%HOST_SCRIPT%" (
-  echo ERROR: src\native-host\host.py was not found.
+  echo ERROR: src\native_host\host.py was not found.
   exit /b 1
 )
 
 if not exist "%HOST_LAUNCHER%" (
-  echo ERROR: src\native-host\qwin_video_host.bat was not found.
+  echo ERROR: src\native_host\qwin_video_host.bat was not found.
   exit /b 1
 )
 

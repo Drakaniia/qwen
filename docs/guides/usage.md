@@ -157,7 +157,7 @@ curl_cffi is integrated at **two levels** in the native host:
 Every yt-dlp command includes `--extractor-args generic:impersonate`, which tells yt-dlp to use its bundled curl_cffi for TLS impersonation when extracting from generic/unknown sites. This is the **primary download path** — most downloads go through yt-dlp + aria2c with impersonation active.
 
 ```python
-# src/native-host/yt_dlp_command.py
+# src/native_host/yt_dlp_command.py
 GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
 # Applied to every yt-dlp command:
 command.extend(["--extractor-args", "generic:impersonate"])
