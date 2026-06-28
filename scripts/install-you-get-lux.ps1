@@ -31,12 +31,15 @@ function Install-YouGet {
       $pythonArgs = $pythonCommand[1..($pythonCommand.Length - 1)]
     }
 
-    try {
-      & $pythonCommand[0] @pythonArgs -m pip install --upgrade you-get 2>&1 | Out-Null
+    # Run pip and capture both output and exit code
+    $pipOutput = & $pythonCommand[0] @pythonArgs -m pip install --upgrade you-get 2>&1
+    $pipExitCode = $LASTEXITCODE
+
+    if ($pipExitCode -eq 0) {
       Write-Output "you-get installed successfully."
       return $true
-    } catch {
-      Write-Warning "Failed to install you-get via pip: $($_.Exception.Message)"
+    } else {
+      Write-Warning "Failed to install you-get via pip (exit code: $pipExitCode)."
       return $false
     }
   }
@@ -127,25 +130,39 @@ function Install-Lux {
     $arch = Resolve-WindowsAssetArchitecture
     $release = Invoke-RestMethod -Uri "https://api.github.com/repos/iawia002/lux/releases/latest" -ErrorAction Stop
 
-    # Look for Windows asset matching architecture
-    $asset = $release.assets | Where-Object { $_.name -match "windows.*$arch.*\.zip$" } | Select-Object -First 1
-    if (-not $asset) {
-      $asset = $release.assets | Where-Object { $_.name -match "windows.*\.zip$" } | Select-Object -First 1
+    # Try multiple asset name patterns for Windows
+    $assetPatterns = @(
+      "windows.*$arch.*\.zip$",
+      "Windows.*$arch.*\.zip$",
+      "windows.*\.zip$",
+      "Windows.*\.zip$"
+    )
+
+    $asset = $null
+    foreach ($pattern in $assetPatterns) {
+      $asset = $release.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1
+      if ($asset) { break }
     }
 
     if (-not $asset) {
-      throw "Could not find a Windows lux release asset for $arch."
+      throw "Could not find a Windows lux release asset for architecture: $arch"
     }
 
+    Write-Output "  Downloading $($asset.name)..."
     $zipPath = Join-Path $tempDir $asset.name
     Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -ErrorAction Stop
 
-    Write-Output "Extracting lux..."
+    Write-Output "  Extracting lux..."
     Expand-Archive -LiteralPath $zipPath -DestinationPath $tempDir -Force
 
-    $downloadedExe = Get-ChildItem -Path $tempDir -Recurse -Filter "lux.exe" | Select-Object -First 1
+    # Look for any .exe (could be lux.exe or lux_windows_amd64.exe, etc.)
+    $downloadedExe = Get-ChildItem -Path $tempDir -Recurse -Filter "*.exe" | Select-Object -First 1
     if (-not $downloadedExe) {
-      throw "lux.exe was not found in the downloaded release."
+      # Try any file named lux* without extension too
+      $downloadedExe = Get-ChildItem -Path $tempDir -Recurse -Filter "lux*" | Where-Object { -not $_.PSIsContainer } | Select-Object -First 1
+    }
+    if (-not $downloadedExe) {
+      throw "No executable was found in the downloaded lux release."
     }
 
     New-Item -ItemType Directory -Force -Path $luxDir | Out-Null
@@ -153,10 +170,10 @@ function Install-Lux {
 
     if (-not (Test-LuxExecutable -Path $luxExe)) {
       Remove-Item -LiteralPath $luxExe -Force -ErrorAction SilentlyContinue
-      throw "Downloaded lux.exe is not valid for this platform."
+      throw "Downloaded lux binary is not valid for this platform."
     }
 
-    Write-Output "lux $( $release.tag_name) installed to tools/lux/."
+    Write-Output "lux $($release.tag_name) installed to tools/lux/."
     return $true
   } catch {
     Write-Warning "Failed to install lux: $($_.Exception.Message)"
@@ -176,14 +193,14 @@ $luxOk = Install-Lux
 
 Write-Output ""
 if ($youGetOk) {
-  Write-Output "✓ you-get installed"
+  Write-Output "you-get installed"
 } else {
-  Write-Output "✗ you-get not installed"
+  Write-Output "you-get NOT installed"
 }
 if ($luxOk) {
-  Write-Output "✓ lux installed"
+  Write-Output "lux installed"
 } else {
-  Write-Output "✗ lux not installed"
+  Write-Output "lux NOT installed"
 }
 
 if ($youGetOk -or $luxOk) {
