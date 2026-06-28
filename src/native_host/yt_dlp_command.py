@@ -34,7 +34,6 @@ ARIA2C_ALLOWED_ARGS = frozenset({
     "--retry-wait",
     "--summary-interval",
     "--async-dns",
-    "--dns-timeout",
 })
 
 
@@ -57,7 +56,6 @@ def build_aria2c_downloader_args(connection_count):
         ("--retry-wait", "2"),
         ("--summary-interval", "1"),
         ("--async-dns", "true"),
-        ("--dns-timeout", "3"),
     ]
     # Validate every argument name against the strict allowlist
     for arg_name, _arg_value in args:
@@ -67,7 +65,7 @@ def build_aria2c_downloader_args(connection_count):
 YOUTUBE_REMOTE_COMPONENTS = "ejs:github"
 GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
 MAX_FAST_CONNECTIONS = 48
-MAX_ARIA2_CONNECTIONS = 24
+MAX_ARIA2_CONNECTIONS = 16
 DEFAULT_CONCURRENT_FRAGMENTS = MAX_FAST_CONNECTIONS
 DEFAULT_ARIA2_CONNECTIONS = MAX_ARIA2_CONNECTIONS
 
