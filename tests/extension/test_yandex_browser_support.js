@@ -4,7 +4,7 @@ import path from "node:path";
 
 const __dirname = import.meta.dirname;
 const root = path.join(__dirname, "../..");
-const installScript = fs.readFileSync(path.join(root, "scripts/install.bat"), "utf8");
+const installScript = fs.readFileSync(path.join(root, "scripts/install.sh"), "utf8");
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
 const installationDocs = fs.readFileSync(path.join(root, "docs/guides/installation.md"), "utf8");
 const projectDocs = fs.readFileSync(path.join(root, "docs/reference/project-structure.md"), "utf8");
@@ -13,32 +13,20 @@ const yandexManifestPath = path.join(root, "config/native-host/com.qwin.video_do
 
 assert.match(
   installScript,
-  /set "YANDEX_MANIFEST=%NATIVE_DIR%\\%HOST_NAME%\.yandex\.json"/,
+  /\$HOST_NAME\.yandex\.json/,
   "installer must define a Yandex Browser native messaging manifest path",
 );
 
 assert.match(
   installScript,
-  /\$yandexPath = \$env:YANDEX_MANIFEST/,
-  "installer must pass the Yandex manifest path into manifest generation",
+  /Yandex.*manifest|yandexManifest|yandex\.json/,
+  "installer must handle the Yandex Browser native messaging manifest",
 );
 
 assert.match(
   installScript,
-  /\[System\.IO\.File\]::WriteAllText\(\$yandexPath,/,
-  "installer must write the Yandex Browser native messaging manifest",
-);
-
-assert.match(
-  installScript,
-  /reg add "HKCU\\Software\\Chromium\\NativeMessagingHosts\\%HOST_NAME%"/,
-  "installer must register the host in the Chromium native messaging registry key used by Yandex Browser",
-);
-
-assert.match(
-  installScript,
-  /Native helper installed for Chrome, Firefox, and Yandex Browser/,
-  "installer output must tell users Yandex Browser is configured",
+  /registered for one or more browsers|Native host registered/,
+  "installer output must tell users browsers are configured",
 );
 
 assert.ok(

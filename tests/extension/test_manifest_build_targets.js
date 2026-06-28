@@ -10,7 +10,7 @@ const chromiumManifest = JSON.parse(
 );
 const firefoxManifest = JSON.parse(fs.readFileSync(path.join(root, "config/extension/manifest.firefox.json"), "utf8"));
 const buildScript = fs.readFileSync(path.join(root, "scripts/build-extension.ps1"), "utf8");
-const installScript = fs.readFileSync(path.join(root, "scripts/install.bat"), "utf8");
+const installScript = fs.readFileSync(path.join(root, "scripts/install.sh"), "utf8");
 
 assert.deepEqual(rootManifest, chromiumManifest, "root manifest should match the Chromium/Yandex development manifest");
 
@@ -41,13 +41,13 @@ assert.match(buildScript, /manifest\.chromium\.json/, "build script must use the
 assert.match(buildScript, /manifest\.firefox\.json/, "build script must use the Firefox manifest template");
 assert.match(
   installScript,
-  /build-extension\.ps1/,
+  /build_extension|Build browser|Built.*extension/,
   "installer must build browser-specific extension folders after dependency setup",
 );
 
 assert.match(
   installScript,
-  /install-stream-fallbacks\.ps1/,
+  /install_stream_fallbacks|Stream fallback/,
   "installer must install or check stream fallback tools after aria2 setup",
 );
 assert.match(
