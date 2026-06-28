@@ -4,9 +4,9 @@
 
 Run the installer again, then restart the browser:
 
-```bat
+```bash
 cd /d C:\Users\Qwenzy\Desktop\qwin
-scripts\install.bat
+scripts/install.sh
 ```
 
 If Chrome is used, confirm the loaded extension ID is `dbjddokdmkodnkiaccmbjagfalmmmkmi`.
@@ -17,7 +17,7 @@ If Firefox is used, confirm the manifest add-on ID is `qwin-video-downloader@exa
 
 ## Missing yt-dlp Or ffmpeg
 
-Run `scripts\install.bat` again and make sure Python and `pip` are available.
+Run `scripts/install.sh` again and make sure Python and `pip` are available.
 
 The installer tries to install:
 
@@ -31,7 +31,7 @@ If `winget` is unavailable, the helper should still use the `imageio-ffmpeg` bin
 
 ## Missing Stream Fallbacks
 
-If the popup says `yt-dlp only`, run `scripts\install.bat` again. Check:
+If the popup says `yt-dlp only`, run `scripts/install.sh` again. Check:
 
 - `tools\n_m3u8dl-re\N_m3u8DL-RE.exe` exists, or set `QWIN_N_M3U8DL_RE` to a valid executable path.
 - `streamlink` is installed for the Python used by the native host.
@@ -44,13 +44,13 @@ If the popup does not show `fast mode`, `aria2c` was not found. All downloads re
 
 To fix it:
 
-1. Run `scripts\install.bat` again.
+1. Run `scripts/install.sh` again.
 2. Check that `tools\aria2\aria2c.exe` exists.
 3. Or set `QWIN_ARIA2C` to a valid `aria2c.exe` path before starting the browser.
 
 ## Access To Native Host Is Forbidden
 
-Reload the extension and re-run `scripts\install.bat`.
+Reload the extension and re-run `scripts/install.sh`.
 
 The native host only allows:
 
@@ -94,7 +94,7 @@ python -c "from curl_cffi import requests; print('curl_cffi OK')"
 ```
 If this fails with `ModuleNotFoundError`, re-run the installer:
 ```bat
-scripts\install.bat
+scripts/install.sh
 ```
 The installer installs `yt-dlp[default,curl-cffi]` which includes curl_cffi as a dependency.
 

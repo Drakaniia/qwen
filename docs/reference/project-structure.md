@@ -74,7 +74,7 @@
 
 ### Scripts
 
-- `scripts/install.bat` — Installs all dependencies and registers the native host for Chrome, Yandex Browser, and Firefox.
+- `scripts/install.sh` — Installs all dependencies and registers the native host for Chrome, Yandex Browser, and Firefox.
 - `scripts/install-aria2.ps1` — Installs or verifies the portable `aria2c` fast downloader.
 - `scripts/install-stream-fallbacks.ps1` — Installs or verifies Streamlink and portable N_m3u8DL-RE.
 - `scripts/install-cdm.ps1` — Detects Chrome's bundled Widevine CDM, copies it to `tools/cdm/`, or downloads a known-compatible fallback version. Writes `tools/cdm/status.json` for the native host.

@@ -11,9 +11,9 @@
 
 3. Run:
 
-   ```bat
-   scripts\install.bat
-   ```
+```bash
+scripts/install.sh
+```
 
 4. Restart Chrome, Firefox, and Yandex Browser after the installer finishes.
 
@@ -103,4 +103,4 @@ After loading the extension, open the Qwin popup. The helper status should show 
 
 - `Helper ready (..., fast mode, stream fallbacks).` - `yt-dlp`, `ffmpeg`, `aria2c`, and at least one stream fallback are available.
 - `Helper ready (..., fast mode, yt-dlp only).` - `yt-dlp`, `ffmpeg`, and `aria2c` are available, but stream fallbacks are not.
-- `Helper not connected.` - run `scripts\install.bat` again and restart the browser.
+- `Helper not connected.` - run `scripts/install.sh` again and restart the browser.

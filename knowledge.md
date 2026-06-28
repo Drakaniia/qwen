@@ -17,7 +17,7 @@ Qwin Video Downloader — Chrome/Firefox/Yandex browser extension + Python nativ
 - **`src/native_host/`** — Python native messaging host (host.py dispatches to modules: download_manager, capture_manager, media_resolver, yt_dlp_adapter, etc.)
 - **`go/`** — Go companion binary (`qwin-capture`): IPC loop in main.go, CDM init/key extraction in cdm.go, AES-128 CTR decrypt in decrypt.go, CDP relay in commands.go
 - **`config/extension/`** — Manifest V3 templates per browser (manifest.chromium.json, manifest.firefox.json)
-- **`scripts/`** — Install (.bat), build/test (.ps1), and bundle scripts
+- **`scripts/`** — Install (`install.sh`), build/test (`.ps1`), and bundle scripts
 - **`tests/extension/`** — JS tests (run with Node after `build-test-bundles.js`)
 - **`tests/native-host/`** — Python unittest tests
 
@@ -30,4 +30,4 @@ Qwin Video Downloader — Chrome/Firefox/Yandex browser extension + Python nativ
 - **Build:** esbuild bundles content/background/popup into `dist/bundled/`, then `build-extension.ps1` copies source tree + bundles + browser manifest into `dist/{chromium,firefox,yandex}/`.
 - **Native messaging:** 4-byte little-endian uint32 length prefix + UTF-8 JSON payload over stdin/stdout. Python host registered via Windows Registry under `HKCU\Software\{Browser}\NativeMessagingHosts\com.qwin.video_downloader`.
 - **Extension ID (Chrome):** `dbjddokdmkodnkiaccmbjagfalmmmkmi` — must match in native host manifest allowed_origins.
-- **Avoid:** Global npm packages. Installing deps via `npm run setup` (runs `scripts\install.bat`).
+- **Avoid:** Global npm packages. Installing deps via `npm run setup` (runs `scripts/install.sh`).

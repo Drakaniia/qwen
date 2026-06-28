@@ -17,10 +17,10 @@ Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser e
 
 1. Install the native helper:
 
-   ```bat
-   cd /d C:\Users\Qwenzy\Desktop\qwin
-   scripts\install.bat
-   ```
+```bash
+cd /d C:\Users\Qwenzy\Desktop\qwin
+scripts/install.sh
+```
 
 2. Restart Chrome, Firefox, or Yandex Browser.
 3. Load the extension:
