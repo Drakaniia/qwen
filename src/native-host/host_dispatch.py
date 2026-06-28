@@ -11,19 +11,12 @@ def dependency_status(deps):
         "nM3u8DlRe": deps.has_n_m3u8dl_re(),
         "streamlink": deps.has_streamlink(),
     }
-    # Add capture binary status from the capture manager (may not be available yet)
-    try:
-        cap_status = deps.capture_status() if hasattr(deps, "capture_status") else {}
-        status["cdmCapture"] = cap_status.get("cdmAvailable", False) if cap_status else False
-        if cap_status:
-            status["recording"] = cap_status.get("captureReady", False)
-        elif hasattr(deps, "has_capture_binary"):
-            status["recording"] = deps.has_capture_binary()
-        else:
-            status["recording"] = False
-    except Exception:
-        status["cdmCapture"] = False
-        status["recording"] = False
+    # Check if the capture binary exists on disk (fast file check, no subprocess spawn).
+    # Avoids starting the Go capture binary just to report dependency status,
+    # which would add 5+ seconds during pings and cause false "Helper not connected" errors.
+    capture_available = deps.has_capture_binary()
+    status["cdmCapture"] = capture_available
+    status["recording"] = capture_available
     return status
 
 
