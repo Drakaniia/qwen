@@ -169,10 +169,17 @@ function scanVisiblePlayerFrames() {
       continue;
     }
     const iframeTitle = pageDetection.cleanText(frame.getAttribute("title"));
+    const pageTitle = pageDetection.cleanText(document.title);
+    // Prefer document.title (page-level content title) over iframe title,
+    // because iframe title attributes often reflect the embedded player's
+    // branding ("VibePlayer - Fast Streaming with FullHD") rather than
+    // the actual content being watched.
     const finalTitle =
-      iframeTitle && !videoFilters.isGenericTitle(iframeTitle)
-        ? iframeTitle
-        : pageDetection.cleanText(document.title) || pageDetection.titleFromUrl(src) || "Video";
+      (pageTitle && !videoFilters.isGenericTitle(pageTitle))
+        ? pageTitle
+        : (iframeTitle && !videoFilters.isGenericTitle(iframeTitle))
+          ? iframeTitle
+          : pageDetection.titleFromUrl(src) || "Video";
 
     // If the iframe URL doesn't have a video extension, treat it as a PAGE
     // format so the native host uses yt-dlp for page extraction rather than
