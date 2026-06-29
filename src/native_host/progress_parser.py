@@ -175,3 +175,54 @@ def is_aria2_access_refusal(details):
     if "aria2" not in text:
         return False
     return any(token in text for token in ["status=401", "status=403", "http error 401", "http error 403"])
+
+
+# Cloudflare challenge page detection
+def is_cloudflare_challenge(content: bytes) -> bool:
+    """Check if downloaded content is a Cloudflare challenge page.
+
+    When Cloudflare blocks a request, it returns an HTML challenge page
+    instead of the actual video content. This helps detect corrupted
+    downloads that "succeeded" but contained HTML instead of video.
+    """
+    if len(content) < 100:
+        return False
+    try:
+        text = content[:2000].decode("utf-8", errors="ignore").lower()
+    except Exception:
+        return False
+    # Check for Cloudflare-specific challenge page indicators
+    # The actual Cloudflare page always has "cloudflare" in it, but we check
+    # for both standalone indicators (like cf-chl) and combined patterns
+    return ("cloudflare" in text and "attention required" in text) or "cf-chl" in text or "challenge-platform" in text
+
+
+def is_html_error_page(content: bytes) -> bool:
+    """Check if downloaded content is an HTML error page instead of video.
+
+    Returns True if the content looks like an error page (not video).
+    This catches cases where the server returns HTML for errors but the
+    download tool doesn't detect it properly.
+    """
+    if len(content) < 100:
+        return False
+    try:
+        text = content[:2000].decode("utf-8", errors="ignore").lower()
+    except Exception:
+        return False
+    # Check for common error page indicators that aren't video content
+    if text.startswith("<!doctype html"):
+        return any(
+            indicator in text
+            for indicator in ["<title>error", "<title>403", "<title>404", "<title>500", "forbidden", "access denied"]
+        )
+    return False
+
+
+if __name__ == "__main__":
+    # Quick smoke test when run directly
+    _CLOUDFLARE_HTML = b"<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title>"
+    assert is_cloudflare_challenge(_CLOUDFLARE_HTML), "Should detect Cloudflare challenge page"
+    _VIDEO_HEADER = b"\x00\x00\x00\x20ftypisom"
+    assert not is_cloudflare_challenge(_VIDEO_HEADER), "Should not flag video header as challenge"
+    print("Cloudflare detection tests passed")

@@ -1,4 +1,5 @@
 import errno
+import shutil
 import subprocess
 import threading
 import time
@@ -12,7 +13,7 @@ from browser_context import remove_temp_files
 from fix_mp4_codec import fix_mp4_codec_metadata, needs_codec_fix
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
-from progress_parser import iter_process_output_lines, parse_yt_dlp_line
+from progress_parser import is_cloudflare_challenge, iter_process_output_lines, parse_yt_dlp_line
 
 
 class DownloadTask(DownloadTaskControl):
@@ -234,6 +235,70 @@ class DownloadTask(DownloadTaskControl):
                         except Exception as exc:
                             # Never fail the download because of a post-processing issue
                             self.logger.attempt_line(self.id, f"Codec fix error (non-fatal): {exc}")
+
+                    # ── Validate downloaded content (detect Cloudflare blocks) ──────
+                    cloudflare_detected = False
+                    if self.final_path and Path(self.final_path).exists():
+                        try:
+                            with open(self.final_path, "rb") as f:
+                                header = f.read(2000)
+                            if is_cloudflare_challenge(header):
+                                cloudflare_detected = True
+                                self.logger.attempt_line(
+                                    self.id,
+                                    "Downloaded file appears to be a Cloudflare challenge page (anti-bot protection blocked content).",
+                                )
+                        except Exception:
+                            pass
+
+                    # Also check for Cloudflare pages among downloaded fragments
+                    # (when the merged file is small or corrupted)
+                    if not cloudflare_detected and self.artifact_root and Path(self.artifact_root).is_dir():
+                        try:
+                            # Check the first few files in the artifact folder
+                            for fragment_file in list(Path(self.artifact_root).glob("*"))[:3]:
+                                if fragment_file.is_file() and fragment_file.suffix.lower() in {".mp4", ".ts"}:
+                                    with open(fragment_file, "rb") as f:
+                                        header = f.read(2000)
+                                    if is_cloudflare_challenge(header):
+                                        cloudflare_detected = True
+                                        self.logger.attempt_line(
+                                            self.id,
+                                            f"Fragment {fragment_file.name} appears to be a Cloudflare challenge page.",
+                                        )
+                                        break
+                        except Exception:
+                            pass
+
+                    if cloudflare_detected:
+                        # Remove the corrupted file and treat as download failure
+                        try:
+                            Path(self.final_path).unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        # Clean up artifact folder too
+                        if self.artifact_root:
+                            try:
+                                shutil.rmtree(self.artifact_root, ignore_errors=True)
+                            except Exception:
+                                pass
+                        self.set_state("error")
+                        duration = time.time() - self.start_time
+                        self.logger.error(
+                            download_id=self.id,
+                            error_text="Download blocked by Cloudflare anti-bot protection. Unable to download this video.",
+                            duration_seconds=duration,
+                        )
+                        self.send_message(
+                            {
+                                "type": "error",
+                                "status": "error",
+                                "filepath": "",
+                                "artifactRoot": "",
+                                "error": "Download blocked by Cloudflare anti-bot protection. Unable to download this video.",
+                            }
+                        )
+                        return
 
                     self.set_state("done")
                     duration = time.time() - self.start_time
