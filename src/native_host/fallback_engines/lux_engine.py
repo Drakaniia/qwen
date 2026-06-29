@@ -95,14 +95,16 @@ def _parse_lux_output(output, url):
         _add_lux_format(formats, title, current_stream)
 
     if not formats:
-        formats.append({
-            "id": "lx_default",
-            "label": title,
-            "ext": "mp4",
-            "size": "",
-            "note": "lux",
-            "url": url,
-        })
+        formats.append(
+            {
+                "id": "lx_default",
+                "label": title,
+                "ext": "mp4",
+                "size": "",
+                "note": "lux",
+                "url": url,
+            }
+        )
 
     return formats
 
@@ -135,13 +137,15 @@ def _add_lux_format(formats, title, stream):
         elif "webm" in type_val:
             ext = "webm"
 
-    formats.append({
-        "id": f"lx_{quality.lower().replace(' ', '_')}",
-        "label": f"{title} [{quality}]",
-        "ext": ext,
-        "size": stream.get("size", ""),
-        "note": "lux",
-    })
+    formats.append(
+        {
+            "id": f"lx_{quality.lower().replace(' ', '_')}",
+            "label": f"{title} [{quality}]",
+            "ext": ext,
+            "size": stream.get("size", ""),
+            "note": "lux",
+        }
+    )
 
 
 def download_with_lux(

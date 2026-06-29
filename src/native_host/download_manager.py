@@ -415,9 +415,7 @@ def run_download(
     # 8. yt-dlp with native downloader (no aria2c)
     fallback_commands.append(
         {
-            "command": build_yt_dlp_command(
-                **build_command_kwargs({"aria2c_location": None})
-            ),
+            "command": build_yt_dlp_command(**build_command_kwargs({"aria2c_location": None})),
             "label": "yt-dlp (native downloader)",
         }
     )

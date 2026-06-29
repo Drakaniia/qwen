@@ -25,6 +25,7 @@ def curl_cffi_available():
     """Check whether ``curl_cffi`` is importable."""
     try:
         import curl_cffi  # noqa: F401
+
         return True
     except ImportError:
         return False

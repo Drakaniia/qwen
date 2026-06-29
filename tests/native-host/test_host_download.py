@@ -15,7 +15,6 @@ import download_manager as dm
 
 
 class HostDownloadTaskTests(unittest.TestCase):
-
     def test_download_task_pause_terminates_active_process(self):
         class FakeProcess:
             def __init__(self):
@@ -459,8 +458,7 @@ class TestRunDownloadFallbackChain(unittest.TestCase):
         gallery_dl_entries = [
             cmd
             for cmd in captured_fallback_commands
-            if "gallery-dl" in cmd.get("label", "").lower()
-            or "gallery_dl" in str(cmd.get("command", []))
+            if "gallery-dl" in cmd.get("label", "").lower() or "gallery_dl" in str(cmd.get("command", []))
         ]
         self.assertEqual(
             len(gallery_dl_entries),

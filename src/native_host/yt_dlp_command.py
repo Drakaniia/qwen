@@ -24,17 +24,19 @@ AUDIO_FORMAT_SELECTOR = "ba[ext=m4a]/ba[ext=mp3]/ba/best"
 # Only arguments in this set may be passed via --downloader-args.
 # This prevents injection attacks via --on-download-complete or other
 # dangerous flags that could lead to arbitrary command execution.
-ARIA2C_ALLOWED_ARGS = frozenset({
-    "--max-connection-per-server",
-    "--split",
-    "--min-split-size",
-    "--continue",
-    "--file-allocation",
-    "--max-tries",
-    "--retry-wait",
-    "--summary-interval",
-    "--async-dns",
-})
+ARIA2C_ALLOWED_ARGS = frozenset(
+    {
+        "--max-connection-per-server",
+        "--split",
+        "--min-split-size",
+        "--continue",
+        "--file-allocation",
+        "--max-tries",
+        "--retry-wait",
+        "--summary-interval",
+        "--async-dns",
+    }
+)
 
 
 def build_aria2c_downloader_args(connection_count):
@@ -62,6 +64,8 @@ def build_aria2c_downloader_args(connection_count):
         if arg_name not in ARIA2C_ALLOWED_ARGS:
             raise ValueError(f"Disallowed aria2c argument: {arg_name}")
     return "aria2c:" + " ".join(f"{k}={v}" for k, v in args)
+
+
 YOUTUBE_REMOTE_COMPONENTS = "ejs:github"
 GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
 MAX_FAST_CONNECTIONS = 48

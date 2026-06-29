@@ -15,7 +15,6 @@ import native_protocol
 
 
 class HostHelperTests(unittest.TestCase):
-
     def test_native_host_uses_split_modules_for_core_logic(self):
         import artifacts
         import browser_context

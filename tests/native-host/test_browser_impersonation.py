@@ -34,6 +34,7 @@ GENERIC_BYTES_URL = "https://api.github.com/emojis"
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
+
 def _fetch_json_body(url, impersonate=None):
     """Fetch a URL and return parsed JSON body via curl_cffi."""
     from curl_cffi import requests as curl_requests
@@ -100,7 +101,7 @@ class TestBrowserImpersonation(unittest.TestCase):
 
     def test_impersonation_sends_chrome_user_agent(self):
         """User-Agent header must contain Chrome/ when impersonating Chrome.
-        
+
         Checks the User-Agent via TLS scan endpoint which echoes back the
         detected user-agent from the TLS handshake.
         """
@@ -128,8 +129,7 @@ class TestBrowserImpersonation(unittest.TestCase):
         self.assertNotEqual(
             ja3_chrome,
             ja3_safari,
-            "Chrome and Safari impersonation should produce different JA3 hashes. "
-            f"Both produced {ja3_chrome}.",
+            f"Chrome and Safari impersonation should produce different JA3 hashes. Both produced {ja3_chrome}.",
         )
 
     def test_impersonated_vs_default_ua_differs(self):
@@ -143,8 +143,7 @@ class TestBrowserImpersonation(unittest.TestCase):
         self.assertNotEqual(
             ua_chrome,
             ua_default,
-            "Impersonated UA should differ from default UA. "
-            f"Chrome UA: {ua_chrome}, Default UA: {ua_default}",
+            f"Impersonated UA should differ from default UA. Chrome UA: {ua_chrome}, Default UA: {ua_default}",
         )
         self.assertIn("Chrome/", ua_chrome, f"Chrome UA expected, got: {ua_chrome}")
 
@@ -159,7 +158,7 @@ class TestDownloadImpersonation(unittest.TestCase):
 
     def test_download_binary_data_with_chrome(self):
         """Should download binary content (bytes) correctly with Chrome impersonation.
-        
+
         Uses api.github.com/emojis which returns a ~300 KB JSON payload.
         """
         from curl_cffi import requests as curl_requests

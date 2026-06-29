@@ -18,17 +18,44 @@ def is_direct_media_url(url):
     return any(
         path.endswith(ext)
         for ext in [
-            ".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".wmv",
-            ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".wav",
-            ".m3u8", ".mpd",
+            ".mp4",
+            ".webm",
+            ".mkv",
+            ".avi",
+            ".mov",
+            ".flv",
+            ".wmv",
+            ".mp3",
+            ".m4a",
+            ".aac",
+            ".ogg",
+            ".opus",
+            ".flac",
+            ".wav",
+            ".m3u8",
+            ".mpd",
         ]
     )
 
 
-_SUPPORTED_DIRECT_EXTS = frozenset({
-    ".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".wmv",
-    ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".wav",
-})
+_SUPPORTED_DIRECT_EXTS = frozenset(
+    {
+        ".mp4",
+        ".webm",
+        ".mkv",
+        ".avi",
+        ".mov",
+        ".flv",
+        ".wmv",
+        ".mp3",
+        ".m4a",
+        ".aac",
+        ".ogg",
+        ".opus",
+        ".flac",
+        ".wav",
+    }
+)
 
 
 def download_direct(

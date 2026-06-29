@@ -271,9 +271,7 @@ class TestDirectMediaUrlHeuristic(unittest.TestCase):
 
     def test_direct_mp4_is_not_stream_manifest(self):
         self.assertFalse(self._is_stream_manifest("https://cdn.example.com/video.mp4"))
-        self.assertFalse(
-            self._is_stream_manifest("https://cdn.example.com/video.mp4?token=abc&expiry=123")
-        )
+        self.assertFalse(self._is_stream_manifest("https://cdn.example.com/video.mp4?token=abc&expiry=123"))
 
     def test_m3u8_is_stream_manifest(self):
         self.assertTrue(self._is_stream_manifest("https://cdn.example.com/hls/master.m3u8"))

@@ -170,14 +170,16 @@ def build_ffmpeg_direct_command(
     if headers_parts:
         command.extend(["-headers", "\r\n".join(headers_parts)])
 
-    command.extend([
-        "-i",
-        str(url),
-        "-c",
-        "copy",
-        "-y",
-        str(output_path),
-    ])
+    command.extend(
+        [
+            "-i",
+            str(url),
+            "-c",
+            "copy",
+            "-y",
+            str(output_path),
+        ]
+    )
     return command
 
 

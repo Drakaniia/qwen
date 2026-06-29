@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
 
 try:
     from cdm_capture import decrypt_with_mp4decrypt
+
     MODULE_EXISTS = True
 except (ImportError, AttributeError):
     MODULE_EXISTS = False

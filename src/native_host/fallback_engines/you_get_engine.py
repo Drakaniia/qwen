@@ -15,9 +15,7 @@ from fallback_engines.helpers import _find_latest_file
 from native_protocol import HostError
 from process_control import creation_flags
 
-_YOU_GET_STREAM_RE = re.compile(
-    r"-\s*(format|quality|stream)[:\s]+(.+)", re.IGNORECASE
-)
+_YOU_GET_STREAM_RE = re.compile(r"-\s*(format|quality|stream)[:\s]+(.+)", re.IGNORECASE)
 
 
 def resolve_you_get_command():
@@ -102,14 +100,16 @@ def _parse_you_get_output(output, url):
         _add_you_get_format(formats, title, current_stream)
 
     if not formats:
-        formats.append({
-            "id": "yg_default",
-            "label": title,
-            "ext": "mp4",
-            "size": "",
-            "note": "you-get",
-            "url": url,
-        })
+        formats.append(
+            {
+                "id": "yg_default",
+                "label": title,
+                "ext": "mp4",
+                "size": "",
+                "note": "you-get",
+                "url": url,
+            }
+        )
 
     return formats
 
@@ -141,13 +141,15 @@ def _add_you_get_format(formats, title, stream):
         val, unit = stream["size_raw"]
         size_str = f"{val:.1f} {unit}"
 
-    formats.append({
-        "id": f"yg_{fmt.lower().replace(' ', '_')}",
-        "label": f"{title} [{fmt}]",
-        "ext": ext,
-        "size": size_str,
-        "note": "you-get",
-    })
+    formats.append(
+        {
+            "id": f"yg_{fmt.lower().replace(' ', '_')}",
+            "label": f"{title} [{fmt}]",
+            "ext": ext,
+            "size": size_str,
+            "note": "you-get",
+        }
+    )
 
 
 def download_with_you_get(

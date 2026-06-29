@@ -36,8 +36,10 @@ class TestYouGetResolution(unittest.TestCase):
 
     def test_resolve_you_get_command_returns_none_when_not_installed(self):
         """When you-get is not installed, resolve_you_get_command returns None."""
-        with patch(_YOU_GET + ".which", return_value=None), \
-             patch(_YOU_GET + ".importlib.util.find_spec", return_value=None):
+        with (
+            patch(_YOU_GET + ".which", return_value=None),
+            patch(_YOU_GET + ".importlib.util.find_spec", return_value=None),
+        ):
             result = resolve_you_get_command()
             self.assertIsNone(result)
 
@@ -49,8 +51,10 @@ class TestYouGetResolution(unittest.TestCase):
 
     def test_resolve_you_get_command_finds_python_module(self):
         """When you-get is installed as a Python module, return python -m you_get."""
-        with patch(_YOU_GET + ".which", return_value=None), \
-             patch(_YOU_GET + ".importlib.util.find_spec", return_value=MagicMock()):
+        with (
+            patch(_YOU_GET + ".which", return_value=None),
+            patch(_YOU_GET + ".importlib.util.find_spec", return_value=MagicMock()),
+        ):
             result = resolve_you_get_command()
             self.assertIsNotNone(result)
             self.assertIn("-m", result)

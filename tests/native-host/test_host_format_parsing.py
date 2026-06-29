@@ -10,7 +10,6 @@ import host
 
 
 class HostFormatParsingTests(unittest.TestCase):
-
     def test_summarize_formats_returns_title_and_sorted_video_choices(self):
         info = {
             "title": "Sample Video",

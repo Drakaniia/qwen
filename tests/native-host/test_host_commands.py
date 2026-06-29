@@ -11,7 +11,6 @@ import host
 
 
 class HostCommandsTests(unittest.TestCase):
-
     def test_build_yt_dlp_command_uses_best_mp4_and_output_template(self):
         command = host.build_yt_dlp_command(
             url="https://cdn.example.com/master.m3u8",

@@ -9,16 +9,11 @@ import media_candidates
 
 
 class MediaCandidatesServiceWorkerAndWebSocketTests(unittest.TestCase):
-
     # ── Service Worker scope detection ─────────────────────────────────────
 
     def test_detect_service_worker_scope_sw_prefix_path(self):
         """Service Worker scope detected when initiator contains 'sw.js' or 'serviceworker.js'"""
-        self.assertTrue(
-            media_candidates.is_service_worker_scope(
-                "https://example.com/sw.js"
-            )
-        )
+        self.assertTrue(media_candidates.is_service_worker_scope("https://example.com/sw.js"))
 
     def test_detect_service_worker_scope_standard_paths(self):
         """Common SW file names are recognized"""

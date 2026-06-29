@@ -83,12 +83,14 @@ def run_parallel_probes(
     logger.probe_start(url=url, backends=[p.backend for p in probes])
 
     # Send initial progress message
-    send_message({
-        "type": "progress",
-        "stage": "probing",
-        "message": f"Checking {len(probes)} backend{'s' if len(probes) != 1 else ''}…",
-        "backendCount": len(probes),
-    })
+    send_message(
+        {
+            "type": "progress",
+            "stage": "probing",
+            "message": f"Checking {len(probes)} backend{'s' if len(probes) != 1 else ''}…",
+            "backendCount": len(probes),
+        }
+    )
 
     results_lock = threading.Lock()
     probe_results: dict[int, dict] = {}
@@ -154,12 +156,14 @@ def run_parallel_probes(
                 break
 
     if winner_config:
-        send_message({
-            "type": "progress",
-            "stage": "probing",
-            "message": f"{winner_config.label} verified — starting download",
-            "winner": winner_config.backend,
-        })
+        send_message(
+            {
+                "type": "progress",
+                "stage": "probing",
+                "message": f"{winner_config.label} verified — starting download",
+                "winner": winner_config.backend,
+            }
+        )
         return ProbeResult(
             winner=winner_config.backend,
             command=winner_config.command,
