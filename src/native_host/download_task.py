@@ -9,6 +9,7 @@ from download_logger import get_logger
 from download_task_control import DownloadTaskControl
 
 from browser_context import remove_temp_files
+from fix_mp4_codec import fix_mp4_codec_metadata, needs_codec_fix
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
 from progress_parser import iter_process_output_lines, parse_yt_dlp_line
@@ -216,6 +217,24 @@ class DownloadTask(DownloadTaskControl):
                         self.final_path = final_path
                     if artifact_root and not self.artifact_root:
                         self.artifact_root = artifact_root
+
+                    # ── Post-processing: fix mp4v→avc1 codec metadata ──────
+                    if self.final_path and self.final_path.lower().endswith((".mp4", ".m4v")):
+                        try:
+                            if needs_codec_fix(self.final_path):
+                                self.logger.attempt_line(self.id, f"Fixing mp4v→avc1 codec metadata: {self.final_path}")
+                                result = fix_mp4_codec_metadata(self.final_path, backup=False)
+                                if result.get("fixed"):
+                                    self.logger.attempt_line(
+                                        self.id,
+                                        f"Codec fix applied (SPS={result.get('spsCount', 0)}, PPS={result.get('ppsCount', 0)})",
+                                    )
+                                elif result.get("warning"):
+                                    self.logger.attempt_line(self.id, f"Codec fix warning: {result['warning']}")
+                        except Exception as exc:
+                            # Never fail the download because of a post-processing issue
+                            self.logger.attempt_line(self.id, f"Codec fix error (non-fatal): {exc}")
+
                     self.set_state("done")
                     duration = time.time() - self.start_time
                     self.logger.complete(
