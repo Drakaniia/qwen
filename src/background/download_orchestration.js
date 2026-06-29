@@ -7,10 +7,14 @@ import { isBrowserDownloadableFormat, filenameFromVideo } from "./browser_downlo
 function create(deps) {
   // ── Operations (download control, file ops, management) ──────────────
   // These receive startNativeDownloadFromVideo as a dep to avoid circular calls.
-  const ops = createOperations({
+  // We keep a reference to the deps object so we can mutate it after the core
+  // function is defined — otherwise resumeDownload/retryDownload closures
+  // inside createOperations would still see `null`.
+  const opsDeps = {
     ...deps,
     startNativeDownloadFromVideo: null, // populated after core function definition
-  });
+  };
+  const ops = createOperations(opsDeps);
 
   // ── Core download flow ───────────────────────────────────────────────
 
@@ -528,7 +532,9 @@ function create(deps) {
     return startNativeDownload(tabId, video.id, formatId, variantId);
   }
 
-  // Patch ops with core function reference after definition
+  // Patch both ops (public API) and opsDeps (internal closures in createOperations)
+  // so that resumeDownload/retryDownload see the real function.
+  opsDeps.startNativeDownloadFromVideo = startNativeDownloadFromVideo;
   ops.startNativeDownloadFromVideo = startNativeDownloadFromVideo;
 
   return {
