@@ -120,3 +120,48 @@ Installed `certifi` v2026.6.17. Verified: `gallery-dl --version` returns `1.32.3
 
 ### Pattern
 When gallery-dl fails in any download log, first check if `certifi` is installed. This is a common Python packaging issue.
+
+---
+
+## nekostream.site — Cloudflare Anti-Bot Protection Returns HTML Instead of Video
+
+### Symptoms
+- Download completes with exit code 0
+- File size appears reasonable (e.g., 45.5MB)
+- Video plays only a few seconds or is corrupted/blinking colors
+- Log shows: "HTTP Error 403 caused by Cloudflare anti-bot challenge"
+- Log shows: "Unrecognized command or argument" from N_m3u8DL-RE (also blocked)
+- Progress shows many fragments downloaded but near-zero throughput throughout
+
+### Root Cause
+- The m3u8 manifest URL is behind Cloudflare anti-bot protection
+- All probe backends correctly detect 403 errors
+- However, the download fallback proceeds and downloads Cloudflare challenge HTML pages as "segments"
+- yt-dlp merges these HTML pages into a video file, resulting in corrupted output
+- This is a "false positive success" — download exits cleanly but content is wrong
+
+### Fix
+**File**: `src/native_host/progress_parser.py`
+- Added `is_cloudflare_challenge()` function to detect Cloudflare challenge pages in downloaded content
+- Detects patterns: "cloudflare" + "attention required", "cf-chl", "challenge-platform"
+
+**File**: `src/native_host/download_task.py`
+- Added post-download validation that checks if the downloaded file is a Cloudflare challenge page
+- If detected, removes the corrupted file and reports an error instead of "download complete"
+
+**File**: `tests/native-host/test_host_progress.py`
+- Added tests for `is_cloudflare_challenge()` function with various Cloudflare page patterns
+
+### Verification
+- ✅ Cloudflare challenge HTML is correctly detected and download fails with error
+- ✅ Normal video content is not flagged as challenge pages
+- ✅ Small content is not flagged (too short to be reliable)
+- ✅ All existing tests pass
+
+### Pattern
+When a download "succeeds" but produces corrupted video:
+1. Check logs for HTTP 403 errors during probing
+2. Check if progress shows near-zero throughput throughout the download
+3. Add content validation to detect anti-bot protection pages
+4. Report failure instead of success when Cloudflare content is detected
+5. Add test fixtures for Cloudflare detection patterns
