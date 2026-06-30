@@ -178,23 +178,96 @@ def is_aria2_access_refusal(details):
 
 
 # Cloudflare challenge page detection
+
+
 def is_cloudflare_challenge(content: bytes) -> bool:
     """Check if downloaded content is a Cloudflare challenge page.
 
     When Cloudflare blocks a request, it returns an HTML challenge page
     instead of the actual video content. This helps detect corrupted
     downloads that "succeeded" but contained HTML instead of video.
+
+    Detects multiple generation of Cloudflare challenges:
+    - Classic: "Attention Required! | Cloudflare"
+    - Turnstile widgets (cf-turnstile, turnstile)
+    - Generic "Just a moment..." pages
+    - "Checking your browser before accessing"
+    - DDoS protection pages
+    - Unusual traffic detection
+    - JavaScript challenge (jschl-answer scripts)
+    - Generic anti-bot pages (heuristic: HTML start + multiple bot keywords)
     """
     if len(content) < 100:
         return False
     try:
-        text = content[:2000].decode("utf-8", errors="ignore").lower()
+        text = content[:4000].decode("utf-8", errors="ignore").lower()
     except Exception:
         return False
-    # Check for Cloudflare-specific challenge page indicators
-    # The actual Cloudflare page always has "cloudflare" in it, but we check
-    # for both standalone indicators (like cf-chl) and combined patterns
-    return ("cloudflare" in text and "attention required" in text) or "cf-chl" in text or "challenge-platform" in text
+
+    # ── Quick positive matches ───────────────────────────────────────
+
+    # Classic Cloudflare challenge
+    if "cloudflare" in text and "attention required" in text:
+        return True
+    if "cf-chl" in text or "challenge-platform" in text:
+        return True
+
+    # Turnstile / newer challenge patterns
+    if "cf-turnstile" in text or "turnstile.force" in text:
+        return True
+
+    # js-challenge answer scripts
+    if "jschl-answer" in text or "jschl_vc" in text:
+        return True
+
+    # ── Generic anti-bot page heuristic ─────────────────────────────
+    # Cloudflare and other WAFs serve HTML pages that have no video/media
+    # content. These pages typically start with HTML DOCTYPE and contain
+    # multiple anti-bot/captcha/challenge keywords.
+
+    if not (text.startswith("<!doctype html") or text.startswith("<html")):
+        return False
+
+    # Check for combined anti-bot patterns
+    if "unusual traffic" in text and ("challenge" in text or "captcha" in text or "verify" in text):
+        return True
+
+    if "just a moment" in text and (
+        "browser" in text or "checking" in text or "verify" in text or "wait" in text
+    ):
+        return True
+
+    if "checking your browser" in text and ("before accessing" in text or "before proceeding" in text):
+        return True
+
+    if "ddos" in text and (
+        "protection" in text or "challenge" in text or "verify" in text
+    ):
+        return True
+
+    # Generic heuristic: HTML page with multiple anti-bot keywords
+    bot_keywords = [
+        "cf-",
+        "cdn-cgi",
+        "challenge-form",
+        "challenge-running",
+        "enable javascript",
+        "your browser",
+        "automated access",
+        "automated request",
+        "suspicious activity",
+        "webdriver",
+        "selenium",
+        "headless",
+    ]
+    bot_count = sum(1 for kw in bot_keywords if kw in text)
+    # Keep track of negative signals: actual video/media references
+    video_signals = sum(1 for vs in ["video", "media", "movie", "m3u8", "mp4"] if vs in text)
+
+    if bot_count >= 2 and video_signals == 0:
+        return True
+
+    return False
 
 
 def is_html_error_page(content: bytes) -> bool:
@@ -207,14 +280,27 @@ def is_html_error_page(content: bytes) -> bool:
     if len(content) < 100:
         return False
     try:
-        text = content[:2000].decode("utf-8", errors="ignore").lower()
+        text = content[:4000].decode("utf-8", errors="ignore").lower()
     except Exception:
         return False
     # Check for common error page indicators that aren't video content
     if text.startswith("<!doctype html"):
         return any(
             indicator in text
-            for indicator in ["<title>error", "<title>403", "<title>404", "<title>500", "forbidden", "access denied"]
+            for indicator in [
+                "<title>error",
+                "<title>403",
+                "<title>404",
+                "<title>500",
+                "<title>502",
+                "<title>503",
+                "forbidden",
+                "access denied",
+                "not found",
+                "internal server error",
+                "bad gateway",
+                "service unavailable",
+            ]
         )
     return False
 

@@ -24,6 +24,29 @@ from typing import Optional
 #   }
 
 
+def _is_cloudflare_403(stderr: str, stdout: str) -> bool:
+    """Check if process output indicates a Cloudflare 403 block."""
+    combined = (stderr + " " + stdout).lower()
+    has_403 = "403" in combined or "http error 403" in combined or "forbidden" in combined
+    if not has_403:
+        return False
+    # Check for Cloudflare-specific patterns in stderr/stdout
+    cloudflare_hints = ["cloudflare", "cf-", "challenge-platform"]
+    return any(hint in combined for hint in cloudflare_hints)
+
+
+def _is_cloudflare_response_body(raw_output: str) -> bool:
+    """Check if response body (raw_output) is a Cloudflare challenge page."""
+    if not raw_output or len(raw_output) < 100:
+        return False
+    text = raw_output[:2000].lower()
+    if "cloudflare" in text and "attention required" in text:
+        return True
+    if "cf-chl" in text or "challenge-platform" in text or "cf-turnstile" in text:
+        return True
+    return False
+
+
 def probe_yt_dlp(
     url: str,
     cancel_event: threading.Event,
@@ -83,6 +106,23 @@ def probe_yt_dlp(
         }
 
     if completed.returncode != 0:
+        stderr_text = (completed.stderr or "").strip()
+        stdout_text = (completed.stdout or "").strip()
+        combined = stderr_text or stdout_text
+
+        # Check for Cloudflare-specific 403 in error output
+        if _is_cloudflare_403(stderr_text, stdout_text):
+            return {
+                "ok": False,
+                "backend": "yt-dlp",
+                "label": "yt-dlp (skip-download)",
+                "error_type": "cloudflare_block",
+                "message": f"yt-dlp blocked by Cloudflare anti-bot protection (HTTP 403)",
+                "status_code": 403,
+                "raw_output": combined,
+                "duration_ms": 0,
+            }
+
         return {
             "ok": False,
             "backend": "yt-dlp",
@@ -90,7 +130,7 @@ def probe_yt_dlp(
             "error_type": "exit_code",
             "message": f"yt-dlp exited with code {completed.returncode}",
             "status_code": completed.returncode,
-            "raw_output": (completed.stderr or "").strip() or (completed.stdout or "").strip(),
+            "raw_output": combined,
             "duration_ms": 0,
         }
 
@@ -138,8 +178,16 @@ def probe_curl_cffi(
     url: str,
     cancel_event: threading.Event,
     headers: Optional[dict] = None,
+    chrome_version: Optional[str] = None,
 ) -> dict:
-    """HTTP HEAD request with TLS impersonation. Success if 2xx/3xx response."""
+    """HTTP HEAD request with TLS impersonation. Success if 2xx/3xx response.
+
+    Parameters
+    ----------
+    chrome_version : str, optional
+        Specific Chrome version to impersonate (e.g. "131").
+        If None, uses the default "chrome" fingerprint.
+    """
     if cancel_event.is_set():
         return {
             "ok": False,
@@ -156,10 +204,11 @@ def probe_curl_cffi(
     try:
         from curl_cffi import requests as curl_requests
 
+        impersonate_value = f"chrome{chrome_version}" if chrome_version else "chrome"
         resp = curl_requests.head(
             url,
             headers=dict(headers or {}),
-            impersonate="chrome",
+            impersonate=impersonate_value,
             timeout=12,
             verify=True,
         )
@@ -175,6 +224,19 @@ def probe_curl_cffi(
                 "duration_ms": 0,
             }
         else:
+            # Check if the error response body is a Cloudflare challenge page
+            resp_body = resp.text[:2000] if resp.text else ""
+            if resp.status_code == 403 and _is_cloudflare_response_body(resp_body):
+                return {
+                    "ok": False,
+                    "backend": "curl_cffi",
+                    "label": "curl-cffi (HEAD)",
+                    "error_type": "cloudflare_block",
+                    "message": "HTTP 403: Cloudflare anti-bot protection blocked this request",
+                    "status_code": 403,
+                    "raw_output": resp_body,
+                    "duration_ms": 0,
+                }
             return {
                 "ok": False,
                 "backend": "curl_cffi",
@@ -182,7 +244,7 @@ def probe_curl_cffi(
                 "error_type": "http_error",
                 "message": f"HTTP {resp.status_code}",
                 "status_code": resp.status_code,
-                "raw_output": resp.text[:2000] if resp.text else "",
+                "raw_output": resp_body,
                 "duration_ms": 0,
             }
     except ImportError:

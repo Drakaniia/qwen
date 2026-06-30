@@ -136,6 +136,37 @@ class DownloadTask(DownloadTaskControl):
                 self.process = None
         return exit_code
 
+    def _check_cloudflare_in_artifacts(self) -> bool:
+        """Check ALL files in the artifact folder for Cloudflare challenge content.
+
+        Checks every file regardless of extension (not just .mp4 and .ts)
+        to catch Cloudflare HTML saved as .m4s, .cmfv, .cmfa, or extensionless files.
+
+        Returns True if Cloudflare challenge content is found in any fragment.
+        """
+        if not self.artifact_root or not Path(self.artifact_root).is_dir():
+            return False
+        try:
+            # Check ALL files in the artifact folder, regardless of extension
+            all_files = list(Path(self.artifact_root).glob("*"))
+            for fragment_file in all_files[:10]:  # Check up to 10 files
+                if not fragment_file.is_file():
+                    continue
+                try:
+                    with open(fragment_file, "rb") as f:
+                        header = f.read(2000)
+                    if is_cloudflare_challenge(header):
+                        self.logger.attempt_line(
+                            self.id,
+                            f"Fragment {fragment_file.name} appears to be a Cloudflare challenge page.",
+                        )
+                        return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return False
+
     def fallback_attempts(self):
         attempts = [{"command": self.command, "label": "yt-dlp"}]
         if self.fallback_command:
@@ -253,22 +284,10 @@ class DownloadTask(DownloadTaskControl):
 
                     # Also check for Cloudflare pages among downloaded fragments
                     # (when the merged file is small or corrupted)
-                    if not cloudflare_detected and self.artifact_root and Path(self.artifact_root).is_dir():
-                        try:
-                            # Check the first few files in the artifact folder
-                            for fragment_file in list(Path(self.artifact_root).glob("*"))[:3]:
-                                if fragment_file.is_file() and fragment_file.suffix.lower() in {".mp4", ".ts"}:
-                                    with open(fragment_file, "rb") as f:
-                                        header = f.read(2000)
-                                    if is_cloudflare_challenge(header):
-                                        cloudflare_detected = True
-                                        self.logger.attempt_line(
-                                            self.id,
-                                            f"Fragment {fragment_file.name} appears to be a Cloudflare challenge page.",
-                                        )
-                                        break
-                        except Exception:
-                            pass
+                    # Uses _check_cloudflare_in_artifacts() which checks ALL files
+                    # regardless of extension (.ts, .m4s, .cmfv, .cmfa, extensionless, etc.)
+                    if not cloudflare_detected:
+                        cloudflare_detected = self._check_cloudflare_in_artifacts()
 
                     if cloudflare_detected:
                         # Remove the corrupted file and treat as download failure
