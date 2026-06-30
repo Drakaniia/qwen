@@ -91,6 +91,7 @@ def download_with_curl_cffi(
     cancel_event=None,
     progress_callback=None,
     chunk_size=8192,
+    impersonate="chrome",
 ):
     """Stream a media URL to disk using curl_cffi with TLS impersonation.
 
@@ -111,6 +112,9 @@ def download_with_curl_cffi(
         Called as ``progress_callback(bytes_downloaded, total_bytes)``.
     chunk_size : int
         Read chunk size in bytes (default 8 KB).
+    impersonate : str
+        Browser version to impersonate (default ``"chrome"``, can be
+        version-specific like ``"chrome131"``).
 
     Returns
     -------
@@ -142,7 +146,7 @@ def download_with_curl_cffi(
             url,
             headers=dict(headers or {}),
             stream=True,
-            impersonate="chrome",
+            impersonate=impersonate,
             timeout=30,
             verify=True,
         )
@@ -178,7 +182,7 @@ def download_with_curl_cffi(
 # ── Download (subprocess CLI command) ──────────────────────────────────────
 
 
-def download_curl_cffi_command(url, output_path, headers):
+def download_curl_cffi_command(url, output_path, headers, impersonate="chrome"):
     """Build a subprocess command that downloads a URL via curl_cffi.
 
     The returned command list is suitable for ``subprocess.Popen`` and mimics
@@ -197,6 +201,9 @@ def download_curl_cffi_command(url, output_path, headers):
         Destination file path.
     headers : dict
         HTTP headers to include in the request.
+    impersonate : str
+        Browser version to impersonate (default ``"chrome"``, can be
+        version-specific like ``"chrome131"``).
 
     Returns
     -------
@@ -210,7 +217,8 @@ def download_curl_cffi_command(url, output_path, headers):
         f"import json,sys; sys.path.insert(0,{json.dumps(str(Path(__file__).resolve().parent))}); "
         f"from curl_cffi_adapter import download_with_curl_cffi; "
         f"h=json.loads({json.dumps(headers_json)}); "
-        f"r=download_with_curl_cffi({json.dumps(url)},{json.dumps(str(output_path))},h); "
+        f"r=download_with_curl_cffi({json.dumps(url)},{json.dumps(str(output_path))},h,"
+        f"impersonate={json.dumps(impersonate)}); "
         f"sys.exit(0 if r else 1)"
     )
     return [sys.executable, "-c", script]

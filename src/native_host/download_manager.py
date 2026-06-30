@@ -87,6 +87,8 @@ def _build_probe_configs(
     """
     probes = []
     requested_backend = str(message.get("backend") or "auto").lower()
+    # Extract browser version for version-specific impersonation
+    chrome_version = str(message.get("browserVersion") or "").strip()[:10] or None
 
     # 1. yt-dlp — always participates
     probes.append(
@@ -119,19 +121,23 @@ def _build_probe_configs(
 
     # 2. curl_cffi — only for direct media URLs
     if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
+        # Determine the impersonation string based on browser version
+        impersonate_str = f"chrome{chrome_version}" if chrome_version else "chrome"
         probes.append(
             ProbeConfig(
                 backend="curl_cffi",
                 label="curl-cffi (HEAD)",
-                probe_fn=lambda u, ce: probe_curl_cffi(
+                probe_fn=lambda u, ce, cv=chrome_version: probe_curl_cffi(
                     url=u,
                     cancel_event=ce,
                     headers=request_headers,
+                    chrome_version=cv,
                 ),
                 command=_curl_cffi_adapter.download_curl_cffi_command(
                     url=url,
                     output_path=stream_output_path(download_dir, message.get("title") or "Video"),
                     headers=request_headers,
+                    impersonate=impersonate_str,
                 ),
             )
         )
@@ -221,6 +227,9 @@ def run_download(
     audio_format = str(message.get("audioFormat") or "mp3").strip().lower() if extract_audio else None
     download_subtitles = bool(message.get("downloadSubtitles", True))
 
+    # Extract browser version for version-specific impersonation (used in fallback chain)
+    chrome_version = str(message.get("browserVersion") or "").strip()[:10] or None
+
     # ---- Spotify YouTube fallback ------------------------------------------------
     from spotify_metadata import is_spotify_url
 
@@ -301,6 +310,21 @@ def run_download(
         task.start()
         return
 
+    # ---- Cloudflare block early abort (all probes returned 403 Cloudflare errors) ----
+    # When EVERY probe reports cloudflare_block, there is no point trying the
+    # sequential fallback chain — every backend will also get blocked by
+    # Cloudflare and download challenge HTML pages, producing corrupted output.
+    if probe_result.errors and all(
+        err.error_type == "cloudflare_block" for err in probe_result.errors
+    ):
+        cf_probe_count = sum(1 for err in probe_result.errors if err.error_type == "cloudflare_block")
+        from native_protocol import HostError
+        raise HostError(
+            f"All {cf_probe_count} probe{'s' if cf_probe_count != 1 else ''} "
+            f"detected Cloudflare anti-bot protection blocking access to this URL. "
+            f"The download has been aborted to avoid downloading a corrupted file."
+        )
+
     # ---- Sequential fallback chain (Tier 2) --------------------------------------
     command = build_yt_dlp_command(**build_command_kwargs({"aria2c_location": aria2c_location}))
     # aria2c is required — no fallback without it
@@ -308,14 +332,16 @@ def run_download(
 
     fallback_commands = []
 
-    # 1. curl-cffi direct download
+    # 1. curl-cffi direct download (with version-specific impersonation if available)
     if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
+        impersonate_str = f"chrome{chrome_version}" if chrome_version else "chrome"
         fallback_commands.append(
             {
                 "command": _curl_cffi_adapter.download_curl_cffi_command(
                     url=url,
                     output_path=stream_output_path(download_dir, message.get("title") or "Video"),
                     headers=request_headers,
+                    impersonate=impersonate_str,
                 ),
                 "label": "curl-cffi (direct download)",
             }
