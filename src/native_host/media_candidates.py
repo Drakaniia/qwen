@@ -52,6 +52,143 @@ SERVICE_WORKER_SCOPE_RE = re.compile(
 WEBSOCKET_RE = re.compile(r"^wss?://", re.IGNORECASE)
 
 
+# ── Tiered confidence scoring constants ──────────────────────────────────
+
+TIER_ALLOW = 4
+TIER_PROBABLE = 3
+TIER_UNKNOWN = 2
+TIER_SUSPICIOUS = 1
+TIER_BLOCK = 0
+
+
+def classify_media_candidate(url, content_type=""):
+    """Classify a URL into a tiered confidence score.
+
+    Instead of a binary blocked/allowed classification, this function
+    assigns a tier and confidence score that reflects how likely the
+    URL is to be downloadable video content.
+
+    Parameters
+    ----------
+    url : str
+        The URL to classify.
+    content_type : str
+        Optional HTTP Content-Type header value.
+
+    Returns
+    -------
+    dict
+        With keys:
+        - tier (int): TIER_ALLOW (4) through TIER_BLOCK (0)
+        - confidence (int): 0-100 score
+        - reason (str): Human-readable explanation
+    """
+    text = str(url or "").lower()
+    media_type = str(content_type or "").lower()
+
+    # ── Quick kills: definitely not video ────────────────────────
+
+    # Non-HTTP protocols: blob, data, file, ftp — not downloadable via HTTP clients
+    if text.startswith(("blob:", "data:", "file:", "ftp:")):
+        return {"tier": TIER_BLOCK, "confidence": 0, "reason": f"Non-HTTP protocol ({text.split(':')[0]}:) — not downloadable via HTTP"}
+
+    # Static assets: JS, CSS, maps, fonts
+    if STATIC_ASSET_RE.search(text):
+        return {"tier": TIER_BLOCK, "confidence": 0, "reason": "Static asset (JS/CSS/map)"}
+    if STATIC_PAGE_ASSET_RE.search(text):
+        return {"tier": TIER_BLOCK, "confidence": 0, "reason": "Static page asset path"}
+    if WEB_APP_MANIFEST_RE.search(text) or "manifest+json" in media_type or "webmanifest" in media_type:
+        return {"tier": TIER_BLOCK, "confidence": 1, "reason": "Web app manifest"}
+
+    # GIF and animated images
+    if GIF_RE.search(text) or "image/gif" in media_type:
+        return {"tier": TIER_BLOCK, "confidence": 0, "reason": "GIF/animated image"}
+
+    # Ad network URLs
+    if AD_RE.search(text):
+        return {"tier": TIER_BLOCK, "confidence": 1, "reason": "Ad network URL"}
+
+    # Chinese streaming P2P SDK paths
+    if CHINESE_STREAMING_P2P_RE.search(text):
+        return {"tier": TIER_BLOCK, "confidence": 0, "reason": "P2P streaming SDK"}
+
+    # Ad SDK paths
+    if AD_SDK_RE.search(text):
+        return {"tier": TIER_BLOCK, "confidence": 0, "reason": "Ad SDK path"}
+
+    # Ephemeral Google Video (googlevideo.com/videoplayback with byte ranges)
+    if is_ephemeral_media_url(text):
+        return {"tier": TIER_BLOCK, "confidence": 2, "reason": "Ephemeral stream URL (googlevideo)"}
+
+    # Video hosting site page URLs (no video extension)
+    if VIDEO_HOSTING_SITES_RE.search(text) and not VIDEO_EXTENSION_RE.search(text):
+        return {"tier": TIER_BLOCK, "confidence": 3, "reason": "Video hosting site page URL"}
+    if P2P_STREAMING_HOSTS_RE.search(text) and not VIDEO_EXTENSION_RE.search(text):
+        return {"tier": TIER_BLOCK, "confidence": 3, "reason": "P2P streaming platform page URL"}
+    if LIVE_STREAMING_HOSTS_RE.search(text) and not VIDEO_EXTENSION_RE.search(text):
+        return {"tier": TIER_BLOCK, "confidence": 3, "reason": "Live streaming platform page URL"}
+
+    # Chinese streaming CDN segment URLs
+    if CHINESE_STREAMING_CDN_RE.search(text) and (not VIDEO_EXTENSION_RE.search(text) or SEGMENT_RE.search(text)):
+        return {"tier": TIER_BLOCK, "confidence": 2, "reason": "Chinese streaming CDN P2P segment"}
+
+    # HLS/DASH segments (.ts, .m4s, .cmfv, .cmfa)
+    if SEGMENT_RE.search(text):
+        return {"tier": TIER_BLOCK, "confidence": 2, "reason": "Media segment (HLS/DASH fragment)"}
+
+    # ── High confidence: clearly video ───────────────────────────
+
+    # YouTube video page URLs (no file extension, but yt-dlp can handle them)
+    if re.search(r"(?:^|[\/.])(?:youtube|youtu\.be)\.(?:com|be)(?:$|[\/?#])", text):
+        return {"tier": TIER_ALLOW, "confidence": 99, "reason": "YouTube video page URL"}
+
+    if HLS_RE.search(text):
+        return {"tier": TIER_ALLOW, "confidence": 98, "reason": "HLS manifest (.m3u8)"}
+    if DASH_RE.search(text):
+        return {"tier": TIER_ALLOW, "confidence": 98, "reason": "DASH manifest (.mpd)"}
+    if ISM_RE.search(text):
+        return {"tier": TIER_ALLOW, "confidence": 98, "reason": "Smooth Streaming manifest (.ism)"}
+
+    # Direct video file extensions
+    if re.search(r"\.(?:mp4|m4v)(?:$|[?#])", text):
+        return {"tier": TIER_ALLOW, "confidence": 97, "reason": "Direct MP4/M4V URL"}
+    if re.search(r"\.webm(?:$|[?#])", text):
+        return {"tier": TIER_ALLOW, "confidence": 96, "reason": "Direct WebM URL"}
+
+    # Content-Type based classification
+    if "mpegurl" in media_type or "x-mpegurl" in media_type:
+        return {"tier": TIER_ALLOW, "confidence": 95, "reason": "HLS content type"}
+    if "dash+xml" in media_type:
+        return {"tier": TIER_ALLOW, "confidence": 95, "reason": "DASH content type"}
+    if "video/mp4" in media_type:
+        return {"tier": TIER_ALLOW, "confidence": 94, "reason": "MP4 content type"}
+    if "video/webm" in media_type:
+        return {"tier": TIER_ALLOW, "confidence": 94, "reason": "WebM content type"}
+    if media_type.startswith("video/"):
+        return {"tier": TIER_ALLOW, "confidence": 90, "reason": f"Video content type ({media_type})"}
+
+    # ── Probable: likely video but needs confirmation ────────────
+
+    # CDN hint patterns
+    if re.search(r"(?:video|hls|dash|manifest|playlist|stream)", text):
+        return {"tier": TIER_PROBABLE, "confidence": 80, "reason": "CDN/video keyword in URL"}
+    if re.search(r"(?:videoplayback|playlist|master\.m3u8|akamai|cloudfront)", text):
+        return {"tier": TIER_PROBABLE, "confidence": 75, "reason": "Video CDN hint in URL"}
+
+    # ── Suspicious: no clear video signals ───────────────────────
+
+    # Has HTTP/HTTPS scheme but no video indicators
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.scheme in ("http", "https") and parsed.netloc:
+            return {"tier": TIER_SUSPICIOUS, "confidence": 10, "reason": "URL without video indicators"}
+    except Exception:
+        pass
+
+    return {"tier": TIER_BLOCK, "confidence": 0, "reason": "Unrecognized or invalid URL"}
+
+
 def is_service_worker_scope(initiator_url):
     """Check if a URL corresponds to a Service Worker script scope.
 
