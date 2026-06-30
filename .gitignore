@@ -11,3 +11,5 @@ dist/
 logs/
 *.exe~
 nul
+.vibe/hooks.toml
+.vibe/config.toml
