@@ -4,6 +4,10 @@ __pycache__/
 node_modules/
 tools/
 dist/
+
+# Packaging / build artifacts
+packaging/installer-source/
+build/
 .opencode/plugins/emdash-notifications.js
 .qwen/settings.json
 .gemini/settings.json
