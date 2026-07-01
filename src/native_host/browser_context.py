@@ -127,6 +127,46 @@ def remove_temp_files(paths):
             pass
 
 
+def write_cookie_file_from_string(cookie_str, url, temp_dir=None):
+    """Write a raw Cookie header string to a Netscape-format cookies file.
+
+    Unlike write_cookie_file_from_headers() which takes a list of header
+    dicts, this function takes a raw cookie string like
+    ``"session=abc123; pref=lang=en"`` and creates a cookies.txt file
+    suitable for yt-dlp's ``--cookies`` flag.
+
+    Returns the path to the temp file, or None if the cookie string is empty.
+    """
+    cookies = parse_cookie_header(cookie_str or "")
+    if not cookies:
+        return None
+
+    parsed = urlparse(str(url or ""))
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return None
+
+    temp_base = Path(temp_dir) if temp_dir else Path(tempfile.gettempdir())
+    try:
+        temp_base.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            newline="\n",
+            delete=False,
+            dir=str(temp_base),
+            prefix="qwin-cookies-",
+            suffix=".txt",
+        ) as cookie_file:
+            cookie_file.write("# Netscape HTTP Cookie File\n")
+            secure = "TRUE" if parsed.scheme == "https" else "FALSE"
+            for name, value in cookies:
+                cookie_file.write(f"{host}\tFALSE\t/\t{secure}\t0\t{name}\t{value}\n")
+            return cookie_file.name
+    except OSError as exc:
+        raise HostError(f"Could not create temporary cookie file from string: {exc}") from exc
+
+
 def append_browser_context_options(command, referer=None, user_agent=None, request_headers=None, cookies_file=None):
     headers = {header["name"].lower(): header for header in clean_request_headers(request_headers)}
     cleaned_referer = clean_header_value(referer)

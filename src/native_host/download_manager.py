@@ -29,7 +29,7 @@ from download_logger import get_logger
 from spotify_fallback import run_spotify_fallback_download
 
 import curl_cffi_adapter as _curl_cffi_adapter
-from browser_context import write_cookie_file_from_headers
+from browser_context import write_cookie_file_from_headers, write_cookie_file_from_string
 from download_task import DownloadTask
 from native_paths import resolve_download_dir, validate_download_url
 from native_protocol import send_native_message
@@ -56,6 +56,25 @@ from yt_dlp_dependencies import (
     resolve_streamlink_command,
     resolve_yt_dlp_command,
 )
+
+# ── Cookie injection helper ──────────────────────────────────────────────
+
+
+def _inject_cookie_header(request_headers, cookie_header):
+    """Merge a raw cookie header string into the request headers dict.
+
+    Returns a new headers dict with the Cookie header added (or updated)
+    alongside existing headers. Used to inject browser session cookies
+    into curl_cffi probes and other non-yt-dlp backends.
+    """
+    if not cookie_header:
+        return request_headers
+    headers = dict(request_headers or {})
+    # Only inject if there isn't already a Cookie header
+    if not any(k.lower() == "cookie" for k in headers):
+        headers["Cookie"] = cookie_header
+    return headers
+
 
 # ── Probe config building ────────────────────────────────────────────────
 
@@ -123,20 +142,23 @@ def _build_probe_configs(
     if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
         # Determine the impersonation string based on browser version
         impersonate_str = f"chrome{chrome_version}" if chrome_version else "chrome"
+        # Chrome versions for TLS fingerprint rotation on 403/block
+        chrome_versions = ["131", "127", "124", "120"]
         probes.append(
             ProbeConfig(
                 backend="curl_cffi",
                 label="curl-cffi (HEAD)",
-                probe_fn=lambda u, ce, cv=chrome_version: probe_curl_cffi(
+                probe_fn=lambda u, ce, cv=chrome_version, cvs=chrome_versions: probe_curl_cffi(
                     url=u,
                     cancel_event=ce,
-                    headers=request_headers,
+                    headers=request_headers_with_cookies,
                     chrome_version=cv,
+                    chrome_versions=cvs,
                 ),
                 command=_curl_cffi_adapter.download_curl_cffi_command(
                     url=url,
                     output_path=stream_output_path(download_dir, message.get("title") or "Video"),
-                    headers=request_headers,
+                    headers=request_headers_with_cookies,
                     impersonate=impersonate_str,
                 ),
             )
@@ -221,8 +243,27 @@ def run_download(
 
     download_dir = resolve_download_dir(message.get("downloadFolder"))
     request_headers = message.get("requestHeaders")
+
+    # Track all temp files for cleanup, including both request-header-derived
+    # and session cookies files if both are created.
+    temp_files = []
+
     cookies_file = write_cookie_file_from_headers(url, request_headers)
-    temp_files = [cookies_file] if cookies_file else []
+    if cookies_file:
+        temp_files.append(cookies_file)
+
+    # Also extract cookie header from browser session (if provided).
+    # Session cookies from the browser are more comprehensive than
+    # request-header-derived cookies, so prefer them for yt-dlp.
+    cookie_header = message.get("cookieHeader") or ""
+    if cookie_header:
+        session_cookies_file = write_cookie_file_from_string(cookie_header, url)
+        if session_cookies_file:
+            temp_files.append(session_cookies_file)
+            cookies_file = session_cookies_file
+
+    # Add session cookie header to request headers for curl_cffi probes
+    request_headers_with_cookies = _inject_cookie_header(request_headers, cookie_header)
     extract_audio = bool(message.get("musicMode") or message.get("extractAudio") or False)
     audio_format = str(message.get("audioFormat") or "mp3").strip().lower() if extract_audio else None
     download_subtitles = bool(message.get("downloadSubtitles", True))
@@ -254,7 +295,7 @@ def run_download(
             download_dir=download_dir,
             referer=message.get("pageUrl"),
             user_agent=message.get("userAgent"),
-            request_headers=request_headers,
+            request_headers=request_headers_with_cookies,
             cookies_file=cookies_file,
             yt_dlp_command=yt_dlp_command,
             ffmpeg_location=ffmpeg_location,
@@ -275,7 +316,7 @@ def run_download(
         url=url,
         message=message,
         download_dir=download_dir,
-        request_headers=request_headers,
+        request_headers=request_headers_with_cookies,
         cookies_file=cookies_file,
         yt_dlp_command=yt_dlp_command,
         ffmpeg_location=ffmpeg_location,
@@ -340,7 +381,7 @@ def run_download(
                 "command": _curl_cffi_adapter.download_curl_cffi_command(
                     url=url,
                     output_path=stream_output_path(download_dir, message.get("title") or "Video"),
-                    headers=request_headers,
+                    headers=request_headers_with_cookies,
                     impersonate=impersonate_str,
                 ),
                 "label": "curl-cffi (direct download)",

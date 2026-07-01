@@ -309,6 +309,59 @@ def run_resolve_media_candidates(message):
     return _media_resolver.resolve_media_candidates(message, send=send_native_message, urlopen_fn=urlopen)
 
 
+def run_write_data(message):
+    """Write base64-encoded segment data to a file on disk.
+
+    Receives a message with:
+        - data: base64-encoded binary content
+        - outputPath: absolute path to the output file
+
+    Returns a response with success/failure status.
+    """
+    import base64 as _base64
+    from pathlib import Path as _Path
+
+    data_b64 = message.get("data", "")
+    output_path = message.get("outputPath", "")
+    request_id = message.get("id", "write_data")
+
+    if not data_b64:
+        return {
+            "type": "writeDataResult",
+            "id": request_id,
+            "ok": False,
+            "error": "No base64 data provided.",
+        }
+
+    if not output_path:
+        return {
+            "type": "writeDataResult",
+            "id": request_id,
+            "ok": False,
+            "error": "No output path provided.",
+        }
+
+    try:
+        decoded = _base64.b64decode(data_b64)
+        output = _Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(decoded)
+        return {
+            "type": "writeDataResult",
+            "id": request_id,
+            "ok": True,
+            "bytesWritten": len(decoded),
+            "outputPath": str(output.resolve()),
+        }
+    except Exception as exc:
+        return {
+            "type": "writeDataResult",
+            "id": request_id,
+            "ok": False,
+            "error": f"Failed to write data: {exc}",
+        }
+
+
 def dependency_status():
     return _host_dispatch.dependency_status(_dispatch_deps(include_dispatch=False))
 
@@ -353,6 +406,7 @@ def _dispatch_deps(include_dispatch=True):
         "run_gopeed_magnet_download": _download_manager.run_gopeed_magnet_download,
         "run_gopeed_torrent_download": _download_manager.run_gopeed_torrent_download,
         "run_resolve_media_candidates": run_resolve_media_candidates,
+        "run_write_data": run_write_data,
         "run_cdm_init": run_cdm_init,
         "run_extract_keys": run_extract_keys,
         "run_decrypt_segments": run_decrypt_segments,

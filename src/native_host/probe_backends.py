@@ -36,13 +36,28 @@ def _is_cloudflare_403(stderr: str, stdout: str) -> bool:
 
 
 def _is_cloudflare_response_body(raw_output: str) -> bool:
-    """Check if response body (raw_output) is a Cloudflare challenge page."""
+    """Check if response body (raw_output) is a Cloudflare challenge page.
+
+    Detects multiple generations of Cloudflare challenges:
+    - Classic: "Attention Required! | Cloudflare"
+    - Turnstile widget (data-turnstile attribute)
+    - Generic "Just a moment..." pages with Cloudflare indicators
+    - Challenge platform scripts
+    """
     if not raw_output or len(raw_output) < 100:
         return False
     text = raw_output[:2000].lower()
+    # Classic Cloudflare challenge
     if "cloudflare" in text and "attention required" in text:
         return True
+    # Challenge platform scripts
     if "cf-chl" in text or "challenge-platform" in text or "cf-turnstile" in text:
+        return True
+    # Turnstile widget (data-turnstile attribute)
+    if "data-turnstile" in text and ("challenge" in text or "verify" in text):
+        return True
+    # Generic "Just a moment..." pages protected by Cloudflare
+    if "just a moment" in text and ("cloudflare" in text or "cf-ray" in text):
         return True
     return False
 
@@ -179,6 +194,7 @@ def probe_curl_cffi(
     cancel_event: threading.Event,
     headers: Optional[dict] = None,
     chrome_version: Optional[str] = None,
+    chrome_versions: Optional[list[str]] = None,
 ) -> dict:
     """HTTP HEAD request with TLS impersonation. Success if 2xx/3xx response.
 
@@ -187,6 +203,10 @@ def probe_curl_cffi(
     chrome_version : str, optional
         Specific Chrome version to impersonate (e.g. "131").
         If None, uses the default "chrome" fingerprint.
+    chrome_versions : list[str], optional
+        Additional Chrome versions to try on 403/block. When the primary
+        impersonation gets blocked by Cloudflare, each version from this
+        list is tried in sequence before giving up.
     """
     if cancel_event.is_set():
         return {
@@ -200,31 +220,32 @@ def probe_curl_cffi(
             "duration_ms": 0,
         }
 
-    # Try curl_cffi first, fall back to urllib
-    try:
-        from curl_cffi import requests as curl_requests
+    def _try_impersonate(cv):
+        """Make a single HEAD request with a given impersonation version."""
+        try:
+            from curl_cffi import requests as curl_requests
 
-        impersonate_value = f"chrome{chrome_version}" if chrome_version else "chrome"
-        resp = curl_requests.head(
-            url,
-            headers=dict(headers or {}),
-            impersonate=impersonate_value,
-            timeout=12,
-            verify=True,
-        )
-        if resp.ok:
-            return {
-                "ok": True,
-                "backend": "curl_cffi",
-                "label": "curl-cffi (HEAD)",
-                "error_type": None,
-                "message": None,
-                "status_code": resp.status_code,
-                "raw_output": None,
-                "duration_ms": 0,
-            }
-        else:
-            # Check if the error response body is a Cloudflare challenge page
+            impersonate_value = f"chrome{cv}" if cv else "chrome"
+            resp = curl_requests.head(
+                url,
+                headers=dict(headers or {}),
+                impersonate=impersonate_value,
+                timeout=12,
+                verify=True,
+            )
+
+            if resp.ok:
+                return {
+                    "ok": True,
+                    "backend": "curl_cffi",
+                    "label": "curl-cffi (HEAD)",
+                    "error_type": None,
+                    "message": None,
+                    "status_code": resp.status_code,
+                    "raw_output": None,
+                    "duration_ms": 0,
+                }
+
             resp_body = resp.text[:2000] if resp.text else ""
             if resp.status_code == 403 and _is_cloudflare_response_body(resp_body):
                 return {
@@ -232,7 +253,7 @@ def probe_curl_cffi(
                     "backend": "curl_cffi",
                     "label": "curl-cffi (HEAD)",
                     "error_type": "cloudflare_block",
-                    "message": "HTTP 403: Cloudflare anti-bot protection blocked this request",
+                    "message": f"HTTP 403: Cloudflare anti-bot protection blocked request (impersonation: chrome{cv or 'default'})",
                     "status_code": 403,
                     "raw_output": resp_body,
                     "duration_ms": 0,
@@ -247,21 +268,43 @@ def probe_curl_cffi(
                 "raw_output": resp_body,
                 "duration_ms": 0,
             }
-    except ImportError:
-        pass
-    except Exception as exc:
-        return {
-            "ok": False,
-            "backend": "curl_cffi",
-            "label": "curl-cffi (HEAD)",
-            "error_type": "request_error",
-            "message": str(exc),
-            "status_code": None,
-            "raw_output": str(exc),
-            "duration_ms": 0,
-        }
+        except ImportError:
+            return None
+        except Exception as exc:
+            return {
+                "ok": False,
+                "backend": "curl_cffi",
+                "label": "curl-cffi (HEAD)",
+                "error_type": "request_error",
+                "message": str(exc),
+                "status_code": None,
+                "raw_output": str(exc),
+                "duration_ms": 0,
+            }
 
-    # Fallback to urllib
+    # ── Try primary impersonation first ───────────────────────────────────
+    result = _try_impersonate(chrome_version)
+    if result is not None:
+        if result["ok"]:
+            return result
+        # If blocked by Cloudflare AND we have alternate versions, rotate
+        if result["error_type"] == "cloudflare_block" and chrome_versions:
+            for alt_version in chrome_versions:
+                if alt_version == chrome_version:
+                    continue
+                alt_result = _try_impersonate(alt_version)
+                if alt_result is None:
+                    continue
+                if alt_result["ok"]:
+                    return alt_result
+                # If this version also gets a non-CF error, stop rotating
+                if alt_result["error_type"] != "cloudflare_block":
+                    return alt_result
+            # All versions got blocked — return the original result
+            return result
+        return result
+
+    # ── Fallback to urllib ───────────────────────────────────────────────
     try:
         import urllib.error
         import urllib.request

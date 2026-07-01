@@ -117,6 +117,18 @@ def handle_message(message, deps):
                     "message": "CDP command received and forwarded. Results arrive via the relay chain.",
                 }
             )
+        case "swSegmentBatch":
+            # Receive batch of SW-captured segments for a download job
+            deps.send_native_message({
+                "type": "swSegmentBatchAck",
+                "id": deps.request_id(message),
+                "ok": True,
+                "received": len(message.get("segments", [])),
+            })
+        case "writeData":
+            # Write base64-encoded segment data to disk
+            result = deps.run_write_data(message)
+            deps.send_native_message(result)
         case "cdpRelayResult" | "cdpRelayError":
             # Result from extension for a CDP relay command — forward to Go
             if hasattr(deps, "send_cdp_relay_result"):
