@@ -220,9 +220,15 @@ async function getTabVideos(tabId) {
   return getVisibleVideosForTab(tabId);
 }
 
-async function getTabDownloads(_tabId) {
+async function getTabDownloads(tabId) {
   await tabState.load();
-  return Object.values(tabState.getAllDownloads()).sort((left, right) => right.updatedAt - left.updatedAt);
+  const allDownloads = Object.values(tabState.getAllDownloads());
+  // Filter downloads to only show jobs for the current tab.
+  // This prevents old downloads from other tabs/sites from cluttering the
+  // download list when the user navigates to a new site.
+  return allDownloads
+    .filter((job) => !job.tabId || job.tabId === tabId)
+    .sort((left, right) => right.updatedAt - left.updatedAt);
 }
 
 // ── Fallback deps (closure over background functions) ────────────────────

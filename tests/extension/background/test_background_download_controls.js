@@ -111,10 +111,10 @@ assert.match(
   "background must consume native cleanup results from canceled downloads",
 );
 
-assert.doesNotMatch(
+assert.match(
   source,
-  /\.filter\(\(job\) => job\.tabId === tabId\)/,
-  "downloads must not be filtered to the current tab; active jobs should remain visible after changing or closing tabs",
+  /\.filter\(\(job\) =>\s*!job\.tabId\s*\|\|\s*job\.tabId\s*===\s*tabId\)/,
+  "getTabDownloads must filter downloads to only show jobs matching the current tab",
 );
 
 assert.match(

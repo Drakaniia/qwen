@@ -27,6 +27,12 @@ api.runtime.onMessage.addListener((message) => {
   }
 
   if (message.type === "downloadUpdated" && message.job) {
+    // Only show downloads for the current active tab to prevent cross-tab
+    // interference — old downloads from other tabs/sites should not pollute
+    // the download list when the user navigates to a new site.
+    if (message.job.tabId && message.job.tabId !== PopupState.get("activeTabId")) {
+      return;
+    }
     const currentDownloads = PopupState.get("currentDownloads");
     const existingIndex = currentDownloads.findIndex((job) => job.id === message.job.id);
     let updated;
@@ -39,6 +45,8 @@ api.runtime.onMessage.addListener((message) => {
     PopupState.update({ currentDownloads: updated });
   }
 
+  // No tabId guard needed for downloadRemoved — the jobId is unique, and
+  // cross-tab removals won't find a match in the current tab's filtered list.
   if (message.type === "downloadRemoved" && message.jobId) {
     const currentDownloads = PopupState.get("currentDownloads");
     PopupState.update({ currentDownloads: currentDownloads.filter((job) => job.id !== message.jobId) });
