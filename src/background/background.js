@@ -29,6 +29,8 @@ import * as recording from "./recording.js";
 import { initWebRequestHandlers, isExtensionPageSender } from "./background_webrequest.js";
 import { registerMessageHandlers } from "./background_message_handlers.js";
 import { runInit } from "./background_init.js";
+import * as cloudflareSolver from "./cloudflare_solver.js";
+import * as swRelay from "./sw_relay.js";
 
 // ── Re-exports for message handlers ──────────────────────────────────────
 
@@ -365,6 +367,10 @@ import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus,
 // ── CDP relay init ───────────────────────────────────────────────────────
 
 cdpRelay.init();
+
+// ── SW capture relay init ────────────────────────────────────────────────
+
+swRelay.init();
 
 // ── Recording progress updates ───────────────────────────────────────────
 

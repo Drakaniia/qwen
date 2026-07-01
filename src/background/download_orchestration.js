@@ -3,6 +3,8 @@
 import { formatBytes } from "./download_helpers.js";
 import { createOperations } from "./download_operations.js";
 import { isBrowserDownloadableFormat, filenameFromVideo } from "./browser_download.js";
+import { extractCookies, cookiesToCookieString } from "./cookie_extraction.js";
+import { tryCdpTunnelDownload } from "./cdp_tunnel_integration.js";
 
 function create(deps) {
   // ── Operations (download control, file ops, management) ──────────────
@@ -193,6 +195,44 @@ function create(deps) {
         resolve({ jobId });
       }
     });
+  }
+
+  // ── CDP Tunnel Fallback ────────────────────────────────────────────
+
+  /**
+   * Try to download the video through the CDP browser tunnel.
+   * This is a last-resort fallback when all native host sources fail,
+   * attempted before the browser download fallback.
+   */
+  async function tryCdpTunnelFallback(tabId, url, format, requestHeaders, jobId) {
+    deps.updateDownload(jobId, {
+      status: "connecting",
+      message: "Trying browser tunnel as last resort...",
+    });
+
+    try {
+      const result = await tryCdpTunnelDownload(tabId, url, {
+        requestHeaders,
+        timeout: 120000,
+        format: format || "",
+      });
+
+      if (!result.ok) {
+        return { ok: false, error: result.error || "CDP tunnel download failed" };
+      }
+
+      // For segment data, send to native host to write to disk
+      // For manifest data, return it for further processing
+      return {
+        ok: true,
+        data: result.data,
+        byteLength: result.byteLength,
+        contentType: result.contentType,
+        method: result.method,
+      };
+    } catch (err) {
+      return { ok: false, error: `CDP tunnel fallback error: ${err.message || err}` };
+    }
   }
 
   async function startNativeDownloadFromVideo(tabId, video, formatId = "best", options = {}) {
@@ -411,12 +451,38 @@ function create(deps) {
             }
             const fallbackVideo = await deps.fallbackVideoForDownload(tabId, video, attemptedUrls);
             if (!fallbackVideo) {
-              // All native-host sources exhausted; try browser download as last resort
+              // All native-host sources exhausted; try CDP browser tunnel
+              // Note: CDP tunnel uses the browser's native network stack with
+              // credentials: "include", so cookies from the tab are automatically
+              // included in requests — no need to pass cookie-enriched headers.
+              const tunnelResult = await tryCdpTunnelFallback(
+                tabId,
+                video.url,
+                video.format,
+                requestHeaders,
+                jobId,
+              );
+              if (tunnelResult.ok && tunnelResult.method !== "manifest") {
+                // CDP tunnel fully downloaded the file (segment/direct URL) — mark done
+                deps.updateDownload(jobId, {
+                  status: "done",
+                  percent: 100,
+                  rawPercent: 100,
+                  speed: "",
+                  eta: "",
+                  stage: "done",
+                  message: "Download complete (CDP tunnel).",
+                });
+                return;
+              }
+
+              // CDP tunnel only got manifest text or failed entirely;
+              // try browser download as last resort
               if (isBrowserDownloadableFormat(video.format)) {
                 deps.updateDownload(jobId, {
                   status: "connecting",
                   error: "",
-                  message: "All native sources failed; trying browser download...",
+                  message: "Tunnel failed; trying browser download...",
                   ...artifactPatch,
                 });
                 await browserDownload(tabId, video, "best", {
@@ -475,6 +541,17 @@ function create(deps) {
       }
     });
 
+    // Extract cookies from browser session for authenticated downloads
+    let cookieHeader = "";
+    if (tabId) {
+      try {
+        const cookies = await extractCookies(tabId);
+        cookieHeader = cookiesToCookieString(cookies);
+      } catch (_e) {
+        // Cookie extraction is best-effort
+      }
+    }
+
     port.postMessage({
       type: "download",
       id: jobId,
@@ -483,6 +560,7 @@ function create(deps) {
       pageUrl,
       userAgent: deps.userAgent(),
       requestHeaders,
+      cookieHeader,
       downloadFolder: settings().downloadFolder || "",
       formatId: formatId || "best",
       backend,
