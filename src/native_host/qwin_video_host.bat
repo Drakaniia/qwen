@@ -4,6 +4,18 @@ setlocal
 set "LOG_FILE=%TEMP%\qwin_host_debug.log"
 echo [%DATE% %TIME%] Starting host... >> "%LOG_FILE%"
 
+rem ── Try native PyInstaller .exe first ────────────────────────────────────
+if exist "%~dp0qwin-host.exe" (
+  echo [%DATE% %TIME%] Using native qwin-host.exe >> "%LOG_FILE%"
+  "%~dp0qwin-host.exe"
+  set EXIT_CODE=%ERRORLEVEL%
+  echo [%DATE% %TIME%] Exit code: %EXIT_CODE% >> "%LOG_FILE%"
+  exit /b %EXIT_CODE%
+)
+
+echo [%DATE% %TIME%] qwin-host.exe not found, trying Python... >> "%LOG_FILE%"
+
+rem ── Fallback: try Python ─────────────────────────────────────────────────
 where python >nul 2>nul
 if not %ERRORLEVEL%==0 (
   where py >nul 2>nul
