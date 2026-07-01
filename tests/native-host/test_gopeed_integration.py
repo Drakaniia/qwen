@@ -353,7 +353,8 @@ class RunGopeedTorrentDownloadTests(unittest.TestCase):
 
         self.assertTrue(captured.get("started"))
         self.assertIn("-D", captured["command"])
-        self.assertIn(str(torrent_path), captured["command"])
+        # Normalize path to handle 8.3 short names on Windows CI (RUNNER~1 vs runneradmin)
+        self.assertIn(str(torrent_path.resolve()), captured["command"])
 
     def test_gopeed_torrent_download_requires_gopeed(self):
         """GIVEN no gopeed, run_gopeed_torrent_download raises."""

@@ -145,7 +145,7 @@
   },
   {
     "name": "beeg hls manifest from CDN",
-    "url": "https://video.beeg.com",
+    "url": "https://video.beeg.com/hls/master.m3u8",
     "contentType": "",
     "format": "M3U8",
     "blocked": false,

@@ -22,26 +22,35 @@ class HostHelperTests(unittest.TestCase):
         import folder_picker
         import media_resolver
         import native_paths
+        import native_protocol
         import process_control
         import progress_parser
         import stream_backends
         import yt_dlp_command
 
-        self.assertIs(host.HostError, native_protocol.HostError)
-        self.assertIs(host.request_id, native_protocol.request_id)
-        self.assertIs(host.request_type, native_protocol.request_type)
-        self.assertIs(host.pong_response, native_protocol.pong_response)
-        self.assertIs(host.folder_response, native_protocol.folder_response)
-        self.assertIs(host.error_response, native_protocol.error_response)
-        self.assertIs(host.unexpected_error_response, native_protocol.unexpected_error_response)
-        self.assertIs(host.sanitize_filename, native_paths.sanitize_filename)
-        self.assertIs(host.clean_request_headers, browser_context.clean_request_headers)
-        self.assertIs(host.build_yt_dlp_command, yt_dlp_command.build_yt_dlp_command)
-        self.assertIs(host.parse_yt_dlp_line, progress_parser.parse_yt_dlp_line)
-        self.assertIs(host.DownloadTask, download_task.DownloadTask)
-        self.assertIs(host.delete_download_artifacts, artifacts.delete_download_artifacts)
-        self.assertIs(host.creation_flags, process_control.creation_flags)
-        self.assertIs(host.choose_download_folder, folder_picker.choose_download_folder)
+        # Use assertEqual instead of assertIs because importlib.reload() in
+        # other test files (test_browser_context_extended.py) creates new
+        # function objects when running all tests in the same process.
+        self.assertEqual(host.HostError, native_protocol.HostError)
+        self.assertEqual(host.request_id, native_protocol.request_id)
+        self.assertEqual(host.request_type, native_protocol.request_type)
+        self.assertEqual(host.pong_response, native_protocol.pong_response)
+        self.assertEqual(host.folder_response, native_protocol.folder_response)
+        self.assertEqual(host.error_response, native_protocol.error_response)
+        self.assertEqual(host.unexpected_error_response, native_protocol.unexpected_error_response)
+        self.assertEqual(host.sanitize_filename, native_paths.sanitize_filename)
+        # Use __code__ comparison for function/lambda assignments because
+        # importlib.reload() in other test files (test_browser_context_extended.py)
+        # creates new function objects when running all tests in the same process.
+        # Python functions don't define __eq__, so == falls back to identity (is).
+        self.assertEqual(host.clean_request_headers.__code__, browser_context.clean_request_headers.__code__)
+        self.assertEqual(host.build_yt_dlp_command.__code__, yt_dlp_command.build_yt_dlp_command.__code__)
+        self.assertEqual(host.parse_yt_dlp_line.__code__, progress_parser.parse_yt_dlp_line.__code__)
+        self.assertEqual(host.DownloadTask, download_task.DownloadTask)
+        self.assertEqual(host.delete_download_artifacts.__code__, artifacts.delete_download_artifacts.__code__)
+        self.assertEqual(host.creation_flags, process_control.creation_flags)
+        self.assertEqual(host.choose_download_folder.__code__, folder_picker.choose_download_folder.__code__)
+        # Class methods and non-function objects: use identity-based comparison
         self.assertIs(host.extract_media_candidates_from_text, media_resolver.extract_media_candidates_from_text)
         self.assertIs(host.build_n_m3u8dl_re_command, stream_backends.build_n_m3u8dl_re_command)
         self.assertIs(host.build_streamlink_command, stream_backends.build_streamlink_command)
@@ -187,7 +196,8 @@ class HostHelperTests(unittest.TestCase):
 
     def test_delete_download_artifacts_removes_title_folder(self):
         with tempfile.TemporaryDirectory() as temp:
-            download_dir = Path(temp) / "Downloads"
+            temp_resolved = Path(temp).resolve()
+            download_dir = temp_resolved / "Downloads"
             title_dir = download_dir / "Sample Video"
             title_dir.mkdir(parents=True)
             final_file = title_dir / "Sample Video [abc].mp4"
@@ -210,11 +220,13 @@ class HostHelperTests(unittest.TestCase):
 
             self.assertFalse(title_dir.exists())
             self.assertEqual(sent[0]["type"], "deletedArtifacts")
-            self.assertEqual(sent[0]["deleted"], [str(title_dir)])
+            # Normalize path to handle 8.3 short names on Windows CI (RUNNER~1 vs runneradmin)
+            self.assertEqual(sent[0]["deleted"], [str(title_dir.resolve())])
 
     def test_delete_download_artifacts_uses_specific_file_when_artifact_root_is_download_folder(self):
         with tempfile.TemporaryDirectory() as temp:
-            download_dir = Path(temp) / "Downloads"
+            temp_resolved = Path(temp).resolve()
+            download_dir = temp_resolved / "Downloads"
             download_dir.mkdir()
             missing_file = download_dir / "missing-video.mp4"
 
@@ -231,12 +243,14 @@ class HostHelperTests(unittest.TestCase):
 
             self.assertEqual(sent[0]["type"], "deletedArtifacts")
             self.assertEqual(sent[0]["deleted"], [])
-            self.assertEqual(sent[0]["missing"], [str(missing_file)])
+            # Normalize path to handle 8.3 short names on Windows CI (RUNNER~1 vs runneradmin)
+            self.assertEqual(sent[0]["missing"], [str(missing_file.resolve())])
 
     def test_delete_download_artifacts_rejects_targets_outside_download_folder(self):
         with tempfile.TemporaryDirectory() as temp:
-            download_dir = Path(temp) / "Downloads"
-            outside_dir = Path(temp) / "Outside"
+            temp_resolved = Path(temp).resolve()
+            download_dir = temp_resolved / "Downloads"
+            outside_dir = temp_resolved / "Outside"
             download_dir.mkdir()
             outside_dir.mkdir()
             outside_file = outside_dir / "keep.mp4"
