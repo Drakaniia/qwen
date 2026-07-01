@@ -49,6 +49,20 @@ jobs:
         with:
           python-version: "3.x"
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Install Python dependencies
+        run: |
+          pip install curl-cffi
+
+      - name: Build Go capture binary for tests
+        shell: pwsh
+        run: |
+          cd go
+          go build -o qwin-capture.exe .
+
       - name: Run native host tests
         run: python -m unittest discover -s tests\native-host -p test_*.py
 
