@@ -1,6 +1,24 @@
 # Qwin Video Downloader
 
-Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser extension that detects playable video URLs on the current page and sends selected URLs to a local Python native messaging host. It can also detect real YouTube video pages from the visible player. The helper uses `yt-dlp`, `ffmpeg`, and `aria2c` fast mode to save supported videos as MP4.
+[![CI](https://github.com/qwin-video-downloader/qwin/actions/workflows/ci.yml/badge.svg)](https://github.com/qwin-video-downloader/qwin/actions/workflows/ci.yml)
+[![Build Installer](https://github.com/qwin-video-downloader/qwin/actions/workflows/build-installer.yml/badge.svg)](https://github.com/qwin-video-downloader/qwin/actions/workflows/build-installer.yml)
+
+Qwin Video Downloader is a Windows-focused Chrome, Firefox, and Yandex Browser extension that detects playable video URLs on the current page and sends selected URLs to a local native messaging host. The helper uses `yt-dlp`, `ffmpeg`, and `aria2c` fast mode to save supported videos as MP4.
+
+## Download
+
+[![Download Latest](https://img.shields.io/github/v/release/qwin-video-downloader/qwin?label=Latest%20Release&color=brightgreen)](https://github.com/qwin-video-downloader/qwin/releases/latest)
+
+**Windows users:** Download the self-contained installer from the [latest release](https://github.com/qwin-video-downloader/qwin/releases/latest).
+No Python, Go, or Node.js required — everything is bundled.
+
+- **Installer:** `Qwin-Video-Downloader-vX.X.X-Setup.exe` (~89 MB)
+- **Installed size:** ~131 MB
+- **Browsers supported:** Chrome, Firefox, Edge, Brave, Yandex, Chromium
+
+> The installer includes yt-dlp, aria2c, ffmpeg, streamlink, N_m3u8DL-RE, lux, and the
+> Widevine CDM pipeline (CDM sourced from Chrome at install time).
+> See [packaging/README.md](packaging/README.md) for build details.
 
 ## Features
 
