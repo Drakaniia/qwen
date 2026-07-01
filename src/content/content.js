@@ -5,6 +5,8 @@ import * as pageDetectionModule from "./page_detection.js";
 import * as mediaSourceIntercept from "./media_source_intercept.js";
 import * as emeIntercept from "./eme_intercept.js";
 import * as p2pDetection from "./p2p_detection.js";
+import * as fetchIntercept from "./fetch_intercept.js";
+import * as serviceWorkerCapture from "./service_worker_capture.js";
 import {
   initOverlay,
   updateQualityLoadingStatus,
@@ -339,6 +341,20 @@ function start() {
 
   // Initialise P2P/WebRTC stream detection
   p2pDetection.init();
+
+  // Initialize Service Worker media capture (best-effort)
+  serviceWorkerCapture.initMediaCaptureSW().then((active) => {
+    if (active) {
+      console.log("[qwin] Service Worker media capture active");
+    } else {
+      // Fall back to fetch/XHR interception when SW capture is unavailable
+      // (existing SW on page, unsupported environment, or registration failure)
+      const fiActive = fetchIntercept.initFetchIntercept();
+      if (fiActive) {
+        console.log("[qwin] Fetch/XHR intercept active (SW capture fallback)");
+      }
+    }
+  });
 
   // Initialize overlay with core dependencies
   initOverlay({
