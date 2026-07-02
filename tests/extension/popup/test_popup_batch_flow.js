@@ -71,6 +71,9 @@ const BATCH_ELEMENT_IDS = [
   "batchBar", "batchLabel", "batchProgress", "batchProgressFill",
   "batchStatus", "batchCancelBtn", "playlistPrompt", "playlistTitle",
   "downloadAllBtn",
+  "backend", "downloadSubtitles", "syncHistoryToggle", "syncStatus",
+  "depBanner", "depBannerToggle", "depBannerBody", "depBannerList",
+  "depBannerTitle", "depBannerCopyBtn",
 ];
 
 function createDocument() {

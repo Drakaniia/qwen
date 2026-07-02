@@ -3,7 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 
 const __dirname = import.meta.dirname;
-const css = fs.readFileSync(path.join(__dirname, "../../../src/popup/popup.css"), "utf8");
+const popupDir = path.join(__dirname, "../../../src/popup");
+const css = [
+  fs.readFileSync(path.join(popupDir, "popup-base.css"), "utf8"),
+  fs.readFileSync(path.join(popupDir, "popup-components.css"), "utf8"),
+  fs.readFileSync(path.join(popupDir, "popup-theme.css"), "utf8"),
+].join("\n");
 
 // Test 1: CSS Animation exists
 assert.match(css, /\.progress-bar\.indeterminate span/, "CSS must define indeterminate progress");

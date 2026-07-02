@@ -43,6 +43,18 @@ const POPUP_ELEMENT_IDS = [
   "downloadMusicLink",
   "audioFormat",
   "recordingMode",
+  "backend",
+  "downloadSubtitles",
+  "downloadAllBtn",
+  "batchCancelBtn",
+  "syncHistoryToggle",
+  "syncStatus",
+  "depBanner",
+  "depBannerToggle",
+  "depBannerBody",
+  "depBannerList",
+  "depBannerTitle",
+  "depBannerCopyBtn",
 ];
 
 class ClassList {
@@ -184,9 +196,10 @@ function createHarness({ dependencies = {} } = {}) {
             settings: { downloadFolder: "" },
           };
         }
-        if (message.type === "pingNativeHost") {
+        if (message.type === "pingNativeHost" || message.type === "getHelperStatus") {
           return {
             ok: true,
+            connected: true,
             version: "1.2.3",
             dependencies: {
               ytDlp: true,

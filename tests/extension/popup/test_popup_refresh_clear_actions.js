@@ -5,7 +5,12 @@ import vm from "node:vm";
 
 const __dirname = import.meta.dirname;
 const popupBundle = fs.readFileSync(path.join(__dirname, "../../../dist/test/popup.bundle.js"), "utf8");
-const popupCss = fs.readFileSync(path.join(__dirname, "../../../src/popup/popup.css"), "utf8");
+const popupDir = path.join(__dirname, "../../../src/popup");
+const popupCss = [
+  fs.readFileSync(path.join(popupDir, "popup-base.css"), "utf8"),
+  fs.readFileSync(path.join(popupDir, "popup-components.css"), "utf8"),
+  fs.readFileSync(path.join(popupDir, "popup-theme.css"), "utf8"),
+].join("\n");
 
 // Mutable browser mock — set in each VM sandbox before the bundle runs so that
 // popup_api.js (bundled inside) captures `browser` at load time.
@@ -67,6 +72,7 @@ const POPUP_ELEMENT_IDS = [
   "downloadSubtitles",
   "syncHistoryToggle",
   "syncStatus",
+  "backend",
   "batchBar",
   "batchLabel",
   "batchProgress",
@@ -76,6 +82,12 @@ const POPUP_ELEMENT_IDS = [
   "playlistPrompt",
   "playlistTitle",
   "downloadAllBtn",
+  "depBanner",
+  "depBannerToggle",
+  "depBannerBody",
+  "depBannerList",
+  "depBannerTitle",
+  "depBannerCopyBtn",
 ];
 
 class ClassList {
