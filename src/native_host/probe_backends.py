@@ -62,6 +62,52 @@ def _is_cloudflare_response_body(raw_output: str) -> bool:
     return False
 
 
+def _is_token_expired(stderr: str, stdout: str) -> bool:
+    """Check if process output indicates a token/signature expiry error.
+
+    Detects:
+    - Signed URLs with "expired" keyword (410 Gone, 403 Forbidden)
+    - URL contains "expires" parameter and returned 403
+    - Signature/key mismatch or expired errors
+    - AWS CloudFront signed URL expiry
+    - Generic "has expired" error messages (no HTTP code required)
+
+    Args:
+        stderr: Stderr output from the process.
+        stdout: Stdout output from the process.
+
+    Returns:
+        True if the output indicates a token/signature expiry error.
+    """
+    combined = (stderr + " " + stdout).lower()
+
+    # Check for explicit "expired" keyword with HTTP error codes
+    if "expired" in combined and any(code in combined for code in ["410", "403"]):
+        return True
+
+    # Check for signature/key errors
+    if "signature" in combined and ("expired" in combined or "mismatch" in combined):
+        return True
+
+    # Check for CloudFront signed URL errors
+    if "cloudfront" in combined and "expired" in combined:
+        return True
+
+    # Check for "expires" in the URL (signed URL pattern) with access denied
+    if "/expires=" in combined.lower() or "?expires=" in combined.lower():
+        if any(code in combined for code in ["403", "401"]):
+            return True
+
+    # Generic "has expired" in error messages — catches cases like
+    # "This video URL has expired" without a specific HTTP status code.
+    # Runs after Cloudflare/status-code checks so won't false-positive
+    # on blocked-but-expired messages (those are caught above).
+    if "has expired" in combined:
+        return True
+
+    return False
+
+
 def probe_yt_dlp(
     url: str,
     cancel_event: threading.Event,
@@ -134,6 +180,19 @@ def probe_yt_dlp(
                 "error_type": "cloudflare_block",
                 "message": f"yt-dlp blocked by Cloudflare anti-bot protection (HTTP 403)",
                 "status_code": 403,
+                "raw_output": combined,
+                "duration_ms": 0,
+            }
+
+        # Check for token/signature expiry before generic exit_code
+        if _is_token_expired(stderr_text, stdout_text):
+            return {
+                "ok": False,
+                "backend": "yt-dlp",
+                "label": "yt-dlp (skip-download)",
+                "error_type": "token_expired",
+                "message": f"yt-dlp detected token or signature expiry",
+                "status_code": completed.returncode,
                 "raw_output": combined,
                 "duration_ms": 0,
             }
