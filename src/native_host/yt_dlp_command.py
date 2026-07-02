@@ -69,7 +69,9 @@ def build_aria2c_downloader_args(connection_count):
 YOUTUBE_REMOTE_COMPONENTS = "ejs:github"
 GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
 MAX_FAST_CONNECTIONS = 48
-MAX_ARIA2_CONNECTIONS = 24
+# aria2c's --max-connection-per-server only accepts values 1-16.
+# Values above 16 cause aria2c to exit with error code 28.
+MAX_ARIA2_CONNECTIONS = 16
 DEFAULT_CONCURRENT_FRAGMENTS = MAX_FAST_CONNECTIONS
 DEFAULT_ARIA2_CONNECTIONS = MAX_ARIA2_CONNECTIONS
 
