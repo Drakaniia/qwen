@@ -386,8 +386,85 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   } else if (message && message.type === "updateLoadingStatus") {
     updateQualityLoadingStatus(message.text);
+  } else if (message && message.type === "qwinCheckCloudflareChallenge") {
+    // Check if the page is showing a Cloudflare challenge page.
+    // The background script uses this to verify the challenge is solved.
+    const hasChallenge = checkForCloudflareChallenge();
+    if (typeof browser !== "undefined") {
+      return Promise.resolve({ hasChallenge });
+    }
+    if (sendResponse) {
+      sendResponse({ hasChallenge });
+    }
+    return true;
   }
 });
+
+/**
+ * Check if the current page is showing a Cloudflare challenge.
+ * Scans DOM for challenge elements like Turnstile widgets, challenge
+ * platform scripts, challenge iframes, and other Cloudflare indicators.
+ * @returns {boolean} True if a Cloudflare challenge is detected.
+ */
+function checkForCloudflareChallenge() {
+  try {
+    // Cloudflare Turnstile widget
+    if (
+      document.querySelector("#cf-turnstile") ||
+      document.querySelector("[data-turnstile]")
+    ) {
+      return true;
+    }
+
+    // Challenge platform script (Turnstile, JS challenge, etc.)
+    if (document.querySelector('script[src*="challenge-platform"]')) {
+      return true;
+    }
+
+    // Classic challenge page elements
+    if (
+      document.querySelector("#cf-please-wait") ||
+      document.querySelector("#cf-chl-blocked") ||
+      document.querySelector("#cf-challenge") ||
+      document.querySelector("#challenge-form") ||
+      document.querySelector(".cf-browser-verification")
+    ) {
+      return true;
+    }
+
+    // Challenge iframes
+    if (
+      document.querySelector('iframe[src*="challenge"]') ||
+      document.querySelector('iframe[src*="turnstile"]')
+    ) {
+      return true;
+    }
+
+    // JavaScript challenge answer form
+    if (document.querySelector('input[name="jschl_answer"]')) {
+      return true;
+    }
+
+    // Check for meta refresh (used in 5-second challenge pages)
+    const metaRefresh = document.querySelector('meta[http-equiv="refresh"]');
+    if (metaRefresh) {
+      const content = (metaRefresh.content || "").toLowerCase();
+      if (content.includes("challenge") || content.includes("verify")) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch (_e) {
+    // Fail closed: if we can't inspect the DOM, assume challenged
+    return true;
+  }
+}
+
+/**
+ * Exported for testing purposes.
+ */
+export { checkForCloudflareChallenge };
 
 window.addEventListener("qwin-video-scan-now", () => {
   seenUrls.clear();
