@@ -17,3 +17,5 @@ logs/
 nul
 .vibe/hooks.toml
 .vibe/config.toml
+.claude/settings.local.json
+.kiro/agents/emdash.json
