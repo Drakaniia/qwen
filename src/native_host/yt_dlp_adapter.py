@@ -57,6 +57,10 @@ def has_streamlink():
     return _dependencies.has_streamlink()
 
 
+def has_gopeed():
+    return _dependencies.has_gopeed()
+
+
 def require_executable(name, install_hint):
     found = _dependencies.shutil.which(name)
     if not found:
