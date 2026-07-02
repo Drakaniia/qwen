@@ -5,6 +5,7 @@ import { createOperations } from "./download_operations.js";
 import { isBrowserDownloadableFormat, filenameFromVideo } from "./browser_download.js";
 import { extractCookies, cookiesToCookieString } from "./cookie_extraction.js";
 import { tryCdpTunnelDownload } from "./cdp_tunnel_integration.js";
+import { detectAndSolveCloudflare } from "./cloudflare_solver.js";
 
 function create(deps) {
   // ── Operations (download control, file ops, management) ──────────────
@@ -444,87 +445,136 @@ function create(deps) {
         try {
           port.disconnect();
         } catch (_error) {}
-        if (deps.isRetryableSourceError(errorText)) {
-          void (async () => {
-            if (deps.isHardAccessError(errorText)) {
-              await deps.markVideoUrlUnavailable(tabId, video.url, errorText);
-            }
-            const fallbackVideo = await deps.fallbackVideoForDownload(tabId, video, attemptedUrls);
-            if (!fallbackVideo) {
-              // All native-host sources exhausted; try CDP browser tunnel
-              // Note: CDP tunnel uses the browser's native network stack with
-              // credentials: "include", so cookies from the tab are automatically
-              // included in requests — no need to pass cookie-enriched headers.
-              const tunnelResult = await tryCdpTunnelFallback(
-                tabId,
-                video.url,
-                video.format,
-                requestHeaders,
-                jobId,
-              );
-              if (tunnelResult.ok && tunnelResult.method !== "manifest") {
-                // CDP tunnel fully downloaded the file (segment/direct URL) — mark done
-                deps.updateDownload(jobId, {
-                  status: "done",
-                  percent: 100,
-                  rawPercent: 100,
-                  speed: "",
-                  eta: "",
-                  stage: "done",
-                  message: "Download complete (CDP tunnel).",
-                });
-                return;
-              }
 
-              // CDP tunnel only got manifest text or failed entirely;
-              // try browser download as last resort
-              if (isBrowserDownloadableFormat(video.format)) {
-                deps.updateDownload(jobId, {
-                  status: "connecting",
-                  error: "",
-                  message: "Tunnel failed; trying browser download...",
-                  ...artifactPatch,
-                });
-                await browserDownload(tabId, video, "best", {
-                  jobId,
-                  pageUrl,
-                  requestHeaders,
-                  attemptedUrls: Array.from(attemptedUrls),
-                  backend: "browser",
-                });
-                return;
-              }
+        // ── Cloudflare detection: try to solve challenge and retry ────
+        if (isCloudflareBlockError(errorText)) {
+          void (async () => {
+            deps.updateDownload(jobId, {
+              status: "connecting",
+              error: "",
+              message:
+                "Download blocked by Cloudflare. Navigating to solve challenge...",
+              ...artifactPatch,
+            });
+
+            const solverResult = await detectAndSolveCloudflare(
+              tabId,
+              pageUrl || video.url,
+              { timeout: 120000 },
+            );
+
+            if (solverResult.solved) {
               deps.updateDownload(jobId, {
-                status: "error",
-                error: deps.exhaustedSourcesError(errorText, attemptedUrls),
-                ...artifactPatch,
+                status: "connecting",
+                message:
+                  "Challenge solved! Retrying download with Cloudflare clearance...",
+              });
+              // Retry the download — cf_clearance cookie is now in the tab's cookies
+              // and will be automatically extracted by the cookie extraction below
+              await startNativeDownloadFromVideo(tabId, video, formatId, {
+                jobId,
+                attemptedUrls: Array.from(attemptedUrls),
+                backend,
               });
               return;
             }
 
+            // Could not solve the challenge; fall through to normal retryable error handling
             deps.updateDownload(jobId, {
               status: "connecting",
-              error: "",
-              message: "Source expired; trying another detected source...",
+              message:
+                "Cloudflare challenge not solved. Trying other sources...",
               ...artifactPatch,
             });
-            await startNativeDownloadFromVideo(tabId, fallbackVideo, "best", {
-              jobId,
-              attemptedUrls: Array.from(attemptedUrls),
-              backend: fallbackVideo.backend || backend,
+          })()
+            .then(() => {
+              handleErrorWithFallbacks();
+            })
+            .catch(() => {
+              handleErrorWithFallbacks();
             });
-          })();
           return;
         }
 
-        const friendlyError = deps.userFriendlyDownloadError(errorText);
-        deps.updateDownload(jobId, {
-          status: "error",
-          stage: "",
-          error: friendlyError || errorText,
-          rawProgressLine: friendlyError ? errorText : "",
-          ...artifactPatch,
-        });
+        function handleErrorWithFallbacks() {
+          if (deps.isRetryableSourceError(errorText)) {
+            void (async () => {
+              if (deps.isHardAccessError(errorText)) {
+                await deps.markVideoUrlUnavailable(tabId, video.url, errorText);
+              }
+              const fallbackVideo = await deps.fallbackVideoForDownload(tabId, video, attemptedUrls);
+              if (!fallbackVideo) {
+                // All native-host sources exhausted; try CDP browser tunnel
+                const tunnelResult = await tryCdpTunnelFallback(
+                  tabId,
+                  video.url,
+                  video.format,
+                  requestHeaders,
+                  jobId,
+                );
+                if (tunnelResult.ok && tunnelResult.method !== "manifest") {
+                  deps.updateDownload(jobId, {
+                    status: "done",
+                    percent: 100,
+                    rawPercent: 100,
+                    speed: "",
+                    eta: "",
+                    stage: "done",
+                    message: "Download complete (CDP tunnel).",
+                  });
+                  return;
+                }
+
+                if (isBrowserDownloadableFormat(video.format)) {
+                  deps.updateDownload(jobId, {
+                    status: "connecting",
+                    error: "",
+                    message: "Tunnel failed; trying browser download...",
+                    ...artifactPatch,
+                  });
+                  await browserDownload(tabId, video, "best", {
+                    jobId,
+                    pageUrl,
+                    requestHeaders,
+                    attemptedUrls: Array.from(attemptedUrls),
+                    backend: "browser",
+                  });
+                  return;
+                }
+                deps.updateDownload(jobId, {
+                  status: "error",
+                  error: deps.exhaustedSourcesError(errorText, attemptedUrls),
+                  ...artifactPatch,
+                });
+                return;
+              }
+
+              deps.updateDownload(jobId, {
+                status: "connecting",
+                error: "",
+                message: "Source expired; trying another detected source...",
+                ...artifactPatch,
+              });
+              await startNativeDownloadFromVideo(tabId, fallbackVideo, "best", {
+                jobId,
+                attemptedUrls: Array.from(attemptedUrls),
+                backend: fallbackVideo.backend || backend,
+              });
+            })();
+            return;
+          }
+
+          const friendlyError = deps.userFriendlyDownloadError(errorText);
+          deps.updateDownload(jobId, {
+            status: "error",
+            stage: "",
+            error: friendlyError || errorText,
+            rawProgressLine: friendlyError ? errorText : "",
+            ...artifactPatch,
+          });
+        }
+        // Call handleErrorWithFallbacks for non-Cloudflare errors
+        handleErrorWithFallbacks();
       }
     });
 
@@ -625,4 +675,20 @@ function create(deps) {
   };
 }
 
-export { create };
+/**
+ * Check if an error message indicates a Cloudflare anti-bot block.
+ * @param {string} errorText
+ * @returns {boolean}
+ */
+function isCloudflareBlockError(errorText) {
+  if (!errorText) return false;
+  const text = String(errorText).toLowerCase();
+  return (
+    text.includes("cloudflare") ||
+    text.includes("cf-ray") ||
+    (text.includes("anti-bot") && text.includes("protection")) ||
+    (text.includes("challenge") && (text.includes("blocked") || text.includes("protection")))
+  );
+}
+
+export { create, isCloudflareBlockError };
