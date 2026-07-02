@@ -41,6 +41,7 @@ function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
 
   const chrome = {
     runtime: {
+      id: "test-extension-id",
       lastError: null,
       onMessage: {
         addListener(listener) {
@@ -167,7 +168,7 @@ function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
   async function sendRuntimeMessage(message) {
     assert.equal(typeof runtimeListener, "function", "background runtime listener must be registered");
     return await new Promise((resolve) => {
-      runtimeListener(message, { tab: { id: TAB_ID, url: PAGE_URL }, url: PAGE_URL }, resolve);
+      runtimeListener(message, { id: "test-extension-id", tab: { id: TAB_ID, url: PAGE_URL }, url: PAGE_URL }, resolve);
     });
   }
 
@@ -930,8 +931,10 @@ async function testChooseDownloadFolderPersistsNativeSelectedPath() {
   assert.equal(response.path, selectedPath);
   assert.equal(response.settings.downloadFolder, selectedPath);
   assert.equal(settingsResponse.settings.downloadFolder, selectedPath);
-  assert.equal(nativeMessages[0].type, "chooseFolder");
-  assert.equal(nativeMessages[0].initialFolder, "");
+  const chooseFolderMsg = nativeMessages.find(m => m.type === "chooseFolder");
+  assert.ok(chooseFolderMsg, "must have a chooseFolder native message");
+  assert.equal(chooseFolderMsg.type, "chooseFolder");
+  assert.equal(chooseFolderMsg.initialFolder, "");
 }
 
 async function testChooseFolderAliasPersistsNativeSelectedPath() {

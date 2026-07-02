@@ -1,6 +1,49 @@
 "use strict";
 import assert from "node:assert/strict";
 
+// ─── Mock chrome.debugger API ──────────────────────────────────────────────
+// Required by: cdp_helpers → cookie_extraction → cloudflare_solver chain
+
+const mockDebugger = {
+  attachedTabs: new Set(),
+  cookiesResult: [],
+
+  attach(target, _version, callback) {
+    this.attachedTabs.add(target.tabId);
+    globalThis.chrome.runtime.lastError = null;
+    callback();
+  },
+
+  detach(target, callback) {
+    this.attachedTabs.delete(target.tabId);
+    globalThis.chrome.runtime.lastError = null;
+    callback();
+  },
+
+  sendCommand(target, method, _params, callback) {
+    globalThis.chrome.runtime.lastError = null;
+    if (method === "Network.getAllCookies") {
+      callback({ cookies: this.cookiesResult });
+    } else {
+      callback({});
+    }
+  },
+
+  onEvent: { addListener() {} },
+  onDetach: { addListener() {} },
+};
+
+globalThis.chrome = {
+  debugger: mockDebugger,
+  runtime: {
+    lastError: null,
+  },
+  tabs: {
+    update: () => Promise.resolve(),
+    sendMessage: () => Promise.resolve(null),
+  },
+};
+
 /**
  * Integration Test: Cross-Module Import Chains
  *
@@ -56,11 +99,10 @@ import assert from "node:assert/strict";
     "cloudflare_solver must export extractCFClearance");
 
   // Cloudflare solver's extractCFClearance delegates to cookie_extraction.extractCookies.
-  // Verify that when called with a bogus tab ID, it returns null (graceful handling)
-  // instead of throwing.
-  const cfResult = await cfSolver.extractCFClearance(9999);
+  // With proper chrome.debugger mock, should return null (no cf_clearance cookie set)
+  const cfResult = await cfSolver.extractCFClearance(42);
   assert.equal(cfResult, null,
-    "extractCFClearance(9999) must return null (no chrome API)");
+    "extractCFClearance(42) must return null when no cf_clearance cookie");
 
   // Chain 2b: cookie_extraction directly
   const cookieExtraction = await import("../../../src/background/cookie_extraction.js");
@@ -76,13 +118,6 @@ import assert from "node:assert/strict";
   // and re-exports it as extractCfClearanceCookie
   assert.equal(typeof cdpTunnel.extractCfClearanceCookie, "function",
     "cdp_tunnel_download must export extractCfClearanceCookie (from cloudflare_solver)");
-
-  // ── Note: download_orchestration is NOT imported here because it
-  // depends on chrome/browser APIs (browser_api.js) that require
-  // an extension context and cannot be imported in Node.js.
-  // The CDP tunnel fallback integration in download_orchestration
-  // is tested functionally via tryCdpTunnelDownload (which is the
-  // actual function called by the fallback chain).
 
   console.log("✓ All cross-module import chain tests passed");
 })().catch((err) => {

@@ -6,7 +6,11 @@ import vm from "node:vm";
 const __dirname = import.meta.dirname;
 const popupDir = path.join(__dirname, "../../../src/popup");
 const html = fs.readFileSync(path.join(popupDir, "popup.html"), "utf8");
-const css = fs.readFileSync(path.join(popupDir, "popup.css"), "utf8");
+const css = [
+  fs.readFileSync(path.join(popupDir, "popup-base.css"), "utf8"),
+  fs.readFileSync(path.join(popupDir, "popup-components.css"), "utf8"),
+  fs.readFileSync(path.join(popupDir, "popup-theme.css"), "utf8"),
+].join("\n");
 const downloadListJs = fs.readFileSync(path.join(popupDir, "download_list.js"), "utf8");
 const popupBundle = fs.readFileSync(path.join(__dirname, "../../../dist/test/popup.bundle.js"), "utf8");
 
@@ -52,6 +56,7 @@ const POPUP_ELEMENT_IDS = [
   "downloadSubtitles",
   "syncHistoryToggle",
   "syncStatus",
+  "backend",
   "batchBar",
   "batchLabel",
   "batchProgress",
@@ -61,6 +66,12 @@ const POPUP_ELEMENT_IDS = [
   "playlistPrompt",
   "playlistTitle",
   "downloadAllBtn",
+  "depBanner",
+  "depBannerToggle",
+  "depBannerBody",
+  "depBannerList",
+  "depBannerTitle",
+  "depBannerCopyBtn",
 ];
 
 // ─── TestElement helper (mirrored from other test files) ────────────────────
