@@ -1,8 +1,16 @@
 "use strict";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 (async () => {
   const fi = await import("../../../src/content/fetch_intercept.js");
+  const pageScriptPath = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../src/content/fetch_intercept_page.js",
+  );
+  const pageScript = fs.readFileSync(pageScriptPath, "utf8");
 
   // Test module exports
   assert.equal(typeof fi.initFetchIntercept, "function", "Must export initFetchIntercept");
@@ -10,15 +18,14 @@ import assert from "node:assert/strict";
   assert.equal(typeof fi.getCapturedResponses, "function", "Must export getCapturedResponses");
   assert.equal(typeof fi.clearCapturedResponses, "function", "Must export clearCapturedResponses");
   assert.equal(typeof fi.isActive, "function", "Must export isActive");
+  assert.equal(fi.PAGE_SCRIPT_PATH, "src/content/fetch_intercept_page.js", "Must export page script path");
 
-  // Test generateInterceptCode returns valid JS
-  const code = fi.generateInterceptCode();
-  assert.ok(code, "generateInterceptCode must return a string");
-  assert.ok(code.length > 100, "Intercept code must be substantial");
-  assert.ok(code.includes("window.fetch"), "Intercept code must override window.fetch");
-  assert.ok(code.includes("XMLHttpRequest"), "Intercept code must override XMLHttpRequest");
-  assert.ok(code.includes("dispatchEvent") || code.includes("postMessage"),
-    "Intercept code must dispatch a DOM event or postMessage captured data");
+  // Test page-world script contains required intercept logic
+  assert.ok(pageScript.length > 100, "Page intercept script must be substantial");
+  assert.ok(pageScript.includes("window.fetch"), "Page script must override window.fetch");
+  assert.ok(pageScript.includes("XMLHttpRequest"), "Page script must override XMLHttpRequest");
+  assert.ok(pageScript.includes("dispatchEvent"), "Page script must dispatch captured data via DOM event");
+  assert.ok(pageScript.includes("qwinFetchIntercept"), "Page script must use the intercept event name");
 
   // Test MEDIA_TYPE_REGEX matches known media types
   assert.ok(fi.MEDIA_TYPE_REGEX && fi.MEDIA_TYPE_REGEX.test("video/mp4"), "Must match video/mp4");

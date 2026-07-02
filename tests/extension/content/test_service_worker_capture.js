@@ -30,5 +30,25 @@ import assert from "node:assert/strict";
   const b64 = swModule.bufferToBase64(buffer);
   assert.equal(b64, "SGVsbG8=", "Must correctly encode ArrayBuffer to base64");
 
+  // Test isPageUrlSupportedForSWCapture
+  assert.ok(typeof swModule.isPageUrlSupportedForSWCapture === "function", "isPageUrlSupportedForSWCapture must be exported");
+  assert.ok(swModule.isPageUrlSupportedForSWCapture("https://example.com/video"), "Must accept https URLs");
+  assert.ok(swModule.isPageUrlSupportedForSWCapture("https://meet.google.com/abc-def-ghi"), "Must accept https URLs");
+  assert.ok(swModule.isPageUrlSupportedForSWCapture("http://localhost:8080/video"), "Must accept http://localhost");
+  assert.ok(swModule.isPageUrlSupportedForSWCapture("http://127.0.0.1/video"), "Must accept http://127.0.0.1");
+  assert.ok(!swModule.isPageUrlSupportedForSWCapture("blob:https://example.com/uuid"), "Must reject blob: URLs");
+  assert.ok(!swModule.isPageUrlSupportedForSWCapture("blob:https://meet.google.com/uuid"), "Must reject blob: URLs");
+  assert.ok(!swModule.isPageUrlSupportedForSWCapture("about:blank"), "Must reject about:blank");
+  assert.ok(!swModule.isPageUrlSupportedForSWCapture("data:text/html,<html></html>"), "Must reject data: URLs");
+  assert.ok(!swModule.isPageUrlSupportedForSWCapture("file:///C:/page.html"), "Must reject file: URLs");
+  assert.ok(!swModule.isPageUrlSupportedForSWCapture("chrome-extension://abc123/page.html"), "Must reject chrome-extension: URLs");
+  assert.ok(!swModule.isPageUrlSupportedForSWCapture("http://example.com/video"), "Must reject non-localhost http URLs");
+
+  // Blob SW script injection is unsupported in Chromium/Firefox — skip doomed registration.
+  assert.ok(typeof swModule.isCaptureServiceWorkerRegistrationSupported === "function",
+    "isCaptureServiceWorkerRegistrationSupported must be exported");
+  assert.ok(!swModule.isCaptureServiceWorkerRegistrationSupported(),
+    "Blob-injected capture SW registration must be disabled");
+
   console.log("✓ All service_worker_capture tests passed");
 })().catch((err) => { console.error(err); process.exitCode = 1; });

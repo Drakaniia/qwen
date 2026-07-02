@@ -9,6 +9,7 @@ import * as videoFilters from "../../../src/shared/video_filters.js";
 const __dirname = import.meta.dirname;
 
 const contentSource = fs.readFileSync(path.join(__dirname, "../../../src/content/content.js"), "utf8");
+const overlaySource = fs.readFileSync(path.join(__dirname, "../../../src/content/content_overlay.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../manifest.json"), "utf8"));
 
 class TestElement {
@@ -179,28 +180,28 @@ function createChooser(options = {}) {
   }
 
   assert.match(
-    contentSource,
+    overlaySource,
     /button\.addEventListener\("click", async \(event\) => \{[\s\S]*?showAvailableVideosOverlay\(\);/m,
     "content overlay clicks must show the in-page available videos list instead of opening the extension popup",
   );
   assert.match(
-    contentSource,
+    overlaySource,
     /videoPicker\.renderList\(/,
     "content overlay must render available videos through the shared video picker",
   );
-  assert.match(contentSource, /style:\s*"classes"/, "content quality chooser must use the shared class-based styling");
+  assert.match(overlaySource, /style:\s*"classes"/, "content quality chooser must use the shared class-based styling");
   assert.match(
-    contentSource,
+    overlaySource,
     /root\.id\s*=\s*"qwin-video-overlay"/,
     "content overlay must use the shared overlay shell id",
   );
   assert.doesNotMatch(
-    contentSource,
+    overlaySource,
     /item\.onclick\s*=\s*\(\)\s*=>\s*handleVideoSelection/,
     "content overlay must not keep a bespoke inline-styled video list renderer",
   );
   assert.match(
-    contentSource,
+    overlaySource,
     /type:\s*"downloadVideo"[\s\S]*formatId:\s*selectedFormat\.formatId/s,
     "quality selection must start a download with the selected format",
   );
