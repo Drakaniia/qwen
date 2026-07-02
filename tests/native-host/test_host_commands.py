@@ -164,7 +164,7 @@ class HostCommandsTests(unittest.TestCase):
             yt_dlp_command=["yt-dlp"],
             aria2c_location=r"C:\Tools\aria2c.exe",
             concurrent_fragments=12,
-            aria2_connections=20,
+            aria2_connections=16,
         )
 
         self.assertIn("--downloader", command)
@@ -173,8 +173,8 @@ class HostCommandsTests(unittest.TestCase):
 
         args = command[command.index("--downloader-args") + 1]
         self.assertTrue(args.startswith("aria2c:"))
-        self.assertIn("--max-connection-per-server=20", args)
-        self.assertIn("--split=20", args)
+        self.assertIn("--max-connection-per-server=16", args)
+        self.assertIn("--split=16", args)
         self.assertIn("--continue=true", args)
 
     def test_build_yt_dlp_command_keeps_hls_and_dash_on_native_fragment_downloader(self):

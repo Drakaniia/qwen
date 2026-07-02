@@ -467,6 +467,266 @@ class TestRunDownloadFallbackChain(unittest.TestCase):
             f"Found {len(gallery_dl_entries)} entry(ies): {gallery_dl_entries}",
         )
 
+    def test_n_m3u8dl_re_is_first_fallback_for_hls_url_when_available(self):
+        """N_m3u8DL-RE should be the first fallback entry for HLS URLs when available.
+
+        Currently N_m3u8DL-RE comes AFTER the 7 yt-dlp variants in the fallback
+        chain. This test asserts the NEW expected behavior: N_m3u8DL-RE should
+        appear as the FIRST fallback (position 1 in the fallback_commands list)
+        for HLS/DASH manifest URLs, before any yt-dlp strategy variants.
+
+        THIS TEST IS EXPECTED TO FAIL until the fallback chain is reordered.
+        """
+        import tempfile
+
+        captured_fallback_commands = []
+
+        class CapturingTask:
+            def __init__(
+                self,
+                message,
+                command,
+                download_dir,
+                send=None,
+                fallback_command=None,
+                fallback_commands=None,
+                temp_files=None,
+                logger=None,
+            ):
+                captured_fallback_commands.extend(list(fallback_commands or []))
+
+            def start(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dl_dir = Path(tmpdir) / "Downloads"
+            dl_dir.mkdir(parents=True)
+
+            with (
+                patch.object(dm, "resolve_download_dir", return_value=dl_dir),
+                patch.object(dm, "write_cookie_file_from_headers", return_value=None),
+                patch.object(dm, "validate_download_url", return_value=None),
+            ):
+                dm.run_download(
+                    message={
+                        "id": "test_hls_1",
+                        "url": "https://cdn.example.com/hls/master.m3u8",
+                        "pageUrl": "https://example.com/watch",
+                        "format": "M3U8",
+                        "formatId": "best",
+                    },
+                    task_class=CapturingTask,
+                    aria2c_location_resolver=lambda: r"C:\Tools\aria2c.exe",
+                    ffmpeg_location_resolver=lambda: None,
+                    yt_dlp_command_resolver=lambda: ["yt-dlp"],
+                    n_m3u8dl_re_location_resolver=lambda: r"C:\Tools\N_m3u8DL-RE.exe",
+                    streamlink_command_resolver=lambda: None,
+                )
+
+        labels = [cmd.get("label", "") for cmd in captured_fallback_commands]
+
+        # N_m3u8DL-RE should be the first fallback entry
+        self.assertGreater(
+            len(captured_fallback_commands),
+            0,
+            f"Should have fallback commands. Got: {labels}",
+        )
+        first_label = labels[0]
+        self.assertEqual(
+            first_label,
+            "N_m3u8DL-RE",
+            f"First fallback should be N_m3u8DL-RE for HLS URLs. Got: {first_label}. "
+            f"Full chain: {labels}",
+        )
+
+        # N_m3u8DL-RE should appear before any 'yt-dlp (' variant
+        n_m3u8dl_re_idx = next(i for i, l in enumerate(labels) if l == "N_m3u8DL-RE")
+        yt_dlp_variant_indices = [i for i, l in enumerate(labels) if l.startswith("yt-dlp (")]
+        if yt_dlp_variant_indices:
+            first_yt_dlp_variant = min(yt_dlp_variant_indices)
+            self.assertLess(
+                n_m3u8dl_re_idx,
+                first_yt_dlp_variant,
+                f"N_m3u8DL-RE (position {n_m3u8dl_re_idx}) should be before "
+                f"yt-dlp variants (first at position {first_yt_dlp_variant}). "
+                f"Full chain: {labels}",
+            )
+
+    def test_n_m3u8dl_re_is_first_fallback_for_dash_url_when_available(self):
+        """N_m3u8DL-RE should be the first fallback entry for DASH URLs when available."""
+        import tempfile
+
+        captured_fallback_commands = []
+
+        class CapturingTask:
+            def __init__(
+                self,
+                message,
+                command,
+                download_dir,
+                send=None,
+                fallback_command=None,
+                fallback_commands=None,
+                temp_files=None,
+                logger=None,
+            ):
+                captured_fallback_commands.extend(list(fallback_commands or []))
+
+            def start(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dl_dir = Path(tmpdir) / "Downloads"
+            dl_dir.mkdir(parents=True)
+
+            with (
+                patch.object(dm, "resolve_download_dir", return_value=dl_dir),
+                patch.object(dm, "write_cookie_file_from_headers", return_value=None),
+                patch.object(dm, "validate_download_url", return_value=None),
+            ):
+                dm.run_download(
+                    message={
+                        "id": "test_dash_1",
+                        "url": "https://cdn.example.com/dash/manifest.mpd",
+                        "pageUrl": "https://example.com/watch",
+                        "format": "MPD",
+                        "formatId": "best",
+                    },
+                    task_class=CapturingTask,
+                    aria2c_location_resolver=lambda: r"C:\Tools\aria2c.exe",
+                    ffmpeg_location_resolver=lambda: None,
+                    yt_dlp_command_resolver=lambda: ["yt-dlp"],
+                    n_m3u8dl_re_location_resolver=lambda: r"C:\Tools\N_m3u8DL-RE.exe",
+                    streamlink_command_resolver=lambda: None,
+                )
+
+        labels = [cmd.get("label", "") for cmd in captured_fallback_commands]
+
+        self.assertGreater(len(captured_fallback_commands), 0, f"Should have fallback commands. Got: {labels}")
+        first_label = labels[0]
+        self.assertEqual(
+            first_label,
+            "N_m3u8DL-RE",
+            f"First fallback should be N_m3u8DL-RE for DASH URLs. Got: {first_label}. "
+            f"Full chain: {labels}",
+        )
+
+    def test_n_m3u8dl_re_not_in_fallback_when_unavailable(self):
+        """N_m3u8DL-RE should NOT be in fallback chain when the resolver returns None."""
+        import tempfile
+
+        captured_fallback_commands = []
+
+        class CapturingTask:
+            def __init__(
+                self,
+                message,
+                command,
+                download_dir,
+                send=None,
+                fallback_command=None,
+                fallback_commands=None,
+                temp_files=None,
+                logger=None,
+            ):
+                captured_fallback_commands.extend(list(fallback_commands or []))
+
+            def start(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dl_dir = Path(tmpdir) / "Downloads"
+            dl_dir.mkdir(parents=True)
+
+            with (
+                patch.object(dm, "resolve_download_dir", return_value=dl_dir),
+                patch.object(dm, "write_cookie_file_from_headers", return_value=None),
+                patch.object(dm, "validate_download_url", return_value=None),
+            ):
+                dm.run_download(
+                    message={
+                        "id": "test_hls_2",
+                        "url": "https://cdn.example.com/hls/master.m3u8",
+                        "pageUrl": "https://example.com/watch",
+                        "format": "M3U8",
+                        "formatId": "best",
+                    },
+                    task_class=CapturingTask,
+                    aria2c_location_resolver=lambda: r"C:\Tools\aria2c.exe",
+                    ffmpeg_location_resolver=lambda: None,
+                    yt_dlp_command_resolver=lambda: ["yt-dlp"],
+                    n_m3u8dl_re_location_resolver=lambda: None,  # Not available
+                    streamlink_command_resolver=lambda: None,
+                )
+
+        labels = [cmd.get("label", "") for cmd in captured_fallback_commands]
+        n_m3u8dl_re_entries = [l for l in labels if "N_m3u8DL-RE" in l]
+        self.assertEqual(
+            len(n_m3u8dl_re_entries),
+            0,
+            f"N_m3u8DL-RE should NOT be in fallback chain when unavailable. "
+            f"Found {len(n_m3u8dl_re_entries)} entries. Full chain: {labels}",
+        )
+
+    def test_n_m3u8dl_re_first_fallback_preserves_yt_dlp_native_at_end(self):
+        """Even with N_m3u8DL-RE moved first, yt-dlp (native downloader) should remain the last fallback."""
+        import tempfile
+
+        captured_fallback_commands = []
+
+        class CapturingTask:
+            def __init__(
+                self,
+                message,
+                command,
+                download_dir,
+                send=None,
+                fallback_command=None,
+                fallback_commands=None,
+                temp_files=None,
+                logger=None,
+            ):
+                captured_fallback_commands.extend(list(fallback_commands or []))
+
+            def start(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dl_dir = Path(tmpdir) / "Downloads"
+            dl_dir.mkdir(parents=True)
+
+            with (
+                patch.object(dm, "resolve_download_dir", return_value=dl_dir),
+                patch.object(dm, "write_cookie_file_from_headers", return_value=None),
+                patch.object(dm, "validate_download_url", return_value=None),
+            ):
+                dm.run_download(
+                    message={
+                        "id": "test_hls_3",
+                        "url": "https://cdn.example.com/hls/master.m3u8",
+                        "pageUrl": "https://example.com/watch",
+                        "format": "M3U8",
+                        "formatId": "best",
+                    },
+                    task_class=CapturingTask,
+                    aria2c_location_resolver=lambda: r"C:\Tools\aria2c.exe",
+                    ffmpeg_location_resolver=lambda: None,
+                    yt_dlp_command_resolver=lambda: ["yt-dlp"],
+                    n_m3u8dl_re_location_resolver=lambda: r"C:\Tools\N_m3u8DL-RE.exe",
+                    streamlink_command_resolver=lambda: None,
+                )
+
+        labels = [cmd.get("label", "") for cmd in captured_fallback_commands]
+
+        # yt-dlp (native downloader) should still be the last entry
+        native_indices = [i for i, l in enumerate(labels) if "native downloader" in l.lower()]
+        self.assertGreater(len(native_indices), 0, f"Should have yt-dlp (native downloader). Got: {labels}")
+        self.assertEqual(
+            native_indices[-1],
+            len(labels) - 1,
+            f"yt-dlp (native downloader) should be the last fallback. Got: {labels}",
+        )
+
     def test_run_download_includes_native_downloader_for_cdn_url(self):
         """yt-dlp (native downloader) should be in the fallback chain for CDN URLs.
 

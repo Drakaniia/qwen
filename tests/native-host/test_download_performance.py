@@ -67,13 +67,25 @@ class Aria2ConnectionsOptimizationTests(unittest.TestCase):
     """Optimization: Increase MAX_ARIA2_CONNECTIONS for faster single-file downloads.
 
     More connections per server enables greater parallelism when aria2c
-    splits a file into pieces. Target: 24 connections per server.
+    splits a file into pieces. Must stay within aria2c's hard limit of 16.
     """
 
+    def test_max_aria2_connections_respects_aria2c_internal_limit(self):
+        """MAX_ARIA2_CONNECTIONS must not exceed aria2c's internal maximum of 16.
+
+        aria2c's --max-connection-per-server option only accepts values 1-16.
+        Values above 16 cause immediate error code 28 on download.
+        """
+        self.assertLessEqual(
+            MAX_ARIA2_CONNECTIONS, 16,
+            "aria2c --max-connection-per-server only supports values 1-16, but got "
+            f"{MAX_ARIA2_CONNECTIONS}",
+        )
+
     def test_max_aria2_connections_is_optimized(self):
-        """MAX_ARIA2_CONNECTIONS should be 24 for optimal single-file parallelism."""
+        """MAX_ARIA2_CONNECTIONS should be 16 for optimal single-file parallelism."""
         self.assertGreaterEqual(
-            MAX_ARIA2_CONNECTIONS, 24, "Max aria2c connections should be at least 24 for optimal throughput"
+            MAX_ARIA2_CONNECTIONS, 16, "Max aria2c connections should be at least 16 for optimal throughput"
         )
 
     def test_aria2_connections_default_uses_max(self):

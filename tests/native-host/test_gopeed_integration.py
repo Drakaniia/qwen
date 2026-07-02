@@ -1,3 +1,4 @@
+import os
 import unittest
 from pathlib import Path
 
@@ -20,9 +21,18 @@ import native_protocol
 class GopeedCommandResolutionTests(unittest.TestCase):
     """Test locating the gopeed binary."""
 
+    def setUp(self):
+        """Remove QWIN_GOPEED so env var doesn't short-circuit _which mock."""
+        self._old_qwin_gopeed = os.environ.pop("QWIN_GOPEED", None)
+
+    def tearDown(self):
+        """Restore QWIN_GOPEED if it was set."""
+        if self._old_qwin_gopeed is not None:
+            os.environ["QWIN_GOPEED"] = self._old_qwin_gopeed
+
     def test_resolve_returns_none_when_not_installed(self):
         """WHEN gopeed is not on PATH, resolve_gopeed_command returns None."""
-        result = resolve_gopeed_command(extra_paths=[])
+        result = resolve_gopeed_command(extra_paths=[], _which=lambda cmd: None)
         self.assertIsNone(result)
 
     def test_resolve_finds_gopeed_via_shutil_which(self):
@@ -40,8 +50,10 @@ class GopeedCommandResolutionTests(unittest.TestCase):
     def test_resolve_checks_extra_paths(self):
         """GIVEN a valid path in extra_paths, resolve_gopeed_command returns it."""
         fake_path = Path(sys.executable).resolve()
-        result = resolve_gopeed_command(extra_paths=[str(fake_path.parent)])
-        # Should find gopeed if available, or fall through
+        result = resolve_gopeed_command(
+            extra_paths=[str(fake_path.parent)],
+            _which=lambda cmd: None,
+        )
         self.assertIsNone(result)
 
 
