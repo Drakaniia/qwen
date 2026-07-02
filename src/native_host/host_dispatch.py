@@ -100,6 +100,10 @@ def handle_message(message, deps):
             # Assemble decrypted segments into a final output file
             result = deps.run_assemble_segments(message)
             deps.send_native_message(result)
+        case "analyzeSegments":
+            # Analyze fMP4 segments for CMAF detection and track gaps
+            result = deps.run_analyze_segments(message)
+            deps.send_native_message(result)
         case "cdpStatus":
             deps.send_native_message(
                 {
@@ -119,12 +123,14 @@ def handle_message(message, deps):
             )
         case "swSegmentBatch":
             # Receive batch of SW-captured segments for a download job
-            deps.send_native_message({
-                "type": "swSegmentBatchAck",
-                "id": deps.request_id(message),
-                "ok": True,
-                "received": len(message.get("segments", [])),
-            })
+            deps.send_native_message(
+                {
+                    "type": "swSegmentBatchAck",
+                    "id": deps.request_id(message),
+                    "ok": True,
+                    "received": len(message.get("segments", [])),
+                }
+            )
         case "writeData":
             # Write base64-encoded segment data to disk
             result = deps.run_write_data(message)

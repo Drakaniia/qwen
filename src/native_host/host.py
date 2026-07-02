@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-import importlib
-import os
-import shutil
-import sys
 from urllib.request import urlopen
 
 import capture_manager as _capture_manager
+import cdm_capture as _cdm_capture
 import download_manager as _download_manager
 import download_task as _download_task
 import format_list as _format_list
@@ -14,24 +11,16 @@ import media_resolver as _media_resolver
 import process_control as _process_control
 import yt_dlp_adapter as _yt_dlp_adapter
 from artifacts import (
-    build_open_path_command,
     delete_download_artifacts,
     open_download_path,
 )
-from browser_context import clean_request_headers, write_cookie_file_from_headers
 from folder_picker import (
     choose_download_folder,
     choose_torrent_file,
 )
-from native_paths import (
-    default_download_dir,
-    sanitize_filename,
-    validate_download_url,
-)
 from native_protocol import (
     HostError,
     configure_binary_stdio,
-    encode_native_message,
     error_response,
     file_response,
     folder_response,
@@ -42,17 +31,8 @@ from native_protocol import (
     send_native_message,
     unexpected_error_response,
 )
-from progress_parser import iter_process_output_lines, parse_yt_dlp_line
-from stream_backends import build_n_m3u8dl_re_command, build_streamlink_command
 from yt_dlp_adapter import (
     has_yt_dlp,
-)
-from yt_dlp_command import (
-    MAX_ARIA2_CONNECTIONS,
-    MAX_FAST_CONNECTIONS,
-    build_formats_command,
-    build_yt_dlp_command,
-    summarize_formats,
 )
 
 DownloadTask = _download_task.DownloadTask
@@ -213,17 +193,22 @@ def run_decrypt_segments(message):
 
 
 def run_assemble_segments(message):
-    """Assemble decrypted segments into a single output file."""
+    """Assemble decrypted segments into a single output file.
+
+    Passes initSegPaths from the message to enable fMP4 analysis
+    (CMAF detection, track gap reporting).
+    """
     import time as _t
 
     request_id = f"assemble_{int(_t.time() * 1000)}"
     try:
-        result = _capture_manager.assemble_segments(
+        result = _cdm_capture.assemble_segments(
             job_id=message.get("jobId", ""),
             file_paths=message.get("filePaths", []),
             output_path=message.get("outputPath", "output.mp4"),
+            init_seg_paths=message.get("initSegPaths"),
         )
-        return {
+        response = {
             "type": "assembleResult",
             "id": request_id,
             "ok": result.get("ok", False),
@@ -231,9 +216,49 @@ def run_assemble_segments(message):
             "filePath": result.get("filePath", ""),
             "error": result.get("error", ""),
         }
+        fmp4_analysis = result.get("fmp4_analysis")
+        if fmp4_analysis is not None:
+            response["fmp4Analysis"] = fmp4_analysis
+        return response
     except Exception as exc:
         return {
             "type": "assembleResult",
+            "id": request_id,
+            "ok": False,
+            "error": str(exc),
+        }
+
+
+def run_analyze_segments(message):
+    """Analyze fMP4 segments for CMAF detection and track gaps.
+
+    Standalone analysis endpoint — reads init segment and media segment
+    files from disk and returns CMAF/gap info without assembling.
+
+    Message format:
+        - initSegPaths: Optional list of init segment file paths.
+        - mediaSegPaths: List of media segment file paths.
+
+    Returns:
+        analyzeResult message with fmp4Analysis dict.
+    """
+    import time as _t
+
+    request_id = f"analyze_{int(_t.time() * 1000)}"
+    try:
+        analysis = _cdm_capture.analyze_segments_files(
+            init_seg_paths=message.get("initSegPaths"),
+            media_seg_paths=message.get("mediaSegPaths"),
+        )
+        return {
+            "type": "analyzeResult",
+            "id": request_id,
+            "ok": True,
+            "fmp4Analysis": analysis,
+        }
+    except Exception as exc:
+        return {
+            "type": "analyzeResult",
             "id": request_id,
             "ok": False,
             "error": str(exc),
@@ -411,6 +436,7 @@ def _dispatch_deps(include_dispatch=True):
         "run_extract_keys": run_extract_keys,
         "run_decrypt_segments": run_decrypt_segments,
         "run_assemble_segments": run_assemble_segments,
+        "run_analyze_segments": run_analyze_segments,
         "send_native_message": send_native_message,
         "send_cdp_relay_result": send_cdp_relay_result,
         "get_pending_cdp_forward": get_pending_cdp_forward,
