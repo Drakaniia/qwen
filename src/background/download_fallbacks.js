@@ -212,6 +212,50 @@ async function resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls
   return candidates.sort((left, right) => Number(right.confidence || 0) - Number(left.confidence || 0));
 }
 
+/**
+ * Check if a video candidate is an iframe-page source that should trigger
+ * a fallback search for the actual video URL from inside the iframe.
+ */
+function isIframePageVideo(video) {
+  return video?.source === "iframe-page" && String(video?.format || "").toUpperCase() === "PAGE";
+}
+
+/**
+ * Look for videos detected by the content script inside an iframe.
+ * These have their frameUrl set to the iframe's src URL.
+ */
+function findIframeDetectedVideo(iframeUrl, tabVideos) {
+  if (!iframeUrl || !Array.isArray(tabVideos) || !tabVideos.length) {
+    return null;
+  }
+
+  const normalizedIframe = iframeUrl.toLowerCase().replace(/[?#].*$/, "").replace(/\/+$/, "");
+
+  const iframeVideos = tabVideos.filter((v) => {
+    if (!v || v.source === "iframe-page") return false;
+    if (!v.frameUrl) return false;
+    const vFrameUrl = v.frameUrl.toLowerCase().replace(/[?#].*$/, "").replace(/\/+$/, "");
+    if (vFrameUrl !== normalizedIframe) return false;
+    // Accept any downloadable format — even catch-all VIDEO (used by nextflicks-style
+    // sites) is better than the PAGE candidate that already failed.
+    const format = String(v.format || "").toUpperCase();
+    return format !== "PAGE" && v.downloadable !== false;
+  });
+
+  if (!iframeVideos.length) {
+    return null;
+  }
+
+  // Sort by quality (height then bitrate), return best match
+  iframeVideos.sort((a, b) => {
+    const aScore = (a.height || 0) * 1000 + (a.bitrate || a.tbr || 0);
+    const bScore = (b.height || 0) * 1000 + (b.bitrate || b.tbr || 0);
+    return bScore - aScore;
+  });
+
+  return iframeVideos[0];
+}
+
 async function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls, deps) {
   const groupedVideo = deps.findGroupedVideoForAnyVariant(tabId, failedVideo) || failedVideo;
   const variants = downloadableVariants(groupedVideo, attemptedUrls, deps);
@@ -222,6 +266,24 @@ async function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls, deps)
       groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
       groupVariants: deps.variantsForVideo(groupedVideo),
     };
+  }
+
+  // Iframe-specific fallback: look for actual video URL detected inside the iframe
+  if (isIframePageVideo(failedVideo) && deps.getVisibleVideosForTab) {
+    const tabVideos = deps.getVisibleVideosForTab(tabId);
+    const iframeFallback = findIframeDetectedVideo(failedVideo.url, tabVideos);
+    if (iframeFallback) {
+      const normalizedUrl = deps.normalizeUrl(iframeFallback.url || "");
+      if (normalizedUrl && !attemptedUrls.has(normalizedUrl) && iframeFallback.downloadable !== false) {
+        return {
+          ...iframeFallback,
+          id: deps.hashId(normalizedUrl),
+          groupId: groupedVideo.id || failedVideo.groupId || failedVideo.id,
+          groupVariants: deps.variantsForVideo(groupedVideo),
+          fallbackReason: "iframe-detected-video",
+        };
+      }
+    }
   }
 
   const pageFallback = pageFallbackVideoForSource(failedVideo, attemptedUrls, deps);
@@ -251,6 +313,7 @@ export {
   fallbackVideoForDownload,
   isExtractorPageVideo,
   isHardAccessError,
+  isIframePageVideo,
   isRetryableSourceError,
   pageFallbackVideoForSource,
   resolveMediaCandidatesForSource,

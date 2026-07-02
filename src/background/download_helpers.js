@@ -248,6 +248,7 @@ function buildDownloadFallbackDeps(nativeRequestFn, addDetectedVideoFn, getVisib
     addDetectedVideo: addDetectedVideoFn,
     detectFormat: videoUtils.detectFormat,
     findGroupedVideoForAnyVariant: (tabId, video) => findGroupedVideoForAnyVariant(tabId, video, getVisibleVideosFn),
+    getVisibleVideosForTab: getVisibleVideosFn,
     hashId: videoUtils.hashId,
     isDownloadableUrl: videoUtils.isDownloadableUrl,
     nativeRequest: nativeRequestFn,
