@@ -92,3 +92,6 @@ npm run format         # Prettier (JS/CSS/JSON) + Ruff format (Python)
 - Extension ID (Chrome): `dbjddokdmkodnkiaccmbjagfalmmmkmi` — must match native host manifest `allowed_origins`.
 - Pre-commit hook in `.githooks/` runs lints/format on staged files.
 - Troubleshooting skills available: `@failed-download-troubleshooting`, `@chrome-extension-development`.
+
+OUR MAIN BROWSER IS YANDEX
+follow skills folder archtecture
