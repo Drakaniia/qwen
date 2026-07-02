@@ -22,7 +22,12 @@
       "match_about_blank": true
     }
   ],
-  "web_accessible_resources": [],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/fetch_intercept_page.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "qwin-video-downloader@example.com",
