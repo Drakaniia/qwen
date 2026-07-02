@@ -20,6 +20,9 @@ function attach(tabId) {
   if (activeSessions.has(tabId)) {
     return Promise.resolve({ ok: true });
   }
+  if (typeof chrome === "undefined" || !chrome.debugger) {
+    return Promise.resolve({ ok: false, error: "chrome.debugger API not available" });
+  }
   return new Promise((resolve) => {
     try {
       chrome.debugger.attach({ tabId }, "1.3", () => {
