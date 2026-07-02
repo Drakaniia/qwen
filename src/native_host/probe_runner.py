@@ -140,10 +140,30 @@ def run_parallel_probes(
         t.start()
         threads.append(t)
 
-    # Wait for a winner or all threads to finish
+    # Wait for a winner with an overall timeout,
+    # then cancel remaining probes so they can clean up.
     winner_config = None
+
+    # Poll loop checks winner_found, cancel_event, and thread completion
+    # to avoid blocking indefinitely. The overall timeout prevents
+    # hanging forever if a probe is truly stuck.
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        if winner_found.is_set():
+            break
+        if cancel_event.is_set():
+            break
+        # Also break early if all threads have completed (all failed)
+        if all(not t.is_alive() for t in threads):
+            break
+        winner_found.wait(timeout=0.5)  # Poll periodically
+
+    # Signal cancellation for any remaining threads
+    cancel_event.set()
+
+    # Brief join so threads that can clean up do so
     for t in threads:
-        t.join(timeout=60)
+        t.join(timeout=5)
 
     elapsed = int((time.time() - start_time) * 1000)
 
