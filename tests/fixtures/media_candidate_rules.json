@@ -187,5 +187,23 @@
     "blocked": false,
     "downloadable": true,
     "reusable": false
+  },
+  {
+    "name": "playmogo embed from pinaypie.sh",
+    "url": "https://playmogo.com/e/l6vrloft7rzt",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": false,
+    "downloadable": true,
+    "reusable": false
+  },
+  {
+    "name": "pinaypie.sh page URL",
+    "url": "https://pinaypie.sh/humihigpit-ang-kapait-ni-anne-kapag-nasasarapan/",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": false,
+    "downloadable": true,
+    "reusable": false
   }
 ]

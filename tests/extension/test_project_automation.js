@@ -20,6 +20,6 @@ assert.match(workflow, /actions\/setup-python/);
 assert.match(workflow, /actions\/setup-node/);
 assert.match(workflow, /scripts\/test\.ps1/);
 
-assert.match(projectDocs, /scripts\\test\.ps1/);
+assert.match(projectDocs, /scripts\/test\.ps1/);
 
 console.log("project automation tests passed");
