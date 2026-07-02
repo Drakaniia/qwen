@@ -151,14 +151,14 @@ def _build_probe_configs(
                 probe_fn=lambda u, ce, cv=chrome_version, cvs=chrome_versions: probe_curl_cffi(
                     url=u,
                     cancel_event=ce,
-                    headers=request_headers_with_cookies,
+                    headers=request_headers,
                     chrome_version=cv,
                     chrome_versions=cvs,
                 ),
                 command=_curl_cffi_adapter.download_curl_cffi_command(
                     url=url,
                     output_path=stream_output_path(download_dir, message.get("title") or "Video"),
-                    headers=request_headers_with_cookies,
+                    headers=request_headers,
                     impersonate=impersonate_str,
                 ),
             )
@@ -234,6 +234,19 @@ def run_download(
     request_id = str(message.get("id") or message.get("requestId") or "")
     url = str(message.get("url") or "").strip()
     validate_download_url(url)
+
+    # ── Magnet / torrent URL exclusion ───────────────────────────────────
+    # Magnet and torrent URLs bypass the probe phase entirely and go
+    # directly to gopeed / aria2c for BitTorrent downloading.
+    is_magnet = url.startswith("magnet:")
+    is_torrent = url.lower().endswith(".torrent")
+    if is_magnet or is_torrent:
+        from download_task import DownloadTask
+        if is_magnet:
+            run_gopeed_magnet_download(message=message, task_class=(task_class or DownloadTask))
+        else:
+            run_gopeed_torrent_download(message=message, task_class=(task_class or DownloadTask))
+        return
 
     yt_dlp_command = yt_dlp_command_resolver()
     ffmpeg_location = ffmpeg_location_resolver()
@@ -372,29 +385,9 @@ def run_download(
     fallback_command = None
 
     fallback_commands = []
-
-    # 1. curl-cffi direct download (with version-specific impersonation if available)
-    if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
-        impersonate_str = f"chrome{chrome_version}" if chrome_version else "chrome"
-        fallback_commands.append(
-            {
-                "command": _curl_cffi_adapter.download_curl_cffi_command(
-                    url=url,
-                    output_path=stream_output_path(download_dir, message.get("title") or "Video"),
-                    headers=request_headers_with_cookies,
-                    impersonate=impersonate_str,
-                ),
-                "label": "curl-cffi (direct download)",
-            }
-        )
-
-    # 2. yt-dlp strategy variants
-    fallback_commands.extend(
-        build_yt_dlp_fallback_variants(**build_command_kwargs({"aria2c_location": aria2c_location}))
-    )
-
-    # 3. N_m3u8DL-RE for HLS/DASH manifest URLs
     requested_backend = str(message.get("backend") or "auto").lower()
+
+    # 1. N_m3u8DL-RE for HLS/DASH manifest URLs — tried early as purpose-built
     if (
         requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"}
         and n_m3u8dl_re_location
@@ -415,6 +408,26 @@ def run_download(
                 "artifact_root": str(final_path.parent),
             }
         )
+
+    # 2. curl-cffi direct download (with version-specific impersonation if available)
+    if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
+        impersonate_str = f"chrome{chrome_version}" if chrome_version else "chrome"
+        fallback_commands.append(
+            {
+                "command": _curl_cffi_adapter.download_curl_cffi_command(
+                    url=url,
+                    output_path=stream_output_path(download_dir, message.get("title") or "Video"),
+                    headers=request_headers_with_cookies,
+                    impersonate=impersonate_str,
+                ),
+                "label": "curl-cffi (direct download)",
+            }
+        )
+
+    # 3. yt-dlp strategy variants
+    fallback_commands.extend(
+        build_yt_dlp_fallback_variants(**build_command_kwargs({"aria2c_location": aria2c_location}))
+    )
 
     # 4. Streamlink for live-stream / HLS manifest URLs
     if (
