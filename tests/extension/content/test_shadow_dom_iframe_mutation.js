@@ -29,7 +29,9 @@ function createDetection(options = {}) {
       }
       return [];
     },
-    getElementById() { return null; },
+    getElementById() {
+      return null;
+    },
   };
   const loc = new URL(options.url || "https://example.com/video");
   return pageDetectionModule.create({
@@ -54,12 +56,22 @@ function createVideoMock(attributes = {}) {
     clientHeight: attributes.clientHeight || 480,
     type: attributes.type || "",
     poster: attributes.poster || "",
-    getAttribute(name) { return attributes[name] || null; },
-    getBoundingClientRect() {
-      return { width: attributes.width || 640, height: attributes.height || 480, top: 0, left: 0,
-        bottom: (attributes.height || 480), right: (attributes.width || 640) };
+    getAttribute(name) {
+      return attributes[name] || null;
     },
-    querySelectorAll() { return []; },
+    getBoundingClientRect() {
+      return {
+        width: attributes.width || 640,
+        height: attributes.height || 480,
+        top: 0,
+        left: 0,
+        bottom: attributes.height || 480,
+        right: attributes.width || 640,
+      };
+    },
+    querySelectorAll() {
+      return [];
+    },
     addEventListener() {},
   };
 }
@@ -102,7 +114,9 @@ function createVideoMock(attributes = {}) {
           if (sel === "video") return el === lastHost ? [video] : [];
           return [];
         },
-        querySelector() { return null; },
+        querySelector() {
+          return null;
+        },
       };
     }
 
@@ -111,13 +125,11 @@ function createVideoMock(attributes = {}) {
 
   // Shallow shadow (2 levels) should find video
   const shallow = buildShadowTree(2);
-  assert.ok(shallow.elements[0].shadowRoot,
-    "Root element should have shadowRoot");
+  assert.ok(shallow.elements[0].shadowRoot, "Root element should have shadowRoot");
 
   // Deep shadow (7 levels) - verify the structure builds correctly
   const deep = buildShadowTree(7);
-  assert.ok(deep.elements[0].shadowRoot,
-    "Root element with 7 level shadow should build");
+  assert.ok(deep.elements[0].shadowRoot, "Root element with 7 level shadow should build");
 
   console.log("  ✓ Shadow DOM structure builds correctly at 1-7 levels");
 }
@@ -161,7 +173,9 @@ function createVideoMock(attributes = {}) {
     let current = {
       shadowRoot: null,
       children: [],
-      querySelectorAll(sel) { return sel === "video" ? (this._video ? [this._video] : []) : []; },
+      querySelectorAll(sel) {
+        return sel === "video" ? (this._video ? [this._video] : []) : [];
+      },
     };
     current._video = null;
 
@@ -169,10 +183,13 @@ function createVideoMock(attributes = {}) {
       const parent = {
         shadowRoot: current,
         children: [],
-        querySelectorAll(sel) { return []; },
-        _video: i === levels - 1
-          ? createVideoMock({ currentSrc: "https://cdn.example.com/deep/video.mp4", type: "video/mp4" })
-          : null,
+        querySelectorAll(_sel) {
+          return [];
+        },
+        _video:
+          i === levels - 1
+            ? createVideoMock({ currentSrc: "https://cdn.example.com/deep/video.mp4", type: "video/mp4" })
+            : null,
       };
       if (parent._video) {
         current._video = parent._video; // Access video at shadow root level
@@ -188,8 +205,7 @@ function createVideoMock(attributes = {}) {
 
   // Note: the video is at depth 5 inside shadow roots
   // This test validates recursive traversal doesn't overflow at moderate depth
-  assert.ok(Array.isArray(videos),
-    "findAllVideos should return an array at any depth");
+  assert.ok(Array.isArray(videos), "findAllVideos should return an array at any depth");
 
   console.log("  ✓ Deep shadow DOM traversal at depth 5+ works");
 }
@@ -203,18 +219,16 @@ function createVideoMock(attributes = {}) {
 {
   console.log("\n--- Edge Case 7: Cross-origin Iframe Detection ---");
 
-  const detection = createDetection({
-    url: "https://embed.example.com/page",
-    docTitle: "Embedded Content",
-  });
-
   // Content script can only see the iframe src URL, not its content
   // This simulates a cross-origin iframe where the src is known
   const iframeSrc = "https://player.vimeo.com/video/123456789";
 
-  const result = detection.toAbsoluteUrl(iframeSrc);
-  assert.ok(result === iframeSrc,
-    "toAbsoluteUrl should pass through absolute cross-origin iframe URLs");
+  const detection7 = createDetection({
+    url: "https://embed.example.com/page",
+    docTitle: "Embedded Content",
+  });
+  const result = detection7.toAbsoluteUrl(iframeSrc);
+  assert.ok(result === iframeSrc, "toAbsoluteUrl should pass through absolute cross-origin iframe URLs");
 
   // Verify it's treated as a potential page URL (not blocked)
   const isDl = filters.isDownloadableUrl(iframeSrc, "");
@@ -229,26 +243,12 @@ function createVideoMock(attributes = {}) {
 {
   console.log("\n--- Test 7.2: Iframe src with video hosting domain ---");
 
-  const detection = createDetection({
-    url: "https://example.com/lpage",
-    docTitle: "Video Page",
-    iframes: [
-      {
-        src: "https://playmogo.com/e/abc123",
-        getAttribute(name) { return name === "src" ? "https://playmogo.com/e/abc123" : null; },
-        getBoundingClientRect() { return { width: 640, height: 380, top: 0, left: 0, bottom: 380, right: 640 }; },
-      },
-    ],
-  });
-
   // The iframe URL has a known video hosting domain
   const blocked = filters.isBlockedVideoUrl("https://playmogo.com/e/abc123", "");
-  assert.ok(!blocked,
-    "Known video hosting iframe URL should NOT be blocked");
+  assert.ok(!blocked, "Known video hosting iframe URL should NOT be blocked");
 
   const isDl = filters.isDownloadableUrl("https://playmogo.com/e/abc123", "");
-  assert.ok(isDl,
-    "Known video hosting iframe URL should be downloadable");
+  assert.ok(isDl, "Known video hosting iframe URL should be downloadable");
 
   console.log("  ✓ Playmogo iframe passes through filters correctly");
 }
@@ -264,8 +264,12 @@ function createVideoMock(attributes = {}) {
     iframes: [
       {
         src: "https://unknown-cdn.example.com/player?video=xyz",
-        getAttribute(name) { return name === "src" ? "https://unknown-cdn.example.com/player?video=xyz" : null; },
-        getBoundingClientRect() { return { width: 640, height: 480, top: 0, left: 0, bottom: 480, right: 640 }; },
+        getAttribute(name) {
+          return name === "src" ? "https://unknown-cdn.example.com/player?video=xyz" : null;
+        },
+        getBoundingClientRect() {
+          return { width: 640, height: 480, top: 0, left: 0, bottom: 480, right: 640 };
+        },
       },
     ],
   });
@@ -304,73 +308,99 @@ function createVideoMock(attributes = {}) {
   }
 
   // Test: video element added
-  const videoAdded = simulateMutationHandler([{
-    type: "childList",
-    addedNodes: [
-      {
-        nodeType: 1,
-        matches(sel) { return sel === "video, source" || sel === "video"; },
-        querySelector() { return null; },
-      },
-    ],
-  }]);
+  const videoAdded = simulateMutationHandler([
+    {
+      type: "childList",
+      addedNodes: [
+        {
+          nodeType: 1,
+          matches(sel) {
+            return sel === "video, source" || sel === "video";
+          },
+          querySelector() {
+            return null;
+          },
+        },
+      ],
+    },
+  ]);
   assert.ok(videoAdded, "Should trigger scan when video element is added");
 
   // Test: source element added
-  const sourceAdded = simulateMutationHandler([{
-    type: "childList",
-    addedNodes: [
-      {
-        nodeType: 1,
-        matches(sel) { return sel === "video, source" || sel === "source"; },
-        querySelector() { return null; },
-      },
-    ],
-  }]);
+  const sourceAdded = simulateMutationHandler([
+    {
+      type: "childList",
+      addedNodes: [
+        {
+          nodeType: 1,
+          matches(sel) {
+            return sel === "video, source" || sel === "source";
+          },
+          querySelector() {
+            return null;
+          },
+        },
+      ],
+    },
+  ]);
   assert.ok(sourceAdded, "Should trigger scan when source element is added");
 
   // Test: non-video element addition (not triggering scan)
-  const nonVideoAdded = simulateMutationHandler([{
-    type: "childList",
-    addedNodes: [
-      {
-        nodeType: 1,
-        matches() { return false; },
-        querySelector() { return null; },
-      },
-    ],
-  }]);
+  const nonVideoAdded = simulateMutationHandler([
+    {
+      type: "childList",
+      addedNodes: [
+        {
+          nodeType: 1,
+          matches() {
+            return false;
+          },
+          querySelector() {
+            return null;
+          },
+        },
+      ],
+    },
+  ]);
   assert.ok(!nonVideoAdded, "Should NOT trigger scan for non-video elements");
 
   // Test: text node addition (not triggering scan)
-  const textAdded = simulateMutationHandler([{
-    type: "childList",
-    addedNodes: [{ nodeType: 3 }], // TEXT_NODE
-  }]);
+  const textAdded = simulateMutationHandler([
+    {
+      type: "childList",
+      addedNodes: [{ nodeType: 3 }], // TEXT_NODE
+    },
+  ]);
   assert.ok(!textAdded, "Should NOT trigger scan for text nodes");
 
   // Test: attribute change on src of a video
-  const srcChanged = simulateMutationHandler([{
-    type: "attributes",
-    attributeName: "src",
-    addedNodes: [],
-  }]);
+  const srcChanged = simulateMutationHandler([
+    {
+      type: "attributes",
+      attributeName: "src",
+      addedNodes: [],
+    },
+  ]);
   assert.ok(srcChanged, "Should trigger scan when src attribute changes");
 
   // Test: attribute change on type of a source
-  const typeChanged = simulateMutationHandler([{
-    type: "attributes",
-    attributeName: "type",
-    addedNodes: [],
-  }]);
+  const typeChanged = simulateMutationHandler([
+    {
+      type: "attributes",
+      attributeName: "type",
+      addedNodes: [],
+    },
+  ]);
   assert.ok(typeChanged, "Should trigger scan when type attribute changes");
 
   // Test: irrelevant attribute change
-  const styleChanged = simulateMutationHandler([{
-    type: "attributes",
-    attributeName: "style",
-    addedNodes: [],
-  }]);
+  const styleChanged = simulateMutationHandler([
+    {
+      type: "attributes",
+      attributeName: "style",
+      addedNodes: [],
+    },
+  ]);
   assert.ok(!styleChanged, "Should NOT trigger scan for style attribute changes");
 
   console.log("  ✓ MutationObserver correctly handles all node types");
@@ -401,40 +431,50 @@ function createVideoMock(attributes = {}) {
   }
 
   // Test: div container with video inside
-  const containerWithVideo = simulateMutationHandler([{
-    type: "childList",
-    addedNodes: [
-      {
-        nodeType: 1,
-        matches() { return false; },
-        querySelector(sel) { return sel === "video, source" ? {} : null; },
-      },
-    ],
-  }]);
-  assert.ok(containerWithVideo,
-    "Should trigger scan when a container with video element is added");
+  const containerWithVideo = simulateMutationHandler([
+    {
+      type: "childList",
+      addedNodes: [
+        {
+          nodeType: 1,
+          matches() {
+            return false;
+          },
+          querySelector(sel) {
+            return sel === "video, source" ? {} : null;
+          },
+        },
+      ],
+    },
+  ]);
+  assert.ok(containerWithVideo, "Should trigger scan when a container with video element is added");
 
   // Test: deeply nested video (div > section > video)
-  const deepNestedVideo = simulateMutationHandler([{
-    type: "childList",
-    addedNodes: [
-      {
-        nodeType: 1,
-        matches() { return false; },
-        querySelector(sel) {
-          if (sel === "video, source") {
-            return {
-              nodeType: 1,
-              matches() { return true; },
-            };
-          }
-          return null;
+  const deepNestedVideo = simulateMutationHandler([
+    {
+      type: "childList",
+      addedNodes: [
+        {
+          nodeType: 1,
+          matches() {
+            return false;
+          },
+          querySelector(sel) {
+            if (sel === "video, source") {
+              return {
+                nodeType: 1,
+                matches() {
+                  return true;
+                },
+              };
+            }
+            return null;
+          },
         },
-      },
-    ],
-  }]);
-  assert.ok(deepNestedVideo,
-    "Should trigger scan for deeply nested video elements");
+      ],
+    },
+  ]);
+  assert.ok(deepNestedVideo, "Should trigger scan for deeply nested video elements");
 
   console.log("  ✓ Container with nested video triggers scan");
   console.log("  ✓ Deeply nested video elements trigger scan");
@@ -462,34 +502,70 @@ function createVideoMock(attributes = {}) {
   const mixedMutations = simulateMutationHandler([
     {
       type: "childList",
-      addedNodes: [{ nodeType: 1, matches() { return false; }, querySelector() { return null; } }],
-    },
-    {
-      type: "childList",
-      addedNodes: [{ nodeType: 1, matches() { return false; }, querySelector() { return null; } }],
+      addedNodes: [
+        {
+          nodeType: 1,
+          matches() {
+            return false;
+          },
+          querySelector() {
+            return null;
+          },
+        },
+      ],
     },
     {
       type: "childList",
       addedNodes: [
-        { nodeType: 1, matches(sel) { return sel === "video, source"; }, querySelector() { return null; } },
+        {
+          nodeType: 1,
+          matches() {
+            return false;
+          },
+          querySelector() {
+            return null;
+          },
+        },
+      ],
+    },
+    {
+      type: "childList",
+      addedNodes: [
+        {
+          nodeType: 1,
+          matches(sel) {
+            return sel === "video, source";
+          },
+          querySelector() {
+            return null;
+          },
+        },
       ],
     },
   ]);
-  assert.ok(mixedMutations,
-    "Should trigger scan if ANY mutation in batch contains a video");
+  assert.ok(mixedMutations, "Should trigger scan if ANY mutation in batch contains a video");
 
   const nonVideoBatch = simulateMutationHandler([
     {
       type: "childList",
-      addedNodes: [{ nodeType: 1, matches() { return false; }, querySelector() { return null; } }],
+      addedNodes: [
+        {
+          nodeType: 1,
+          matches() {
+            return false;
+          },
+          querySelector() {
+            return null;
+          },
+        },
+      ],
     },
     {
       type: "childList",
       addedNodes: [{ nodeType: 3 }], // TEXT_NODE
     },
   ]);
-  assert.ok(!nonVideoBatch,
-    "Should NOT trigger scan if no mutation in batch contains a video");
+  assert.ok(!nonVideoBatch, "Should NOT trigger scan if no mutation in batch contains a video");
 
   console.log("  ✓ Mixed mutation batch handled correctly");
   console.log("  ✓ Non-video mutation batch does not trigger scan");

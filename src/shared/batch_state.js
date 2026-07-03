@@ -13,11 +13,11 @@
 const MAX_BATCH_SIZE = 100;
 
 let batchState = {
-  items: [],           // Array of { id, url, title, format, ... }
+  items: [], // Array of { id, url, title, format, ... }
   currentIndex: -1,
   completedItems: [],
-  failedItems: [],     // Array of { id, error }
-  status: "idle",      // "idle" | "running" | "paused" | "completed" | "canceled"
+  failedItems: [], // Array of { id, error }
+  status: "idle", // "idle" | "running" | "paused" | "completed" | "canceled"
   totalItems: 0,
 };
 
@@ -39,9 +39,8 @@ function deriveBatchInfo() {
   const total = batchState.items.length;
   const completed = batchState.completedItems.length;
   const failed = batchState.failedItems.length;
-  const currentItem = batchState.currentIndex >= 0 && batchState.currentIndex < total
-    ? batchState.items[batchState.currentIndex]
-    : null;
+  const currentItem =
+    batchState.currentIndex >= 0 && batchState.currentIndex < total ? batchState.items[batchState.currentIndex] : null;
   const processed = completed + failed;
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
   const label = currentItem ? `${batchState.currentIndex + 1}/${total}` : `${completed}/${total}`;
@@ -55,10 +54,7 @@ function deriveBatchInfo() {
     percent,
     label,
     status: batchState.status,
-    isActive:
-      batchState.items.length > 0 &&
-      batchState.status !== "completed" &&
-      batchState.status !== "canceled",
+    isActive: batchState.items.length > 0 && batchState.status !== "completed" && batchState.status !== "canceled",
   };
 }
 
@@ -234,11 +230,7 @@ function advanceToNext() {
  * @returns {boolean}
  */
 function isBatchActive() {
-  return (
-    batchState.items.length > 0 &&
-    batchState.status !== "completed" &&
-    batchState.status !== "canceled"
-  );
+  return batchState.items.length > 0 && batchState.status !== "completed" && batchState.status !== "canceled";
 }
 
 /**

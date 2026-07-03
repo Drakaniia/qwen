@@ -27,8 +27,7 @@ import assert from "node:assert/strict";
 
   // The function should detect the existing SW
   const detected = mod.hasExistingServiceWorker(mockNavigatorWithSW);
-  assert.ok(detected === true,
-    "hasExistingServiceWorker should return true when SW controller exists");
+  assert.ok(detected === true, "hasExistingServiceWorker should return true when SW controller exists");
 
   console.log("  ✓ Detected existing Service Worker controller");
 }
@@ -48,8 +47,7 @@ import assert from "node:assert/strict";
   };
 
   const detected = mod.hasExistingServiceWorker(mockNavigatorNoSW);
-  assert.ok(detected === false,
-    "hasExistingServiceWorker should return false when no SW controller");
+  assert.ok(detected === false, "hasExistingServiceWorker should return false when no SW controller");
 
   console.log("  ✓ No SW controller correctly reported");
 }
@@ -65,8 +63,7 @@ import assert from "node:assert/strict";
   const mockNavigatorUndefined = undefined;
 
   const detected = mod.hasExistingServiceWorker(mockNavigatorUndefined);
-  assert.ok(detected === false,
-    "hasExistingServiceWorker should return false when navigator is undefined");
+  assert.ok(detected === false, "hasExistingServiceWorker should return false when navigator is undefined");
 
   console.log("  ✓ Handles undefined navigator gracefully");
 }
@@ -86,8 +83,7 @@ import assert from "node:assert/strict";
       },
     };
     const detected = mod.hasExistingServiceWorker(mockNavigator);
-    assert.ok(detected === true,
-      "hasExistingServiceWorker should return true regardless of SW state (" + state + ")");
+    assert.ok(detected === true, "hasExistingServiceWorker should return true regardless of SW state (" + state + ")");
   }
 
   console.log("  ✓ All SW states correctly detected");
@@ -108,8 +104,7 @@ import assert from "node:assert/strict";
   };
 
   const detected = mod.hasExistingServiceWorker(mockNavigatorPostUnregister);
-  assert.ok(detected === false,
-    "hasExistingServiceWorker should return false after SW is unregistered");
+  assert.ok(detected === false, "hasExistingServiceWorker should return false after SW is unregistered");
 
   console.log("  ✓ Correctly reports no SW after unregister");
 }

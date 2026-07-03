@@ -26,26 +26,16 @@ import * as PopupUI from "../../../src/popup/popup_ui.js";
 {
   const long = "https://example.com/" + "a".repeat(60) + "/" + "b".repeat(40) + ".mp4";
   const result = PopupUI.shortenUrl(long);
-  assert.ok(
-    result.length < long.length,
-    "shortenUrl must truncate paths longer than 74 characters",
-  );
+  assert.ok(result.length < long.length, "shortenUrl must truncate paths longer than 74 characters");
 }
 
 {
-  assert.equal(
-    PopupUI.shortenUrl(""),
-    "",
-    "shortenUrl must return empty string for empty input",
-  );
+  assert.equal(PopupUI.shortenUrl(""), "", "shortenUrl must return empty string for empty input");
 }
 
 {
   const result = PopupUI.shortenUrl("not-a-valid-url");
-  assert.ok(
-    result.length <= 95,
-    "shortenUrl must fall back to slicing for invalid URLs",
-  );
+  assert.ok(result.length <= 95, "shortenUrl must fall back to slicing for invalid URLs");
 }
 
 // ─── videoThumbnailUrl ──────────────────────────────────────────────────────
@@ -83,11 +73,7 @@ import * as PopupUI from "../../../src/popup/popup_ui.js";
 }
 
 {
-  assert.equal(
-    PopupUI.videoThumbnailUrl(null),
-    "",
-    "videoThumbnailUrl must return empty string for null input",
-  );
+  assert.equal(PopupUI.videoThumbnailUrl(null), "", "videoThumbnailUrl must return empty string for null input");
 }
 
 {
@@ -109,11 +95,7 @@ import * as PopupUI from "../../../src/popup/popup_ui.js";
 }
 
 {
-  assert.equal(
-    PopupUI.normalizeManualUrl(""),
-    "",
-    "normalizeManualUrl must return empty string for empty input",
-  );
+  assert.equal(PopupUI.normalizeManualUrl(""), "", "normalizeManualUrl must return empty string for empty input");
 }
 
 {
@@ -166,7 +148,10 @@ import * as PopupUI from "../../../src/popup/popup_ui.js";
 
 {
   const result = PopupUI.videoTitle({ url: "https://example.com/track", format: "AUDIO" });
-  assert.ok(result.includes("example.com"), "videoTitle must fall back to shortenUrl for AUDIO format when URL is present");
+  assert.ok(
+    result.includes("example.com"),
+    "videoTitle must fall back to shortenUrl for AUDIO format when URL is present",
+  );
 }
 
 {

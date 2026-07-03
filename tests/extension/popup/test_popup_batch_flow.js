@@ -9,11 +9,14 @@ const popupBundle = fs.readFileSync(path.join(__dirname, "../../../dist/test/pop
 // ─── Mock DOM helpers ──────────────────────────────────────────────────────
 
 class ClassList {
-  constructor(element) { this.element = element; }
+  constructor(element) {
+    this.element = element;
+  }
   toggle(name, force) {
     const classes = new Set(this.element.className.split(/\s+/).filter(Boolean));
     const enabled = force === undefined ? !classes.has(name) : Boolean(force);
-    if (enabled) classes.add(name); else classes.delete(name);
+    if (enabled) classes.add(name);
+    else classes.delete(name);
     this.element.className = Array.from(classes).join(" ");
     return enabled;
   }
@@ -38,12 +41,25 @@ class TestElement {
     this.ownerDocument = null;
     this._textContent = "";
   }
-  set textContent(value) { this._textContent = String(value || ""); this.children = []; }
-  get textContent() { return this._textContent; }
-  append(...nodes) { for (const n of nodes) this.children.push(n); }
-  setAttribute(name, value) { this.attributes[name] = String(value); }
-  getAttribute(name) { return this.attributes[name] || null; }
-  removeAttribute(name) { delete this.attributes[name]; }
+  set textContent(value) {
+    this._textContent = String(value || "");
+    this.children = [];
+  }
+  get textContent() {
+    return this._textContent;
+  }
+  append(...nodes) {
+    for (const n of nodes) this.children.push(n);
+  }
+  setAttribute(name, value) {
+    this.attributes[name] = String(value);
+  }
+  getAttribute(name) {
+    return this.attributes[name] || null;
+  }
+  removeAttribute(name) {
+    delete this.attributes[name];
+  }
   addEventListener(type, listener) {
     if (!this.listeners[type]) this.listeners[type] = [];
     this.listeners[type].push(listener);
@@ -53,37 +69,89 @@ class TestElement {
     for (const l of this.listeners.click || []) await l(event);
     if (this.onclick) await this.onclick(event);
   }
-  closest() { return null; }
+  closest() {
+    return null;
+  }
 }
 
 const BATCH_ELEMENT_IDS = [
-  "helperStatus", "downloadIndicator", "settingsToggle", "settingsPanel",
-  "settingsStatus", "viewToggle", "contentView", "footerActions",
-  "showVideos", "showMusic", "showDownloads",
-  "manualUrl", "downloadManualUrl", "magnetUrl", "downloadMagnet",
-  "downloadTorrentFile", "downloadFolder", "chooseDownloadFolder",
-  "saveSettings", "message", "videoToolbar",
-  "showListLayout", "showBoxLayout", "videoList", "downloadList",
-  "qualityDialog", "qualityTitle", "qualityList", "cancelQuality",
-  "rescan", "clear",
-  "musicLinkSection", "musicLinkUrl", "downloadMusicLink",
-  "audioFormat", "recordingMode",
-  "batchBar", "batchLabel", "batchProgress", "batchProgressFill",
-  "batchStatus", "batchCancelBtn", "playlistPrompt", "playlistTitle",
+  "helperStatus",
+  "downloadIndicator",
+  "settingsToggle",
+  "settingsPanel",
+  "settingsStatus",
+  "viewToggle",
+  "contentView",
+  "footerActions",
+  "showVideos",
+  "showMusic",
+  "showDownloads",
+  "manualUrl",
+  "downloadManualUrl",
+  "magnetUrl",
+  "downloadMagnet",
+  "downloadTorrentFile",
+  "downloadFolder",
+  "chooseDownloadFolder",
+  "saveSettings",
+  "message",
+  "videoToolbar",
+  "showListLayout",
+  "showBoxLayout",
+  "videoList",
+  "downloadList",
+  "qualityDialog",
+  "qualityTitle",
+  "qualityList",
+  "cancelQuality",
+  "rescan",
+  "clear",
+  "musicLinkSection",
+  "musicLinkUrl",
+  "downloadMusicLink",
+  "audioFormat",
+  "recordingMode",
+  "batchBar",
+  "batchLabel",
+  "batchProgress",
+  "batchProgressFill",
+  "batchStatus",
+  "batchCancelBtn",
+  "playlistPrompt",
+  "playlistTitle",
   "downloadAllBtn",
-  "backend", "downloadSubtitles", "syncHistoryToggle", "syncStatus",
-  "depBanner", "depBannerToggle", "depBannerBody", "depBannerList",
-  "depBannerTitle", "depBannerCopyBtn",
+  "backend",
+  "downloadSubtitles",
+  "syncHistoryToggle",
+  "syncStatus",
+  "depBanner",
+  "depBannerToggle",
+  "depBannerBody",
+  "depBannerList",
+  "depBannerTitle",
+  "depBannerCopyBtn",
 ];
 
 function createDocument() {
   const elements = new Map();
   const doc = {
-    getElementById(id) { return elements.get(id) || null; },
-    createElement(tagName) { const el = new TestElement(tagName); el.ownerDocument = doc; return el; },
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
-    element(id) { return elements.get(id); },
+    getElementById(id) {
+      return elements.get(id) || null;
+    },
+    createElement(tagName) {
+      const el = new TestElement(tagName);
+      el.ownerDocument = doc;
+      return el;
+    },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+    element(id) {
+      return elements.get(id);
+    },
   };
   for (const id of BATCH_ELEMENT_IDS) {
     const el = new TestElement("div", id);
@@ -119,32 +187,76 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
           { id: "v1", url: "https://youtube.com/watch?v=v1", title: "First Item", duration: 120 },
           { id: "v2", url: "https://youtube.com/watch?v=v2", title: "Second Item", duration: 240 },
         ],
-        playlistTitle: "Test Playlist", totalItems: 2,
+        playlistTitle: "Test Playlist",
+        totalItems: 2,
       };
     }
     if (msg.type === "batchDownload") {
       return {
         ok: true,
-        batchInfo: { totalItems: (msg.videos || []).length, completedItems: 0, currentIndex: 0, status: "running", percent: 0, label: "1/3" },
+        batchInfo: {
+          totalItems: (msg.videos || []).length,
+          completedItems: 0,
+          currentIndex: 0,
+          status: "running",
+          percent: 0,
+          label: "1/3",
+        },
       };
     }
     return { ok: true };
   };
 
   const callbacks = [];
-  const sandbox = { URL, browser: null, document, console,
-    window: { setTimeout: (cb) => setTimeout(cb, 0), clearTimeout() {}, innerHeight: 600, innerWidth: 390, addEventListener() {} },
+  const sandbox = {
+    URL,
+    browser: null,
+    document,
+    console,
+    window: {
+      setTimeout: (cb) => setTimeout(cb, 0),
+      clearTimeout() {},
+      innerHeight: 600,
+      innerWidth: 390,
+      addEventListener() {},
+    },
     Node: { ELEMENT_NODE: 1 },
-    MutationObserver: class { constructor() { this.observe = () => {}; } observe() {} disconnect() {} },
-    performance: { getEntriesByType() { return []; } },
-    CustomEvent: class { constructor(type) { this.type = type; } },
+    MutationObserver: class {
+      constructor() {
+        this.observe = () => {};
+      }
+      observe() {}
+      disconnect() {}
+    },
+    performance: {
+      getEntriesByType() {
+        return [];
+      },
+    },
+    CustomEvent: class {
+      constructor(type) {
+        this.type = type;
+      }
+    },
   };
   sandbox.browser = {
-    tabs: { async query() { return [{ id: 42, url: activeTabUrl }]; } },
+    tabs: {
+      async query() {
+        return [{ id: 42, url: activeTabUrl }];
+      },
+    },
     runtime: {
-      async sendMessage(msg) { return (messageHandler || defaultHandler)(msg); },
-      onMessage: { addListener(cb) { callbacks.push(cb); } },
-      connectNative() { return { onMessage: { addListener() {} }, onDisconnect: { addListener() {} }, postMessage() {} }; },
+      async sendMessage(msg) {
+        return (messageHandler || defaultHandler)(msg);
+      },
+      onMessage: {
+        addListener(cb) {
+          callbacks.push(cb);
+        },
+      },
+      connectNative() {
+        return { onMessage: { addListener() {} }, onDisconnect: { addListener() {} }, postMessage() {} };
+      },
     },
   };
 
@@ -154,8 +266,12 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
   return {
     element: (id) => document.element(id),
     getMessageLog: () => messageLog,
-    sendMessage: (msg) => { for (const cb of callbacks) cb(msg); },
-    async ready() { await flushPromises(); },
+    sendMessage: (msg) => {
+      for (const cb of callbacks) cb(msg);
+    },
+    async ready() {
+      await flushPromises();
+    },
   };
 }
 
@@ -173,14 +289,8 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
   await flushPromises();
 
   const log = h1.getMessageLog();
-  assert.ok(
-    log.includes("enumeratePlaylist"),
-    `enumeratePlaylist should be called. Messages: ${JSON.stringify(log)}`,
-  );
-  assert.ok(
-    log.includes("batchDownload"),
-    `batchDownload should be called. Messages: ${JSON.stringify(log)}`,
-  );
+  assert.ok(log.includes("enumeratePlaylist"), `enumeratePlaylist should be called. Messages: ${JSON.stringify(log)}`);
+  assert.ok(log.includes("batchDownload"), `batchDownload should be called. Messages: ${JSON.stringify(log)}`);
 
   // ─── Test 2: batchDownload receives correct items from enumeration ─────
 
@@ -190,10 +300,30 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
     messageHandler: async (msg) => {
       h2Log.push({ type: msg.type, count: msg.videos?.length, ids: msg.videos?.map((v) => v.id) });
       if (msg.type === "getVideos") return { ok: true, videos: [], downloads: [], settings: {} };
-      if (msg.type === "pingNativeHost") return { ok: true, version: "1.0", dependencies: { ytDlp: true, ffmpeg: true, aria2c: true } };
-      if (msg.type === "enumeratePlaylist") return { ok: true, items: [{ id: "a1", url: "https://youtube.com/watch?v=a1", title: "Alpha", duration: 120 }, { id: "b2", url: "https://youtube.com/watch?v=b2", title: "Beta", duration: 240 }], playlistTitle: "My List", totalItems: 2 };
+      if (msg.type === "pingNativeHost")
+        return { ok: true, version: "1.0", dependencies: { ytDlp: true, ffmpeg: true, aria2c: true } };
+      if (msg.type === "enumeratePlaylist")
+        return {
+          ok: true,
+          items: [
+            { id: "a1", url: "https://youtube.com/watch?v=a1", title: "Alpha", duration: 120 },
+            { id: "b2", url: "https://youtube.com/watch?v=b2", title: "Beta", duration: 240 },
+          ],
+          playlistTitle: "My List",
+          totalItems: 2,
+        };
       if (msg.type === "batchDownload") {
-        return { ok: true, batchInfo: { totalItems: msg.videos?.length || 0, completedItems: 0, currentIndex: 0, status: "running", percent: 0, label: "1/2" } };
+        return {
+          ok: true,
+          batchInfo: {
+            totalItems: msg.videos?.length || 0,
+            completedItems: 0,
+            currentIndex: 0,
+            status: "running",
+            percent: 0,
+            label: "1/2",
+          },
+        };
       }
       return { ok: true };
     },
@@ -211,28 +341,60 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
   // ─── Test 3: Button shows loading state during enumeration ─────────────
 
   let enumResolver;
-  const enumBlockPromise = new Promise((r) => { enumResolver = r; });
+  const enumBlockPromise = new Promise((r) => {
+    enumResolver = r;
+  });
 
   const h3Doc = createDocument();
   const h3Sandbox = {
-    URL, browser: null, document: h3Doc, console,
-    window: { setTimeout: (cb) => setTimeout(cb, 0), clearTimeout() {}, innerHeight: 600, innerWidth: 390, addEventListener() {} },
+    URL,
+    browser: null,
+    document: h3Doc,
+    console,
+    window: {
+      setTimeout: (cb) => setTimeout(cb, 0),
+      clearTimeout() {},
+      innerHeight: 600,
+      innerWidth: 390,
+      addEventListener() {},
+    },
     Node: { ELEMENT_NODE: 1 },
-    MutationObserver: class { constructor() { this.observe = () => {}; } observe() {} disconnect() {} },
-    performance: { getEntriesByType() { return []; } },
-    CustomEvent: class { constructor(type) { this.type = type; } },
+    MutationObserver: class {
+      constructor() {
+        this.observe = () => {};
+      }
+      observe() {}
+      disconnect() {}
+    },
+    performance: {
+      getEntriesByType() {
+        return [];
+      },
+    },
+    CustomEvent: class {
+      constructor(type) {
+        this.type = type;
+      }
+    },
   };
   h3Sandbox.browser = {
-    tabs: { async query() { return [{ id: 42, url: "https://www.youtube.com/playlist?list=PLTEST123" }]; } },
+    tabs: {
+      async query() {
+        return [{ id: 42, url: "https://www.youtube.com/playlist?list=PLTEST123" }];
+      },
+    },
     runtime: {
       async sendMessage(msg) {
         if (msg.type === "enumeratePlaylist") return enumBlockPromise;
         if (msg.type === "getVideos") return { ok: true, videos: [], downloads: [], settings: {} };
-        if (msg.type === "pingNativeHost") return { ok: true, version: "1.0", dependencies: { ytDlp: true, ffmpeg: true, aria2c: true } };
+        if (msg.type === "pingNativeHost")
+          return { ok: true, version: "1.0", dependencies: { ytDlp: true, ffmpeg: true, aria2c: true } };
         return { ok: true };
       },
       onMessage: { addListener() {} },
-      connectNative() { return { onMessage: { addListener() {} }, onDisconnect: { addListener() {} }, postMessage() {} }; },
+      connectNative() {
+        return { onMessage: { addListener() {} }, onDisconnect: { addListener() {} }, postMessage() {} };
+      },
     },
   };
   vm.createContext(h3Sandbox);
@@ -256,7 +418,8 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
     messageHandler: async (msg) => {
       if (msg.type === "enumeratePlaylist") return { ok: false, error: "Private playlist" };
       if (msg.type === "getVideos") return { ok: true, videos: [], downloads: [], settings: {} };
-      if (msg.type === "pingNativeHost") return { ok: true, version: "1.0", dependencies: { ytDlp: true, ffmpeg: true, aria2c: true } };
+      if (msg.type === "pingNativeHost")
+        return { ok: true, version: "1.0", dependencies: { ytDlp: true, ffmpeg: true, aria2c: true } };
       return { ok: true };
     },
   });
@@ -275,7 +438,8 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
     messageHandler: async (msg) => {
       if (msg.type === "enumeratePlaylist") return { ok: true, items: [], playlistTitle: "", totalItems: 0 };
       if (msg.type === "getVideos") return { ok: true, videos: [], downloads: [], settings: {} };
-      if (msg.type === "pingNativeHost") return { ok: true, version: "1.0", dependencies: { ytDlp: true, ffmpeg: true, aria2c: true } };
+      if (msg.type === "pingNativeHost")
+        return { ok: true, version: "1.0", dependencies: { ytDlp: true, ffmpeg: true, aria2c: true } };
       return { ok: true };
     },
   });
@@ -295,7 +459,16 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
 
   h6.sendMessage({
     type: "batchUpdated",
-    batchInfo: { totalItems: 5, completedItems: 2, currentIndex: 2, status: "running", percent: 40, label: "3/5", isActive: true, failedItems: [] },
+    batchInfo: {
+      totalItems: 5,
+      completedItems: 2,
+      currentIndex: 2,
+      status: "running",
+      percent: 40,
+      label: "3/5",
+      isActive: true,
+      failedItems: [],
+    },
   });
   await flushPromises();
 
@@ -310,7 +483,16 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
 
   h7.sendMessage({
     type: "batchComplete",
-    batchInfo: { totalItems: 3, completedItems: 3, currentIndex: -1, status: "completed", percent: 100, label: "3/3", isActive: false, failedItems: [] },
+    batchInfo: {
+      totalItems: 3,
+      completedItems: 3,
+      currentIndex: -1,
+      status: "completed",
+      percent: 100,
+      label: "3/3",
+      isActive: false,
+      failedItems: [],
+    },
     message: "All 3 items downloaded.",
   });
   await flushPromises();
@@ -324,7 +506,16 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
 
   h8.sendMessage({
     type: "batchUpdated",
-    batchInfo: { totalItems: 5, completedItems: 2, currentIndex: 2, status: "paused", percent: 40, label: "3/5", isActive: true, failedItems: [] },
+    batchInfo: {
+      totalItems: 5,
+      completedItems: 2,
+      currentIndex: 2,
+      status: "paused",
+      percent: 40,
+      label: "3/5",
+      isActive: true,
+      failedItems: [],
+    },
   });
   await flushPromises();
 
@@ -337,7 +528,16 @@ function createHarness({ activeTabUrl = "https://example.com/", messageHandler }
 
   h9.sendMessage({
     type: "batchUpdated",
-    batchInfo: { totalItems: 10, completedItems: 4, currentIndex: 6, status: "running", percent: 40, label: "7/10", isActive: true, failedItems: [{ id: "v1", error: "e1" }] },
+    batchInfo: {
+      totalItems: 10,
+      completedItems: 4,
+      currentIndex: 6,
+      status: "running",
+      percent: 40,
+      label: "7/10",
+      isActive: true,
+      failedItems: [{ id: "v1", error: "e1" }],
+    },
   });
   await flushPromises();
 

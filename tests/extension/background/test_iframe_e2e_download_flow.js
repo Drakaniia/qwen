@@ -24,10 +24,7 @@ import path from "node:path";
 import vm from "node:vm";
 
 const __dirname = import.meta.dirname;
-const backgroundBundle = fs.readFileSync(
-  path.join(__dirname, "../../../dist/test/background.bundle.js"),
-  "utf8",
-);
+const backgroundBundle = fs.readFileSync(path.join(__dirname, "../../../dist/test/background.bundle.js"), "utf8");
 
 const TAB_ID = 42;
 const PAGE_URL = "https://pinaypie.com/watch/episode-10";
@@ -258,11 +255,7 @@ function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
       (m) => m.type === "videoListUpdated" && m.tabId === TAB_ID && m.videos.length === 1,
     );
     assert.ok(popupNotification, "background should notify popup of video list update");
-    assert.equal(
-      popupNotification.videos[0].format,
-      "M3U8",
-      "popup notification should include the HLS video format",
-    );
+    assert.equal(popupNotification.videos[0].format, "M3U8", "popup notification should include the HLS video format");
 
     // Verify the video was stored and retrievable via getVideos
     const listResponse = await harness.sendRuntimeMessage({
@@ -359,17 +352,27 @@ function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
     });
     assert.equal(listResponse.ok, true);
 
-    console.log("  Videos:", JSON.stringify(listResponse.videos.map((v) => ({
-      id: v.id,
-      format: v.format,
-      source: v.source,
-      url: (v.url || "").slice(0, 60),
-      frameUrl: v.frameUrl,
-      pageUrl: v.pageUrl,
-    })), null, 2));
+    console.log(
+      "  Videos:",
+      JSON.stringify(
+        listResponse.videos.map((v) => ({
+          id: v.id,
+          format: v.format,
+          source: v.source,
+          url: (v.url || "").slice(0, 60),
+          frameUrl: v.frameUrl,
+          pageUrl: v.pageUrl,
+        })),
+        null,
+        2,
+      ),
+    );
 
-    assert.equal(listResponse.videos.length, 2,
-      "should have 2 separate videos: iframe-page/PAGE and iframe-detected/M3U8");
+    assert.equal(
+      listResponse.videos.length,
+      2,
+      "should have 2 separate videos: iframe-page/PAGE and iframe-detected/M3U8",
+    );
 
     // Verify the iframe-page PAGE candidate
     const pageCandidate = listResponse.videos.find((v) => v.source === "iframe-page");
@@ -487,13 +490,12 @@ function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
     assert.ok(formatsResolved, "native host should have been called for format resolution");
 
     // Verify yt-dlp source is present in format metadata
-    const ytDlpFormats = formatsResponse.formats.filter(
-      (f) => String(f.source || "").includes("yt-dlp"),
-    );
+    const ytDlpFormats = formatsResponse.formats.filter((f) => String(f.source || "").includes("yt-dlp"));
     assert.ok(
       ytDlpFormats.length > 0,
       "formats should include yt-dlp-sourced options (received: " +
-        JSON.stringify(formatsResponse.formats.map((f) => f.source)) + ")",
+        JSON.stringify(formatsResponse.formats.map((f) => f.source)) +
+        ")",
     );
 
     // Step 2: Start the download
@@ -627,15 +629,23 @@ function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
     });
     assert.ok(listResponse.videos.length >= 1, "should have at least 1 video");
 
-    console.log("  All videos:", listResponse.videos.map(v => ({
-      id: v.id, format: v.format, source: v.source, url: (v.url||'').slice(0,60)
-    })));
+    console.log(
+      "  All videos:",
+      listResponse.videos.map((v) => ({
+        id: v.id,
+        format: v.format,
+        source: v.source,
+        url: (v.url || "").slice(0, 60),
+      })),
+    );
 
     // Explicitly find the iframe-page PAGE candidate
     const primaryVideo = listResponse.videos.find((v) => v.source === "iframe-page");
-    assert.ok(primaryVideo,
+    assert.ok(
+      primaryVideo,
       "should have an iframe-page video in the list. Available sources: " +
-      JSON.stringify(listResponse.videos.map(v => v.source)));
+        JSON.stringify(listResponse.videos.map((v) => v.source)),
+    );
     assert.equal(primaryVideo.url, IFRAME_URL, "primary video should be the iframe embed URL");
 
     // Attempt to download the iframe-page PAGE candidate
@@ -696,7 +706,9 @@ function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
       storage: {
         local: {
           get: (_keys, cb) => cb({}),
-          set: (_items, cb) => { if (cb) cb(); },
+          set: (_items, cb) => {
+            if (cb) cb();
+          },
         },
       },
       tabs: {
@@ -786,19 +798,13 @@ function createBackgroundHarness(nativeHandler, initialStorageState = {}) {
       downloadable: true,
     };
 
-    const fallbackResult = await downloadFallbacks.fallbackVideoForDownload(
-      TAB_ID,
-      failedVideo,
-      attemptedUrls,
-      deps,
-    );
+    const fallbackResult = await downloadFallbacks.fallbackVideoForDownload(TAB_ID, failedVideo, attemptedUrls, deps);
 
     assert.ok(fallbackResult, "fallbackVideoForDownload should return a fallback video");
     assert.equal(
       fallbackResult.url,
       HLS_URL,
-      "fallback should return the iframe-detected HLS URL, got: " +
-        (fallbackResult ? fallbackResult.url : "null"),
+      "fallback should return the iframe-detected HLS URL, got: " + (fallbackResult ? fallbackResult.url : "null"),
     );
     assert.equal(
       fallbackResult.fallbackReason,

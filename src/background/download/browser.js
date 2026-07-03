@@ -80,7 +80,7 @@ export async function browserDownload(deps, tabId, video, formatId, options) {
         if (typeof bytesReceived === "number") patch.rawDownloadedBytes = bytesReceived;
         if (typeof totalBytes === "number") patch.rawTotalBytes = totalBytes;
         if (typeof totalBytes === "number" && totalBytes > 0) {
-          const pct = Math.min(100, Math.round((bytesReceived || 0) / totalBytes * 100));
+          const pct = Math.min(100, Math.round(((bytesReceived || 0) / totalBytes) * 100));
           patch.percent = deps.normalizeDownloadProgress(jobId, pct);
           patch.message = deps.downloadProgressMessage(pct);
         }
@@ -120,20 +120,17 @@ export async function browserDownload(deps, tabId, video, formatId, options) {
           });
       } else {
         // Chrome callback-based
-        api.downloads.download(
-          { url: video.url, filename, conflictAction: "uniquify" },
-          function (id) {
-            if (api.runtime.lastError) {
-              deps.updateDownload(jobId, {
-                status: "error",
-                error: `Browser download failed: ${api.runtime.lastError.message}`,
-              });
-              resolve({ jobId });
-              return;
-            }
-            onDownloadStarted(id);
-          },
-        );
+        api.downloads.download({ url: video.url, filename, conflictAction: "uniquify" }, function (id) {
+          if (api.runtime.lastError) {
+            deps.updateDownload(jobId, {
+              status: "error",
+              error: `Browser download failed: ${api.runtime.lastError.message}`,
+            });
+            resolve({ jobId });
+            return;
+          }
+          onDownloadStarted(id);
+        });
       }
     } catch (error) {
       deps.updateDownload(jobId, {

@@ -9,11 +9,6 @@ sibling modules and are re-exported here for backward compatibility.
 import threading
 
 # ── Re-exports from sub-modules (backward compatibility) ─────────────────
-from aria2c_commands import (
-    MAGNET_ARIA2_ARGS,
-    build_aria2c_magnet_command,
-    build_aria2c_torrent_command,
-)
 from bittorrent_downloads import (  # noqa: F401 — re-exports, consumed via _download_manager.X in host.py
     ACTIVE_DOWNLOADS,
     ACTIVE_DOWNLOADS_LOCK,
@@ -245,6 +240,7 @@ def run_download(
     is_torrent = url.lower().endswith(".torrent")
     if is_magnet or is_torrent:
         from download_task import DownloadTask
+
         if is_magnet:
             run_gopeed_magnet_download(message=message, task_class=(task_class or DownloadTask))
         else:
@@ -371,11 +367,10 @@ def run_download(
     # When EVERY probe reports cloudflare_block, there is no point trying the
     # sequential fallback chain — every backend will also get blocked by
     # Cloudflare and download challenge HTML pages, producing corrupted output.
-    if probe_result.errors and all(
-        err.error_type == "cloudflare_block" for err in probe_result.errors
-    ):
+    if probe_result.errors and all(err.error_type == "cloudflare_block" for err in probe_result.errors):
         cf_probe_count = sum(1 for err in probe_result.errors if err.error_type == "cloudflare_block")
         from native_protocol import HostError
+
         raise HostError(
             f"All {cf_probe_count} probe{'s' if cf_probe_count != 1 else ''} "
             f"detected Cloudflare anti-bot protection blocking access to this URL. "

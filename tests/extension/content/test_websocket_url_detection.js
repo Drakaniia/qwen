@@ -43,24 +43,15 @@ function createDetection(options = {}) {
 {
   console.log("--- Test 1: WEBSOCKET_MEDIA_RE regex patterns ---");
 
-  assert.ok(mp.WEBSOCKET_MEDIA_RE.test("ws://cdn.example.com/stream"),
-    "Must match ws:// simple URL");
-  assert.ok(mp.WEBSOCKET_MEDIA_RE.test("wss://cdn.example.com/stream"),
-    "Must match wss:// URL");
-  assert.ok(mp.WEBSOCKET_MEDIA_RE.test("ws://192.168.1.1:8080/live"),
-    "Must match ws:// with IP and port");
-  assert.ok(mp.WEBSOCKET_MEDIA_RE.test("wss://live.douyu.com/stream/abc123"),
-    "Must match wss:// Douyu-style URL");
-  assert.ok(mp.WEBSOCKET_MEDIA_RE.test("ws://huya.com/live?stream=123"),
-    "Must match ws:// Huya-style URL with query");
-  assert.ok(!mp.WEBSOCKET_MEDIA_RE.test("https://cdn.example.com/video.mp4"),
-    "Must NOT match https:// URL");
-  assert.ok(!mp.WEBSOCKET_MEDIA_RE.test("http://cdn.example.com/video.mp4"),
-    "Must NOT match http:// URL");
-  assert.ok(!mp.WEBSOCKET_MEDIA_RE.test(""),
-    "Must NOT match empty string");
-  assert.ok(!mp.WEBSOCKET_MEDIA_RE.test(null),
-    "Must NOT match null");
+  assert.ok(mp.WEBSOCKET_MEDIA_RE.test("ws://cdn.example.com/stream"), "Must match ws:// simple URL");
+  assert.ok(mp.WEBSOCKET_MEDIA_RE.test("wss://cdn.example.com/stream"), "Must match wss:// URL");
+  assert.ok(mp.WEBSOCKET_MEDIA_RE.test("ws://192.168.1.1:8080/live"), "Must match ws:// with IP and port");
+  assert.ok(mp.WEBSOCKET_MEDIA_RE.test("wss://live.douyu.com/stream/abc123"), "Must match wss:// Douyu-style URL");
+  assert.ok(mp.WEBSOCKET_MEDIA_RE.test("ws://huya.com/live?stream=123"), "Must match ws:// Huya-style URL with query");
+  assert.ok(!mp.WEBSOCKET_MEDIA_RE.test("https://cdn.example.com/video.mp4"), "Must NOT match https:// URL");
+  assert.ok(!mp.WEBSOCKET_MEDIA_RE.test("http://cdn.example.com/video.mp4"), "Must NOT match http:// URL");
+  assert.ok(!mp.WEBSOCKET_MEDIA_RE.test(""), "Must NOT match empty string");
+  assert.ok(!mp.WEBSOCKET_MEDIA_RE.test(null), "Must NOT match null");
 
   console.log("  ✓ WEBSOCKET_MEDIA_RE correctly identifies WebSocket URLs");
 }
@@ -70,19 +61,26 @@ function createDetection(options = {}) {
 {
   console.log("\n--- Test 2: classifyUrl with WebSocket URLs ---");
 
-  assert.equal(mp.classifyUrl("wss://cdn.example.com/stream").type, "websocket",
-    "classifyUrl should return type=websocket for wss://");
-  assert.equal(mp.classifyUrl("ws://cdn.example.com/stream").type, "websocket",
-    "classifyUrl should return type=websocket for ws://");
-  assert.equal(mp.classifyUrl("wss://live.douyu.com/playback").type, "websocket",
-    "classifyUrl should return type=websocket for Douyu-style URL");
+  assert.equal(
+    mp.classifyUrl("wss://cdn.example.com/stream").type,
+    "websocket",
+    "classifyUrl should return type=websocket for wss://",
+  );
+  assert.equal(
+    mp.classifyUrl("ws://cdn.example.com/stream").type,
+    "websocket",
+    "classifyUrl should return type=websocket for ws://",
+  );
+  assert.equal(
+    mp.classifyUrl("wss://live.douyu.com/playback").type,
+    "websocket",
+    "classifyUrl should return type=websocket for Douyu-style URL",
+  );
 
   // Format extraction from WebSocket URLs
   const wsResult = mp.classifyUrl("wss://cdn.example.com/stream.flv");
-  assert.equal(wsResult.type, "websocket",
-    "WebSocket URL with .flv extension should still be type=websocket");
-  assert.equal(wsResult.format, "flv",
-    "WebSocket URL should extract format from extension");
+  assert.equal(wsResult.type, "websocket", "WebSocket URL with .flv extension should still be type=websocket");
+  assert.equal(wsResult.format, "flv", "WebSocket URL should extract format from extension");
 
   console.log("  ✓ classifyUrl correctly classifies WebSocket URLs");
 }
@@ -111,9 +109,12 @@ function createDetection(options = {}) {
 
   // This should detect the WebSocket URL embedded in script text
   const foundWs = candidates.some((c) => c.url.includes("wss://cdn.example.com/live/stream"));
-  assert.ok(foundWs,
+  assert.ok(
+    foundWs,
     "scanTextForMediaUrls should detect wss:// URLs in script text (found=" +
-    candidates.map((c) => c.url).join(",") + ")");
+      candidates.map((c) => c.url).join(",") +
+      ")",
+  );
 
   console.log("  ✓ WebSocket URL detected from script text");
   console.log("  Candidates found:", candidates.length);
@@ -137,8 +138,7 @@ function createDetection(options = {}) {
   const candidates = detection.scanTextForMediaUrls(scriptText, "script-config");
 
   const foundWs = candidates.some((c) => c.url.includes("ws://cdn.example.com:8080/live/stream"));
-  assert.ok(foundWs,
-    "scanTextForMediaUrls should detect ws:// URLs in script text");
+  assert.ok(foundWs, "scanTextForMediaUrls should detect ws:// URLs in script text");
 
   console.log("  ✓ ws:// URL detected from script text");
 }
@@ -165,8 +165,7 @@ function createDetection(options = {}) {
   // The downstream pipeline decides whether it's a video candidate
   // (This test just ensures the URL is found at the text scan level)
   const foundChatWs = candidates.some((c) => c.url.includes("wss://chat.example.com/socket"));
-  console.log("  Chat WebSocket URL detected:", foundChatWs,
-    "(may be filtered by downstream pipeline)");
+  console.log("  Chat WebSocket URL detected:", foundChatWs, "(may be filtered by downstream pipeline)");
 }
 
 console.log("\n✓ All WebSocket URL detection tests completed");

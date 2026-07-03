@@ -1,6 +1,7 @@
 """Movie fragment (moof) parsing — per-track fragment info extraction."""
 
 import struct
+
 from .container import parse_boxes_hierarchical
 
 

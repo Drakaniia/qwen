@@ -5,25 +5,25 @@
 (function () {
   "use strict";
 
-  var INTERCEPT_EVENT = "qwinFetchIntercept";
-  var MEDIA_RE = /^(video\/|audio\/|application\/(x-mpegURL|vnd\.apple\.mpegURL|dash\+xml)|text\/vtt)/i;
-  var SEGMENT_RE = /\.(ts|m4s|m4v|m4a|cmfv|cmfa)(\?|$)/i;
-  var MANIFEST_RE = /\.(m3u8|mpd)(\?|$)/i;
-  var DIRECT_RE = /\.(mp4|webm|avi|mkv|mov|wmv|flv)(\?|$)/i;
-  var MAX_CAPTURES = 5000;
-  var MAX_BYTES_PER_RESPONSE = 500 * 1024 * 1024;
-  var capturedCount = 0;
-  var totalBytes = 0;
-  var MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024;
+  const INTERCEPT_EVENT = "qwinFetchIntercept";
+  const MEDIA_RE = /^(video\/|audio\/|application\/(x-mpegURL|vnd\.apple\.mpegURL|dash\+xml)|text\/vtt)/i;
+  const SEGMENT_RE = /\.(ts|m4s|m4v|m4a|cmfv|cmfa)(\?|$)/i;
+  const MANIFEST_RE = /\.(m3u8|mpd)(\?|$)/i;
+  const DIRECT_RE = /\.(mp4|webm|avi|mkv|mov|wmv|flv)(\?|$)/i;
+  const MAX_CAPTURES = 5000;
+  const MAX_BYTES_PER_RESPONSE = 500 * 1024 * 1024;
+  let capturedCount = 0;
+  let totalBytes = 0;
+  const MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024;
 
   function looksLikeMediaUrl(url) {
     return SEGMENT_RE.test(url) || MANIFEST_RE.test(url) || DIRECT_RE.test(url);
   }
 
   function bufferToBase64(buffer) {
-    var bytes = new Uint8Array(buffer);
-    var binary = "";
-    for (var i = 0; i < bytes.length; i++) {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
       binary += String.fromCharCode(bytes[i]);
     }
     return btoa(binary);
@@ -38,7 +38,7 @@
     capturedCount++;
     totalBytes += body.byteLength;
 
-    var event = new CustomEvent(INTERCEPT_EVENT, {
+    const event = new CustomEvent(INTERCEPT_EVENT, {
       detail: {
         type: "qwinMediaResponse",
         url: url,
@@ -55,25 +55,20 @@
     document.dispatchEvent(event);
   }
 
-  var originalFetch = window.fetch;
+  const originalFetch = window.fetch;
   window.fetch = function (input, init) {
-    var url =
-      typeof input === "string"
-        ? input
-        : input && typeof input === "object" && input.url
-          ? input.url
-          : "";
+    const url = typeof input === "string" ? input : input && typeof input === "object" && input.url ? input.url : "";
     if (!url) return originalFetch.call(this, input, init);
 
     return originalFetch
       .call(this, input, init)
       .then(function (response) {
-        var contentType = (response.headers.get("content-type") || "").toLowerCase();
+        const contentType = (response.headers.get("content-type") || "").toLowerCase();
         if (!MEDIA_RE.test(contentType) && !looksLikeMediaUrl(url)) {
           return response;
         }
 
-        var cloned = response.clone();
+        const cloned = response.clone();
         cloned
           .arrayBuffer()
           .then(function (body) {
@@ -87,14 +82,13 @@
       });
   };
 
-  var OrigXHR = window.XMLHttpRequest;
-  var XHRProxy = function () {
-    var xhr = new OrigXHR();
-    var origOpen = xhr.open.bind(xhr);
-    var origSend = xhr.send.bind(xhr);
-    var origSetRequestHeader = xhr.setRequestHeader.bind(xhr);
-    var requestUrl = "";
-    var requestHeaders = [];
+  const OrigXHR = window.XMLHttpRequest;
+  const XHRProxy = function () {
+    const xhr = new OrigXHR();
+    const origOpen = xhr.open.bind(xhr);
+    const origSetRequestHeader = xhr.setRequestHeader.bind(xhr);
+    let requestUrl = "";
+    const requestHeaders = [];
 
     xhr.open = function (_method, url) {
       requestUrl = typeof url === "string" ? url : "";
@@ -107,7 +101,7 @@
     };
 
     xhr.addEventListener("load", function () {
-      var contentType = (xhr.getResponseHeader("content-type") || "").toLowerCase();
+      const contentType = (xhr.getResponseHeader("content-type") || "").toLowerCase();
       if (!MEDIA_RE.test(contentType) && !looksLikeMediaUrl(requestUrl)) return;
       if (!xhr.response || !xhr.response.byteLength) return;
 

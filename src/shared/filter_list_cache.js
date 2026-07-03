@@ -6,10 +6,7 @@
  * Extracted from filter_list_loader.js for modularity.
  */
 
-import {
-  CACHE_KEY_PREFIX,
-  COMPILED_PATTERNS_KEY,
-} from "./filter_list_config.js";
+import { CACHE_KEY_PREFIX, COMPILED_PATTERNS_KEY } from "./filter_list_config.js";
 
 // ── Cache management ───────────────────────────────────────────────────────
 

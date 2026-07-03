@@ -27,4 +27,7 @@ import assert from "node:assert/strict";
   assert.ok(manifestScript.includes("text"), "manifest fetch should return text, not arrayBuffer");
 
   console.log("✓ All cdp_tunnel tests passed");
-})().catch((err) => { console.error(err); process.exitCode = 1; });
+})().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

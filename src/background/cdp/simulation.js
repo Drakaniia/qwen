@@ -64,12 +64,7 @@ async function simulateVideoEvents(tabId, videoUrls, options = {}) {
 
   try {
     const resultValue = evaluateResult.result;
-    if (
-      resultValue &&
-      resultValue.result &&
-      resultValue.result.type === "object" &&
-      resultValue.result.value
-    ) {
+    if (resultValue && resultValue.result && resultValue.result.type === "object" && resultValue.result.value) {
       const value = resultValue.result.value;
       triggered = value.triggered === true;
       loadCount = typeof value.loadCount === "number" ? value.loadCount : 0;

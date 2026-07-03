@@ -64,7 +64,4 @@ function isBlockedUrlWithFilters(url, contentType = "") {
   return mediaCandidates.isBlockedMediaUrlWithExceptions(url, contentType, videoExceptionDomains);
 }
 
-export {
-  initFilterIntegration,
-  isBlockedUrlWithFilters,
-};
+export { initFilterIntegration, isBlockedUrlWithFilters };

@@ -7,8 +7,6 @@ import * as qualityFormat from "../../../src/shared/quality_format.js";
 import * as videoFilters from "../../../src/shared/video_filters.js";
 
 const __dirname = import.meta.dirname;
-
-const contentSource = fs.readFileSync(path.join(__dirname, "../../../src/content/content.js"), "utf8");
 const overlaySource = fs.readFileSync(path.join(__dirname, "../../../src/content/content_overlay.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../manifest.json"), "utf8"));
 

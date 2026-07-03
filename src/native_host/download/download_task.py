@@ -8,9 +8,9 @@ from pathlib import Path
 
 from download_logger import get_logger
 from download_task_control import DownloadTaskControl
+from fix_mp4_codec import fix_mp4_codec_metadata, needs_codec_fix
 
 from browser_context import remove_temp_files
-from fix_mp4_codec import fix_mp4_codec_metadata, needs_codec_fix
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
 from progress_parser import is_cloudflare_challenge, iter_process_output_lines, parse_yt_dlp_line
@@ -257,9 +257,11 @@ class DownloadTask(DownloadTaskControl):
                                 self.logger.attempt_line(self.id, f"Fixing mp4v→avc1 codec metadata: {self.final_path}")
                                 result = fix_mp4_codec_metadata(self.final_path, backup=False)
                                 if result.get("fixed"):
+                                    sps = result.get("spsCount", 0)
+                                    pps = result.get("ppsCount", 0)
                                     self.logger.attempt_line(
                                         self.id,
-                                        f"Codec fix applied (SPS={result.get('spsCount', 0)}, PPS={result.get('ppsCount', 0)})",
+                                        f"Codec fix applied (SPS={sps}, PPS={pps})",
                                     )
                                 elif result.get("warning"):
                                     self.logger.attempt_line(self.id, f"Codec fix warning: {result['warning']}")
@@ -275,10 +277,11 @@ class DownloadTask(DownloadTaskControl):
                                 header = f.read(2000)
                             if is_cloudflare_challenge(header):
                                 cloudflare_detected = True
-                                self.logger.attempt_line(
-                                    self.id,
-                                    "Downloaded file appears to be a Cloudflare challenge page (anti-bot protection blocked content).",
+                                msg = (
+                                    "Downloaded file appears to be a Cloudflare"
+                                    " challenge page (anti-bot protection blocked content)."
                                 )
+                                self.logger.attempt_line(self.id, msg)
                         except Exception:
                             pass
 
@@ -303,9 +306,10 @@ class DownloadTask(DownloadTaskControl):
                                 pass
                         self.set_state("error")
                         duration = time.time() - self.start_time
+                        err_msg = "Download blocked by Cloudflare anti-bot protection. Unable to download this video."
                         self.logger.error(
                             download_id=self.id,
-                            error_text="Download blocked by Cloudflare anti-bot protection. Unable to download this video.",
+                            error_text=err_msg,
                             duration_seconds=duration,
                         )
                         self.send_message(
@@ -314,7 +318,7 @@ class DownloadTask(DownloadTaskControl):
                                 "status": "error",
                                 "filepath": "",
                                 "artifactRoot": "",
-                                "error": "Download blocked by Cloudflare anti-bot protection. Unable to download this video.",
+                                "error": err_msg,
                             }
                         )
                         return

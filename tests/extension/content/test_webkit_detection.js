@@ -48,8 +48,14 @@ try {
 
   {
     if (emeModule) {
-      assert.ok(emeModule.isWebKitKeySystem("com.apple.fps.1_0"), "FairPlay 1.0 should be detected as WebKit key system");
-      assert.ok(emeModule.isWebKitKeySystem("com.apple.fps.2_0"), "FairPlay 2.0 should be detected as WebKit key system");
+      assert.ok(
+        emeModule.isWebKitKeySystem("com.apple.fps.1_0"),
+        "FairPlay 1.0 should be detected as WebKit key system",
+      );
+      assert.ok(
+        emeModule.isWebKitKeySystem("com.apple.fps.2_0"),
+        "FairPlay 2.0 should be detected as WebKit key system",
+      );
       assert.ok(emeModule.isWebKitKeySystem("webkit-foo"), "webkit- prefixed key systems should be detected");
       assert.ok(!emeModule.isWebKitKeySystem("com.widevine.alpha"), "Widevine should NOT be detected as WebKit");
       assert.ok(!emeModule.isWebKitKeySystem(""), "empty string should NOT be detected as WebKit");

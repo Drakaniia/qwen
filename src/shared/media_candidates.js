@@ -13,7 +13,8 @@ const STATIC_PAGE_ASSET_RE = /\/(?:stylesheet|theme-color|browserconfig|X-UA-Com
 // Domain-scoped static asset blocking: .js/.css from known ad/analytics domains.
 // This is a refinement of STATIC_PLAYER_ASSET_RE — when that pattern is relaxed,
 // this ensures ad-domain assets are still blocked.
-const AD_STATIC_ASSET_RE = /(?:doubleclick|googlesyndication|googleads|adservice|adserver|adnxs|clmbtech|chartbeat|scorecardresearch)\.(?:net|com)\/.*\.(?:js|css)$/i;
+const AD_STATIC_ASSET_RE =
+  /(?:doubleclick|googlesyndication|googleads|adservice|adserver|adnxs|clmbtech|chartbeat|scorecardresearch)\.(?:net|com)\/.*\.(?:js|css)$/i;
 
 // Ad SDK path patterns: block player SDK files from ad SDK paths.
 const AD_SDK_RE = /(?:\/vast\.js|\/ad-plugin\/|ad-manager|admanager)\/[^/]+\.js/i;
@@ -42,7 +43,8 @@ const SSR_SOURCE_RE = /^ssr-json:/i;
 
 // Video hosting sites whose page URLs are not real yt-dlp sources
 // Actual CDN stream URLs from these sites still pass through with video extensions.
-const VIDEO_HOSTING_SITES_RE = /(?:^|[\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone|beeg|khanime)\.(?:pw|tv|to|net|pro|com|co)(?:$|[\/?#])/i;
+const VIDEO_HOSTING_SITES_RE =
+  /(?:^|[\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone|beeg|khanime)\.(?:pw|tv|to|net|pro|com|co)(?:$|[\/?#])/i;
 
 // P2P streaming platforms (Chinese streaming — douyu, huya)
 const P2P_STREAMING_HOSTS_RE = /(?:^|[\/.])(?:douyu|huya)\.(?:com|cn)(?:$|[\/?#])/i;
@@ -203,7 +205,10 @@ function isBlockedMediaUrl(url, contentType = "") {
     type.includes("video/mp2t") ||
     SEGMENT_EXTENSION_RE.test(text) ||
     SEGMENT_NAME_RE.test(text) ||
-    (FRAGMENTED_STREAM_CONTEXT_RE.test(text) && NUMBERED_MEDIA_FRAGMENT_RE.test(text) && !HLS_RE.test(text) && !DASH_RE.test(text))
+    (FRAGMENTED_STREAM_CONTEXT_RE.test(text) &&
+      NUMBERED_MEDIA_FRAGMENT_RE.test(text) &&
+      !HLS_RE.test(text) &&
+      !DASH_RE.test(text))
   ) {
     return true;
   }
@@ -229,10 +234,7 @@ function isBlockedMediaUrl(url, contentType = "") {
     return true;
   }
   // Chinese streaming P2P CDN URLs — block segment/P2P URLs, allow manifests
-  if (
-    CHINESE_STREAMING_CDN_RE.test(text) &&
-    (!VIDEO_EXTENSION_RE.test(text) || SEGMENT_EXTENSION_RE.test(text))
-  ) {
+  if (CHINESE_STREAMING_CDN_RE.test(text) && (!VIDEO_EXTENSION_RE.test(text) || SEGMENT_EXTENSION_RE.test(text))) {
     return true;
   }
   // Chinese streaming P2P SDK paths

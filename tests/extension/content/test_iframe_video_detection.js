@@ -76,8 +76,8 @@ function createVideoMock(attributes = {}, extra = {}) {
         height: attributes.height || 480,
         top: 0,
         left: 0,
-        bottom: (attributes.height || 480),
-        right: (attributes.width || 640),
+        bottom: attributes.height || 480,
+        right: attributes.width || 640,
       };
     },
     querySelectorAll() {
@@ -157,8 +157,7 @@ function createVideoMock(attributes = {}, extra = {}) {
   });
 
   // Test that the HLS URL is downloadable
-  assert.ok(mediaCandidates.isDownloadableMediaUrl(hlsUrl, "application/x-mpegURL"),
-    "HLS URL should be downloadable");
+  assert.ok(mediaCandidates.isDownloadableMediaUrl(hlsUrl, "application/x-mpegURL"), "HLS URL should be downloadable");
 
   // Test classification
   const format = mediaCandidates.classifyMediaUrl(hlsUrl, "application/x-mpegURL");
@@ -234,7 +233,11 @@ function createVideoMock(attributes = {}, extra = {}) {
     { url: "https://playmogo.com/e/l6vrloft7rzt", desc: "playmogo embed from pinaypie.sh", expected: true },
     { url: "https://playmogo.com/some-video-title", desc: "playmogo page", expected: true },
     { url: "https://vibeplayer.net/e/abc123", desc: "vibeplayer embed", expected: true },
-    { url: "https://pinaypie.sh/humihigpit-ang-kapait-ni-anne-kapag-nasasarapan/", desc: "pinaypie.sh page URL", expected: true },
+    {
+      url: "https://pinaypie.sh/humihigpit-ang-kapait-ni-anne-kapag-nasasarapan/",
+      desc: "pinaypie.sh page URL",
+      expected: true,
+    },
     { url: "https://example.com/video.mp4", desc: "direct mp4", expected: true },
     { url: "https://cdn.example.com/hls/master.m3u8", desc: "hls manifest", expected: true },
     { url: "https://doubleclick.net/preroll.mp4", desc: "ad network", expected: false },

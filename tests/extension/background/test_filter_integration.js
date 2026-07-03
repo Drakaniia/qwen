@@ -314,22 +314,14 @@ assert.equal(
 
 // Non-whitelisted domain should still be blocked
 assert.equal(
-  mediaCandidates.isBlockedMediaUrlWithExceptions(
-    "https://doubleclick.net/ad",
-    "",
-    new Set(["akamaihd.net"]),
-  ),
+  mediaCandidates.isBlockedMediaUrlWithExceptions("https://doubleclick.net/ad", "", new Set(["akamaihd.net"])),
   true,
   "non-whitelisted domain should still be blocked",
 );
 
 // URL that would NOT be blocked should pass through unaffected
 assert.equal(
-  mediaCandidates.isBlockedMediaUrlWithExceptions(
-    "https://cdn.example.com/movie.mp4",
-    "",
-    new Set([]),
-  ),
+  mediaCandidates.isBlockedMediaUrlWithExceptions("https://cdn.example.com/movie.mp4", "", new Set([])),
   false,
   "already-passing URLs should not be affected by exceptions",
 );
@@ -347,22 +339,14 @@ assert.equal(
 
 // Empty exception set should behave like regular isBlockedMediaUrl
 assert.equal(
-  mediaCandidates.isBlockedMediaUrlWithExceptions(
-    "https://popads.net/pop.js",
-    "",
-    new Set(),
-  ),
+  mediaCandidates.isBlockedMediaUrlWithExceptions("https://popads.net/pop.js", "", new Set()),
   true,
   "empty exception set should not bypass any blocks",
 );
 
 // Exception for a domain not matching this URL should not affect blocking
 assert.equal(
-  mediaCandidates.isBlockedMediaUrlWithExceptions(
-    "https://doubleclick.net/ad",
-    "",
-    new Set(["some-other-domain.com"]),
-  ),
+  mediaCandidates.isBlockedMediaUrlWithExceptions("https://doubleclick.net/ad", "", new Set(["some-other-domain.com"])),
   true,
   "exception for a different domain should not bypass block",
 );

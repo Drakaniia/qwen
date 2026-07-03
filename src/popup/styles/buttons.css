@@ -127,7 +127,12 @@
     color 200ms ease,
     transform 150ms ease;
   opacity: 0;
-  transition: opacity 350ms ease, border-color 200ms ease, background 200ms ease, color 200ms ease, transform 150ms ease;
+  transition:
+    opacity 350ms ease,
+    border-color 200ms ease,
+    background 200ms ease,
+    color 200ms ease,
+    transform 150ms ease;
   transition-delay: 350ms;
 }
 

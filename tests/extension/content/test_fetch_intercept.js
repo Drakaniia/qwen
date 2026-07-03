@@ -50,4 +50,7 @@ import { fileURLToPath } from "node:url";
   assert.equal(fi.isActive(), false, "initial state should be inactive");
 
   console.log("✓ All fetch_intercept tests passed");
-})().catch((err) => { console.error(err); process.exitCode = 1; });
+})().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

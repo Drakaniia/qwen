@@ -72,9 +72,7 @@ let injectedScript = null;
  */
 function looksLikeMediaUrl(url) {
   if (!url || typeof url !== "string") return false;
-  return SEGMENT_RE.test(url) ||
-         MANIFEST_RE.test(url) ||
-         DIRECT_MEDIA_RE.test(url);
+  return SEGMENT_RE.test(url) || MANIFEST_RE.test(url) || DIRECT_MEDIA_RE.test(url);
 }
 
 /**
@@ -176,10 +174,12 @@ function setupDOMListener() {
     // Forward to background script
     try {
       const api = typeof browser !== "undefined" ? browser : chrome;
-      api.runtime.sendMessage({
-        type: "swCapturedMediaResponse",
-        data: detail,
-      }).catch(() => {});
+      api.runtime
+        .sendMessage({
+          type: "swCapturedMediaResponse",
+          data: detail,
+        })
+        .catch(() => {});
     } catch (_e) {
       // Extension context may be unavailable
     }

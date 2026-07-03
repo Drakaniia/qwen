@@ -44,9 +44,7 @@ export function renderSyncedHistory() {
   if (syncInfo.totalCount > 0) {
     const count = document.createElement("span");
     count.className = "synced-count";
-    count.textContent = syncInfo.syncEnabled
-      ? String(syncInfo.totalCount) + " entries"
-      : "Syncing paused";
+    count.textContent = syncInfo.syncEnabled ? String(syncInfo.totalCount) + " entries" : "Syncing paused";
     header.append(count);
   }
 

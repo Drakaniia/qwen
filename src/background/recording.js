@@ -161,12 +161,7 @@ function clearMseSegments(tabId) {
 
 // ─── Magnet Link Download ────────────────────────────────────────────────
 
-async function downloadMagnet(
-  message,
-  notifyPopupFn,
-  nativeRequestFn,
-  connectNativeFn,
-) {
+async function downloadMagnet(message, notifyPopupFn, nativeRequestFn, connectNativeFn) {
   const magnetUrl = String(message.url || "").trim();
   if (!magnetUrl.startsWith("magnet:?")) {
     throw new Error("Invalid magnet link format.");
@@ -240,14 +235,18 @@ async function downloadMagnet(
         artifactRoot: portMessage.artifactRoot || "",
         message: portMessage.message || "Magnet download complete.",
       });
-      try { port.disconnect(); } catch (_error) {}
+      try {
+        port.disconnect();
+      } catch (_error) {}
       return;
     }
 
     if (portMessage.type === "error") {
       finished = true;
       delete downloadHelpers.downloadPortsById[jobId];
-      try { port.disconnect(); } catch (_error) {}
+      try {
+        port.disconnect();
+      } catch (_error) {}
       tabState.updateDownload(jobId, {
         status: "error",
         error: portMessage.error || "aria2c failed to download the magnet link.",
@@ -259,7 +258,9 @@ async function downloadMagnet(
     if (portMessage.type === "canceled") {
       finished = true;
       delete downloadHelpers.downloadPortsById[jobId];
-      try { port.disconnect(); } catch (_error) {}
+      try {
+        port.disconnect();
+      } catch (_error) {}
       tabState.updateDownload(jobId, {
         status: "canceled",
         message: portMessage.message || "Download canceled.",
@@ -295,10 +296,7 @@ async function downloadMagnet(
 
 // ─── Torrent File Download ───────────────────────────────────────────────
 
-async function downloadTorrent(
-  message,
-  connectNativeFn,
-) {
+async function downloadTorrent(message, connectNativeFn) {
   const torrentPath = String(message.path || "").trim();
   if (!torrentPath || !/\.torrent$/i.test(torrentPath)) {
     throw new Error("Select a valid .torrent file.");
@@ -373,14 +371,18 @@ async function downloadTorrent(
         artifactRoot: portMessage.artifactRoot || "",
         message: portMessage.message || "Torrent download complete.",
       });
-      try { port.disconnect(); } catch (_error) {}
+      try {
+        port.disconnect();
+      } catch (_error) {}
       return;
     }
 
     if (portMessage.type === "error") {
       finished = true;
       delete downloadHelpers.downloadPortsById[jobId];
-      try { port.disconnect(); } catch (_error) {}
+      try {
+        port.disconnect();
+      } catch (_error) {}
       tabState.updateDownload(jobId, {
         status: "error",
         error: portMessage.error || "aria2c failed to download the .torrent file.",
@@ -392,7 +394,9 @@ async function downloadTorrent(
     if (portMessage.type === "canceled") {
       finished = true;
       delete downloadHelpers.downloadPortsById[jobId];
-      try { port.disconnect(); } catch (_error) {}
+      try {
+        port.disconnect();
+      } catch (_error) {}
       tabState.updateDownload(jobId, {
         status: "canceled",
         message: portMessage.message || "Download canceled.",
@@ -431,19 +435,16 @@ export {
   stopRecordingProgressUpdates,
   formatFileSize,
   formatDuration,
-
   activeRecordings,
   getActiveRecordingsRef,
   addActiveRecording,
   removeActiveRecording,
   getActiveRecordings,
-
   mseSegmentsByTab,
   handleMseCapturedSegments,
   groupMseStreams,
   getMseSegments,
   clearMseSegments,
-
   downloadMagnet,
   downloadTorrent,
 };

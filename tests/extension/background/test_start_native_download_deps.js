@@ -67,8 +67,6 @@ const mod = await import("../../../src/background/download/index.js");
 const { create } = mod;
 
 async function testRetryDownloadSeesPatchedStartNativeDownloadFromVideo() {
-  let startNativeWasCalled = false;
-
   const orchestrator = create({
     // ── Core state ──────────────────────────────────────────────────────
     getSettings: () => ({}),
@@ -95,9 +93,9 @@ async function testRetryDownloadSeesPatchedStartNativeDownloadFromVideo() {
 
     // ── URL/video helpers ──────────────────────────────────────────────
     normalizeUrl: (url) => url,
-    hashId: (url) => url,
-    detectFormat: (url) => "MP4",
-    titleFromUrl: (url) => "Video",
+    hashId: (_url) => _url,
+    detectFormat: (_url) => "MP4",
+    titleFromUrl: (_url) => "Video",
     videoFilters: { isBlockedVideoUrl: () => false, isGenericTitle: () => false },
     pageFallbackVideoForSource: () => null,
     variantsForVideo: () => [],
@@ -144,14 +142,7 @@ async function testRetryDownloadSeesPatchedStartNativeDownloadFromVideo() {
     },
 
     // ── Blocking statuses ──────────────────────────────────────────────
-    blockingDownloadStatuses: new Set([
-      "queued",
-      "connecting",
-      "running",
-      "paused",
-      "pausing",
-      "canceling",
-    ]),
+    blockingDownloadStatuses: new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]),
   });
 
   try {
@@ -162,8 +153,7 @@ async function testRetryDownloadSeesPatchedStartNativeDownloadFromVideo() {
     // With the BUG, this throws TypeError: deps.startNativeDownloadFromVideo is not a function
     if (
       error instanceof TypeError &&
-      (error.message.includes("startNativeDownloadFromVideo") ||
-        error.message.includes("is not a function"))
+      (error.message.includes("startNativeDownloadFromVideo") || error.message.includes("is not a function"))
     ) {
       assert.fail(
         `BUG: deps.startNativeDownloadFromVideo was null when retryDownload called it. ` +

@@ -7,8 +7,8 @@ import curl_cffi_adapter as _curl_cffi_adapter
 from browser_context import clean_request_headers
 from media_candidates import classify_media_url, is_reusable_media_url
 
-
 # ── SW data enhancement ──────────────────────────────────────────────────────
+
 
 def enhance_with_sw_data(candidates: list[dict], sw_segments: list[dict]) -> list[dict]:
     """Merge SW-captured media response data into media candidates list.
@@ -24,14 +24,16 @@ def enhance_with_sw_data(candidates: list[dict], sw_segments: list[dict]) -> lis
     for seg in sw_segments:
         url = seg.get("url", "")
         if url in sw_urls and url not in seen_urls:
-            enriched.append({
-                "url": url,
-                "format": _detect_format_from_url(url),
-                "mimeType": seg.get("contentType", ""),
-                "source": "sw-capture",
-                "bodyLength": seg.get("bodyLength", 0),
-                "bodyB64": seg.get("bodyB64", ""),
-            })
+            enriched.append(
+                {
+                    "url": url,
+                    "format": _detect_format_from_url(url),
+                    "mimeType": seg.get("contentType", ""),
+                    "source": "sw-capture",
+                    "bodyLength": seg.get("bodyLength", 0),
+                    "bodyB64": seg.get("bodyB64", ""),
+                }
+            )
             seen_urls.add(url)
 
     return enriched
@@ -45,6 +47,8 @@ def _detect_format_from_url(url: str) -> str:
     elif re.search(r"\.(?:mp4|webm|mkv|mov|avi)(?:\?|$)", url, re.IGNORECASE):
         return "direct"
     return "unknown"
+
+
 from native_paths import validate_download_url
 from native_protocol import HostError, send_native_message
 

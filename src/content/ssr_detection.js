@@ -18,11 +18,7 @@
 
 const SSR_GLOBAL_IDS = ["__NEXT_DATA__", "__NUXT__", "__NUXT_STATE__"];
 
-const SSR_WINDOW_GLOBALS = [
-  "__INITIAL_STATE__",
-  "__PRELOADED_STATE__",
-  "__DATA__",
-];
+const SSR_WINDOW_GLOBALS = ["__INITIAL_STATE__", "__PRELOADED_STATE__", "__DATA__"];
 
 /** Maximum depth for recursive JSON walking to avoid stack overflow on circular refs. */
 const MAX_JSON_DEPTH = 10;
@@ -91,10 +87,7 @@ function extractHLSUrlsFromJSON(data, maxDepth = MAX_JSON_DEPTH) {
       }
 
       // Recursively walk object keys — priority keys first for performance
-      const priorityKeys = [
-        "sources", "src", "url", "manifest", "playlist",
-        "hls", "video", "media", "file", "link",
-      ];
+      const priorityKeys = ["sources", "src", "url", "manifest", "playlist", "hls", "video", "media", "file", "link"];
       const keys = Object.keys(value);
       const otherKeys = keys.filter((k) => !priorityKeys.includes(k));
 
@@ -344,9 +337,4 @@ function init(options = {}) {
 
 // ─── Exports ────────────────────────────────────────────────────────────────
 
-export {
-  extractHLSUrlsFromJSON,
-  init,
-  installSSRObserver,
-  scanSSRGlobals,
-};
+export { extractHLSUrlsFromJSON, init, installSSRObserver, scanSSRGlobals };

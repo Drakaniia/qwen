@@ -59,9 +59,18 @@ try {
     if (p2pModule) {
       assert.ok(p2pModule.isLikelyP2pMediaUrl("magnet:?xt=urn:btih:ABC123"), "magnet: URLs should be detected as P2P");
       assert.ok(p2pModule.isLikelyP2pMediaUrl("torrent:ABC123"), "torrent: URLs should be detected as P2P");
-      assert.ok(p2pModule.isLikelyP2pMediaUrl("https://example.com/file.torrent"), ".torrent URLs should be detected as P2P");
-      assert.ok(p2pModule.isLikelyP2pMediaUrl("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"), "40-char hex should be detected as P2P");
-      assert.ok(!p2pModule.isLikelyP2pMediaUrl("https://example.com/video.mp4"), "normal video URLs should NOT be detected as P2P");
+      assert.ok(
+        p2pModule.isLikelyP2pMediaUrl("https://example.com/file.torrent"),
+        ".torrent URLs should be detected as P2P",
+      );
+      assert.ok(
+        p2pModule.isLikelyP2pMediaUrl("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"),
+        "40-char hex should be detected as P2P",
+      );
+      assert.ok(
+        !p2pModule.isLikelyP2pMediaUrl("https://example.com/video.mp4"),
+        "normal video URLs should NOT be detected as P2P",
+      );
       assert.ok(!p2pModule.isLikelyP2pMediaUrl(""), "empty string should NOT be detected as P2P");
       console.log("✓ isLikelyP2pMediaUrl correctly identifies P2P URLs");
     }
@@ -83,8 +92,14 @@ a=candidate:3 1 TCP 2105524479 192.168.1.1 9 typ host tcptype active`;
 
       const urls = p2pModule.extractUrlsFromSdp(sdpExample);
       assert.ok(urls.length > 0, "SDP extraction should return URLs");
-      assert.ok(urls.some((u) => u.includes("video-stream-id-123")), "should extract msid for video stream");
-      assert.ok(urls.some((u) => u.includes("audio-stream-id-456")), "should extract msid for audio stream");
+      assert.ok(
+        urls.some((u) => u.includes("video-stream-id-123")),
+        "should extract msid for video stream",
+      );
+      assert.ok(
+        urls.some((u) => u.includes("audio-stream-id-456")),
+        "should extract msid for audio stream",
+      );
       console.log("✓ extractUrlsFromSdp extracts media stream IDs from SDP");
     }
   }
@@ -148,10 +163,7 @@ a=candidate:3 1 TCP 2105524479 192.168.1.1 9 typ host tcptype active`;
       p2pModule.init();
       // After init, window.RTCPeerConnection should be overridden
       const afterInit = globalThis.window.RTCPeerConnection;
-      assert.ok(
-        afterInit !== globalThis.RTCPeerConnection,
-        "init should override window.RTCPeerConnection",
-      );
+      assert.ok(afterInit !== globalThis.RTCPeerConnection, "init should override window.RTCPeerConnection");
       assert.equal(afterInit.name, "InterceptedRTCPeerConnection", "init should set InterceptedRTCPeerConnection");
       console.log("✓ init() overrides window.RTCPeerConnection");
 

@@ -186,7 +186,12 @@ function pageFallbackVideoForSource(video, attemptedUrls, fallbackDeps) {
 }
 
 function resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls, fallbackDeps) {
-  return downloadFallbacks.resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls || new Set(), fallbackDeps);
+  return downloadFallbacks.resolveMediaCandidatesForSource(
+    tabId,
+    sourceVideo,
+    attemptedUrls || new Set(),
+    fallbackDeps,
+  );
 }
 
 function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls, fallbackDeps) {
@@ -263,43 +268,35 @@ function buildDownloadFallbackDeps(nativeRequestFn, addDetectedVideoFn, getVisib
 export {
   BLOCKING_DOWNLOAD_STATUSES,
   HOST_NAME,
-
   downloadPortsById,
   formatBytes,
   getDownloadPortsById,
-
   updateDownload,
   isSegmentedDownloadJob,
-
   normalizeDownloadProgress,
   downloadProgressMessage,
   cleanProgressText,
   resetDownloadProgressDetails,
   progressDetailPatchFromMessage,
-
   artifactPatchFromMessage,
   cleanupPatchFromMessage,
   clearedArtifactPatch,
   hasDownloadArtifacts,
   cleanupDownloadArtifacts,
-
   isHardAccessError,
   isRetryableSourceError,
   exhaustedSourcesError,
   userFriendlyDownloadError,
-
   markVideoUrlUnavailable,
   downloadableVariants,
   isExtractorPageVideo,
   pageFallbackVideoForSource,
   resolveMediaCandidatesForSource,
   fallbackVideoForDownload,
-
   variantsForVideo,
   preferredNativeVideo,
   findGroupedVideoForAnyVariant,
   findGroupedVideoForVariant,
   findVariant,
-
   buildDownloadFallbackDeps,
 };

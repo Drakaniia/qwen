@@ -78,33 +78,26 @@ const downloadFallbacks = await import("../../../src/background/download_fallbac
 
   assert.ok(
     downloadFallbacks.isIframePageVideo({ source: "iframe-page", format: "PAGE" }),
-    "should return true for iframe-page + PAGE"
+    "should return true for iframe-page + PAGE",
   );
   assert.ok(
     downloadFallbacks.isIframePageVideo({ source: "iframe-page", format: "page" }),
-    "should return true for case-insensitive format"
+    "should return true for case-insensitive format",
   );
   assert.ok(
     !downloadFallbacks.isIframePageVideo({ source: "dom-video", format: "M3U8" }),
-    "should return false for dom-video source"
+    "should return false for dom-video source",
   );
   assert.ok(
     !downloadFallbacks.isIframePageVideo({ source: "iframe-page", format: "M3U8" }),
-    "should return false for non-PAGE format"
+    "should return false for non-PAGE format",
   );
-  assert.ok(
-    !downloadFallbacks.isIframePageVideo(null),
-    "should return false for null"
-  );
-  assert.ok(
-    !downloadFallbacks.isIframePageVideo({}),
-    "should return false for empty object"
-  );
+  assert.ok(!downloadFallbacks.isIframePageVideo(null), "should return false for null");
+  assert.ok(!downloadFallbacks.isIframePageVideo({}), "should return false for empty object");
 
   console.log("✓ isIframePageVideo correctly identifies iframe-page candidates");
 }
 const videoUtils = await import("../../../src/background/video_utils.js");
-const headerUtils = await import("../../../src/background/header_utils.js");
 
 // ─── RED TEST: iframe-page fallback should find iframe-detected video ───
 
@@ -118,7 +111,7 @@ const headerUtils = await import("../../../src/background/header_utils.js");
     addDetectedVideo: async () => null,
     detectFormat: videoUtils.detectFormat,
     findGroupedVideoForAnyVariant: () => null,
-    getVisibleVideosForTab: (tabId) => {
+    getVisibleVideosForTab: (_tabId) => {
       // Simulate tab state with TWO candidates:
       return [
         {
@@ -167,12 +160,7 @@ const headerUtils = await import("../../../src/background/header_utils.js");
     downloadable: true,
   };
 
-  const fallbackResult = await downloadFallbacks.fallbackVideoForDownload(
-    123,
-    failedVideo,
-    attemptedUrls,
-    deps,
-  );
+  const fallbackResult = await downloadFallbacks.fallbackVideoForDownload(123, failedVideo, attemptedUrls, deps);
 
   console.log("Fallback result:", fallbackResult ? fallbackResult.url || "no URL" : "null");
 
@@ -182,8 +170,8 @@ const headerUtils = await import("../../../src/background/header_utils.js");
   assert.ok(
     fallbackResult && fallbackResult.url && fallbackResult.url.includes("m3u8"),
     "FAIL: Expected fallbackVideoForDownload to find the HLS video from inside the iframe " +
-    "(frameUrl matches iframe src URL). Got: " +
-    (fallbackResult ? fallbackResult.url || JSON.stringify(fallbackResult).slice(0, 200) : "null"),
+      "(frameUrl matches iframe src URL). Got: " +
+      (fallbackResult ? fallbackResult.url || JSON.stringify(fallbackResult).slice(0, 200) : "null"),
   );
 
   // If we get here, the test unexpectedly PASSED

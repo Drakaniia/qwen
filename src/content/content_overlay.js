@@ -355,17 +355,18 @@ function updateOverlay(video, candidate, allowBestDetectedFallback = false) {
 // ─── Overlay toggle ──────────────────────────────────────────────────────
 
 function hideAllOverlays() {
+  hideOverlay();
   for (const record of Array.from(overlayRecords)) {
     removeOverlay(record.video);
   }
 }
 
 function setOverlayEnabled(enabled) {
-  if (!enabled) {
+  if (enabled) {
+    positionAllOverlays();
+  } else {
     hideAllOverlays();
-    return;
   }
-  positionAllOverlays();
 }
 
 export {

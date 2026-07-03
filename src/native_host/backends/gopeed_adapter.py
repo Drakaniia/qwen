@@ -164,7 +164,7 @@ def parse_gopeed_line(line):
     # Check for progress/complete/fail bar
     progress_match = GOPEED_PROGRESS_RE.match(cleaned)
     if progress_match:
-        downloading, complete, fail = progress_match.group(1), progress_match.group(2), progress_match.group(3)
+        _downloading, complete, fail = progress_match.group(1), progress_match.group(2), progress_match.group(3)
         percent = float(progress_match.group(4))
         speed = progress_match.group(5)
         total_size = progress_match.group(6)

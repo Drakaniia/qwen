@@ -47,16 +47,12 @@ import assert from "node:assert/strict";
 
   // ── Test 6: buildNativeWriteDataMessage with various data sizes ──────
   // Small data
-  const smallMsg = tunnelIntegration.buildNativeWriteDataMessage(
-    "job-1", "dGVzdA==", "C:\\Downloads\\small.bin",
-  );
+  const smallMsg = tunnelIntegration.buildNativeWriteDataMessage("job-1", "dGVzdA==", "C:\\Downloads\\small.bin");
   assert.equal(smallMsg.type, "writeData", "message type must be writeData");
   assert.equal(smallMsg.data, "dGVzdA==", "base64 data must be preserved");
 
   // Empty data
-  const emptyMsg = tunnelIntegration.buildNativeWriteDataMessage(
-    "job-2", "", "C:\\Downloads\\empty.bin",
-  );
+  const emptyMsg = tunnelIntegration.buildNativeWriteDataMessage("job-2", "", "C:\\Downloads\\empty.bin");
   assert.equal(emptyMsg.data, "", "empty base64 must be allowed");
 
   // ── Test 7: tryCdpTunnelDownload handles various URL formats gracefully ──
@@ -73,8 +69,10 @@ import assert from "node:assert/strict";
     const r = await tunnelIntegration.tryCdpTunnelDownload(9999, url, { timeout: 100 });
     assert.equal(r.ok, false, `tryCdpTunnelDownload must fail gracefully for ${url}`);
     assert.ok(r.error, `must include error message for ${url}`);
-    assert.ok(["segment", "manifest", "unknown"].includes(r.method),
-      `method must be valid for ${url}, got ${r.method}`);
+    assert.ok(
+      ["segment", "manifest", "unknown"].includes(r.method),
+      `method must be valid for ${url}, got ${r.method}`,
+    );
   }
 
   console.log("✓ All segment data flow integration tests passed");

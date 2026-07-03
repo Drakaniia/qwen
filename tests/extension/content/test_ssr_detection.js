@@ -45,10 +45,8 @@ if (typeof globalThis.MutationObserver === "undefined") {
 
   assert.equal(typeof ssrModule.init, "function", "init must be a function");
   assert.equal(typeof ssrModule.scanSSRGlobals, "function", "scanSSRGlobals must be a function");
-  assert.equal(typeof ssrModule.extractHLSUrlsFromJSON, "function",
-    "extractHLSUrlsFromJSON must be a function");
-  assert.equal(typeof ssrModule.installSSRObserver, "function",
-    "installSSRObserver must be a function");
+  assert.equal(typeof ssrModule.extractHLSUrlsFromJSON, "function", "extractHLSUrlsFromJSON must be a function");
+  assert.equal(typeof ssrModule.installSSRObserver, "function", "installSSRObserver must be a function");
 
   console.log("  \u2713 All expected exports exist and are functions");
 }
@@ -194,9 +192,7 @@ if (typeof globalThis.MutationObserver === "undefined") {
             props: {
               pageProps: {
                 video: {
-                  sources: [
-                    { src: "https://cdn.example.com/hls/master.m3u8", type: "application/x-mpegURL" },
-                  ],
+                  sources: [{ src: "https://cdn.example.com/hls/master.m3u8", type: "application/x-mpegURL" }],
                 },
               },
             },
@@ -205,8 +201,12 @@ if (typeof globalThis.MutationObserver === "undefined") {
       }
       return null;
     },
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
   };
 
   const results = ssrModule.scanSSRGlobals(mockDoc, {});
@@ -235,8 +235,12 @@ if (typeof globalThis.MutationObserver === "undefined") {
       }
       return null;
     },
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
   };
 
   const results = ssrModule.scanSSRGlobals(mockDoc, {});
@@ -255,9 +259,7 @@ if (typeof globalThis.MutationObserver === "undefined") {
     __INITIAL_STATE__: {
       stream: {
         url: "https://cdn.example.com/live/stream.m3u8",
-        qualities: [
-          { url: "https://cdn.example.com/live/1080p.m3u8" },
-        ],
+        qualities: [{ url: "https://cdn.example.com/live/1080p.m3u8" }],
       },
     },
   };
@@ -274,9 +276,15 @@ if (typeof globalThis.MutationObserver === "undefined") {
   console.log("\n--- Test 8: scanSSRGlobals \u2014 no SSR globals ---");
 
   const mockDoc = {
-    getElementById() { return null; },
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
+    getElementById() {
+      return null;
+    },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
   };
 
   const results = ssrModule.scanSSRGlobals(mockDoc, {});
@@ -301,8 +309,12 @@ if (typeof globalThis.MutationObserver === "undefined") {
       }
       return null;
     },
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
   };
   const mockWin = { __INITIAL_STATE__: { stream: { url: sameUrl } } };
 
@@ -330,8 +342,12 @@ if (typeof globalThis.MutationObserver === "undefined") {
       }
       return null;
     },
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
   };
 
   const result = ssrModule.init({ document: mockDoc, window: {} });
@@ -350,9 +366,15 @@ if (typeof globalThis.MutationObserver === "undefined") {
   console.log("\n--- Test 11: init() \u2014 no SSR globals ---");
 
   const emptyDoc = {
-    getElementById() { return null; },
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
+    getElementById() {
+      return null;
+    },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
     documentElement: { nodeType: 1 },
   };
 

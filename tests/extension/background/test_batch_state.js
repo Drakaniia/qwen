@@ -4,17 +4,9 @@ import * as BatchState from "../../../src/shared/batch_state.js";
 
 // ─── Initial state ──────────────────────────────────────────────────────────
 
-assert.equal(
-  BatchState.isBatchActive(),
-  false,
-  "Initially no batch should be active",
-);
+assert.equal(BatchState.isBatchActive(), false, "Initially no batch should be active");
 
-assert.equal(
-  BatchState.getBatchProgress(),
-  0,
-  "Initial batch progress should be 0",
-);
+assert.equal(BatchState.getBatchProgress(), 0, "Initial batch progress should be 0");
 
 const batch = BatchState.getBatchInfo();
 assert.equal(batch.totalItems, 0, "Initial batch should have 0 items");
@@ -110,44 +102,20 @@ assert.equal(resetInfo.status, "idle", "After reset, status should be 'idle'");
 
 BatchState.createBatch(videos);
 
-assert.equal(
-  BatchState.getBatchInfo().status,
-  "idle",
-  "After create, status should be 'idle'",
-);
+assert.equal(BatchState.getBatchInfo().status, "idle", "After create, status should be 'idle'");
 
 BatchState.startBatch();
-assert.equal(
-  BatchState.getBatchInfo().status,
-  "running",
-  "After startBatch, status should be 'running'",
-);
+assert.equal(BatchState.getBatchInfo().status, "running", "After startBatch, status should be 'running'");
 
 BatchState.pauseBatch();
-assert.equal(
-  BatchState.getBatchInfo().status,
-  "paused",
-  "After pauseBatch, status should be 'paused'",
-);
+assert.equal(BatchState.getBatchInfo().status, "paused", "After pauseBatch, status should be 'paused'");
 
 BatchState.resumeBatch();
-assert.equal(
-  BatchState.getBatchInfo().status,
-  "running",
-  "After resumeBatch, status should be 'running'",
-);
+assert.equal(BatchState.getBatchInfo().status, "running", "After resumeBatch, status should be 'running'");
 
 BatchState.cancelBatch();
-assert.equal(
-  BatchState.getBatchInfo().status,
-  "canceled",
-  "After cancelBatch, status should be 'canceled'",
-);
-assert.equal(
-  BatchState.getBatchProgress(),
-  0,
-  "After cancel, progress should reset to 0",
-);
+assert.equal(BatchState.getBatchInfo().status, "canceled", "After cancelBatch, status should be 'canceled'");
+assert.equal(BatchState.getBatchProgress(), 0, "After cancel, progress should reset to 0");
 
 // ─── Error tracking ─────────────────────────────────────────────────────────
 
@@ -168,11 +136,7 @@ assert.equal(withError.failedItems[0].error, "Network error", "Failed item shoul
 
 // Mark as skipped (to move past it)
 BatchState.skipItem("v1");
-assert.equal(
-  BatchState.getBatchInfo().currentIndex,
-  1,
-  "After skip, currentIndex should advance",
-);
+assert.equal(BatchState.getBatchInfo().currentIndex, 1, "After skip, currentIndex should advance");
 
 // ─── Item IDs list ──────────────────────────────────────────────────────────
 

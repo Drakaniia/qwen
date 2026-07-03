@@ -3,7 +3,15 @@
 // ─── Module references ──────────────────────────────────────────────────────
 import * as DownloadList from "./download_list.js";
 import { elements, AUDIO_FORMAT, ACTIVE_DOWNLOAD_STATUSES } from "./popup_elements.js";
-import { setMessage, videoTitle, displayFormat, sourceLabel, videoSizeLabel, videoThumbnailUrl, startRecording } from "./popup_helpers.js";
+import {
+  setMessage,
+  videoTitle,
+  displayFormat,
+  sourceLabel,
+  videoSizeLabel,
+  videoThumbnailUrl,
+  startRecording,
+} from "./popup_helpers.js";
 
 // ─── Video rendering ────────────────────────────────────────────────────────
 
@@ -141,7 +149,8 @@ export function renderVideos(videos, downloads) {
       subBadge.className = "subtitle-badge";
       const langCount = video.subtitleLanguages || 0;
       subBadge.textContent = langCount > 0 ? `CC ${langCount}` : "CC";
-      subBadge.title = langCount > 0 ? `${langCount} subtitle language${langCount === 1 ? "" : "s"} available` : "Subtitles available";
+      subBadge.title =
+        langCount > 0 ? `${langCount} subtitle language${langCount === 1 ? "" : "s"} available` : "Subtitles available";
       meta.append(subBadge);
     }
     const size = videoSizeLabel(video);

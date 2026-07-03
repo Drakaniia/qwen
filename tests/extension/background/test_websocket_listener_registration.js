@@ -33,7 +33,8 @@ console.log("✓ handleWebSocketRequest function is defined in background_webreq
 // ─── Test 2: A webRequest listener is registered for 'websocket' type ───────
 
 // Look for any addListener call that includes "websocket" in the types array
-const websocketListenerPattern = /(?:browserApi|chrome)\.webRequest\.onBeforeRequest\.addListener\s*\([^)]*websocket[^)]*\)/i;
+const websocketListenerPattern =
+  /(?:browserApi|chrome)\.webRequest\.onBeforeRequest\.addListener\s*\([^)]*websocket[^)]*\)/i;
 const hasWebsocketListener = websocketListenerPattern.test(source);
 
 // Also check a looser pattern: addListener with types array containing "websocket"
@@ -51,25 +52,17 @@ console.log("✓ webRequest listener for 'websocket' type is registered");
 // ─── Test 3: WebSocket listener calls handleWebSocketRequest ────────────────
 
 // Find the addListener call that includes "websocket" to verify it references handleWebSocketRequest
-const listenerLines = source.split("\n").filter(
-  (line) =>
-    line.includes("addListener") &&
-    (line.includes("websocket") || line.includes("WebSocket")),
-);
+const listenerLines = source
+  .split("\n")
+  .filter((line) => line.includes("addListener") && (line.includes("websocket") || line.includes("WebSocket")));
 
 if (listenerLines.length > 0) {
-  const referencesHandler = listenerLines.some((line) =>
-    line.includes("handleWebSocketRequest"),
-  );
-  assert.ok(
-    referencesHandler,
-    "The websocket listener must reference handleWebSocketRequest as the handler callback",
-  );
+  const referencesHandler = listenerLines.some((line) => line.includes("handleWebSocketRequest"));
+  assert.ok(referencesHandler, "The websocket listener must reference handleWebSocketRequest as the handler callback");
 } else {
   // This will fail if the listener isn't registered (RED phase)
   assert.fail(
-    "No webRequest listener found for 'websocket' type. " +
-      "The listener registration has not been added yet.",
+    "No webRequest listener found for 'websocket' type. " + "The listener registration has not been added yet.",
   );
 }
 console.log("✓ WebSocket listener correctly references handleWebSocketRequest");

@@ -337,11 +337,7 @@ function cleanup() {
 
 const deepInspection = createDeepInspection({ attach, detach, sendCommand });
 
-const {
-  enableDeepNetworkInspection,
-  disableDeepNetworkInspection,
-  isDeepInspectionActive,
-} = deepInspection;
+const { enableDeepNetworkInspection, disableDeepNetworkInspection, isDeepInspectionActive } = deepInspection;
 
 // ─── Init ────────────────────────────────────────────────────────────────
 

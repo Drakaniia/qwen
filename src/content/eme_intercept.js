@@ -20,9 +20,8 @@
  */
 
 /** @type {object} */
-const extensionApi = (typeof browser !== "undefined" ? browser :
-                     typeof chrome !== "undefined" ? chrome :
-                     { runtime: { sendMessage() {} } });
+const extensionApi =
+  typeof browser !== "undefined" ? browser : typeof chrome !== "undefined" ? chrome : { runtime: { sendMessage() {} } };
 
 // ─── WebKit / Safari EME Detection (GAP 9) ──────────────────────────────────
 
@@ -51,16 +50,15 @@ async function detectWebKitEmeCapabilities() {
     result.webkitKeys = typeof navigator.webkitKeys !== "undefined";
 
     // Check for WebKit MediaKeys extension
-    result.webkitMediaKeys = typeof MediaKeys !== "undefined" &&
-      typeof MediaKeys.prototype.webkitSetMediaKeys !== "undefined";
+    result.webkitMediaKeys =
+      typeof MediaKeys !== "undefined" && typeof MediaKeys.prototype.webkitSetMediaKeys !== "undefined";
 
     // Check if FairPlay is available via requestMediaKeySystemAccess
     if (typeof navigator.requestMediaKeySystemAccess === "function") {
       try {
-        const access = await navigator.requestMediaKeySystemAccess(
-          "com.apple.fps.1_0",
-          [{ initDataTypes: ["sinf"], videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.64001e"' }] }]
-        );
+        const access = await navigator.requestMediaKeySystemAccess("com.apple.fps.1_0", [
+          { initDataTypes: ["sinf"], videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.64001e"' }] },
+        ]);
         result.fairplay = Boolean(access);
       } catch (_e) {
         // FairPlay not available
@@ -134,12 +132,14 @@ function forwardToBackground(sessionData) {
   }
 
   try {
-    extensionApi.runtime.sendMessage({
-      type: "emeCapturedSession",
-      session: sessionData,
-    }).catch(() => {
-      // Extension context may be unavailable during page unload
-    });
+    extensionApi.runtime
+      .sendMessage({
+        type: "emeCapturedSession",
+        session: sessionData,
+      })
+      .catch(() => {
+        // Extension context may be unavailable during page unload
+      });
   } catch (_error) {
     // Ignore errors when extension context is destroyed
   }
@@ -333,10 +333,7 @@ async function interceptedRequestMediaKeySystemAccess(keySystem, supportedConfig
   }
 
   // originalRequestMediaKeySystemAccess is already bound to navigator in init()
-  const result = await originalRequestMediaKeySystemAccess(
-    keySystem,
-    supportedConfigurations,
-  );
+  const result = await originalRequestMediaKeySystemAccess(keySystem, supportedConfigurations);
 
   if (!isActive) {
     return result;

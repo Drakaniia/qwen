@@ -1,9 +1,10 @@
 """Init segment parsing — ftyp, moov, and track metadata extraction."""
 
 import struct
-from .iso_box import ISOBox
+
 from .container import parse_boxes_hierarchical
 from .encryption import detect_encryption
+from .iso_box import ISOBox
 
 
 def parse_ftyp(box: ISOBox) -> dict:

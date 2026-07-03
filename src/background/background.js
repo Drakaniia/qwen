@@ -29,16 +29,12 @@ import * as recording from "./recording.js";
 import { initWebRequestHandlers, isExtensionPageSender } from "./background_webrequest.js";
 import { registerAllHandlers } from "./message-handlers/index.js";
 import { runInit } from "./background_init.js";
-import * as cloudflareSolver from "./cloudflare_solver.js";
 import * as swRelay from "./sw_relay.js";
 import * as debugLogger from "./debug_logger.js";
 
 // ── Re-exports for message handlers ──────────────────────────────────────
 
-const {
-  normalizeUrl,
-  nativeRequestHeadersForVideo,
-} = headerUtils;
+const { normalizeUrl, nativeRequestHeadersForVideo } = headerUtils;
 
 const {
   hashId,
@@ -52,9 +48,7 @@ const {
   CDN_HINT_RE,
 } = videoUtils;
 
-const {
-  isBlockedUrlWithFilters,
-} = filterIntegration;
+const { isBlockedUrlWithFilters } = filterIntegration;
 
 const {
   updateDownload,
@@ -245,7 +239,12 @@ async function getTabDownloads(tabId) {
 // ── Fallback deps (closure over background functions) ────────────────────
 
 function downloadFallbackDeps() {
-  return buildDownloadFallbackDeps(nativeRequest, addDetectedVideo, getVisibleVideosForTab, nativeRequestHeadersForVideo);
+  return buildDownloadFallbackDeps(
+    nativeRequest,
+    addDetectedVideo,
+    getVisibleVideosForTab,
+    nativeRequestHeadersForVideo,
+  );
 }
 
 // ── Sender tab ID helper ─────────────────────────────────────────────────
@@ -371,7 +370,12 @@ async function clearDownloads() {
 
 // ── Imported helper-ping module ────────────────────────────────────────
 
-import { cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, pingNativeHost } from "./background_helper_ping.js";
+import {
+  cachedHelperStatus,
+  HELPER_PING_INTERVAL_MS,
+  refreshCachedHelperStatus,
+  pingNativeHost,
+} from "./background_helper_ping.js";
 
 // ── CDP relay init ───────────────────────────────────────────────────────
 

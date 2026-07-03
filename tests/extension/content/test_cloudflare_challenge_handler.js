@@ -60,10 +60,7 @@ function checkForCloudflareChallenge(doc) {
     }
 
     // Challenge iframe
-    if (
-      doc.querySelector('iframe[src*="challenge"]') ||
-      doc.querySelector('iframe[src*="turnstile"]')
-    ) {
+    if (doc.querySelector('iframe[src*="challenge"]') || doc.querySelector('iframe[src*="turnstile"]')) {
       return true;
     }
 
@@ -249,9 +246,7 @@ function checkForCloudflareChallenge(doc) {
   // ─── Summary ─────────────────────────────────────────────────────────
 
   console.log("");
-  console.log(
-    `Results: ${passedCount}/${totalTests} passed, ${failedCount}/${totalTests} failed`,
-  );
+  console.log(`Results: ${passedCount}/${totalTests} passed, ${failedCount}/${totalTests} failed`);
 
   if (failedCount > 0) {
     console.log(

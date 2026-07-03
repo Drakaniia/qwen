@@ -262,11 +262,11 @@ function processQueue() {
 
   // Start as many as slots available
   const toStart = queuedJobs.slice(0, availableSlots);
-  
+
   if (toStart.length > 0) {
     notifyChange();
   }
-  
+
   for (const job of toStart) {
     job.status = "connecting";
     job.startedAt = Date.now();

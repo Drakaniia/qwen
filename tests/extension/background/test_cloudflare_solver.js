@@ -68,4 +68,7 @@ globalThis.chrome = {
   assert.equal(result, null, "Should return null when cookies array is empty");
 
   console.log("✓ All Cloudflare solver tests passed");
-})().catch((err) => { console.error(err); process.exitCode = 1; });
+})().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

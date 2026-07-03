@@ -32,7 +32,12 @@ export function updateBatchUI() {
   }
 
   const batchInfo = PopupState.get("batchInfo");
-  if (!batchInfo || batchInfo.status === "idle" || batchInfo.status === "completed" || batchInfo.status === "canceled") {
+  if (
+    !batchInfo ||
+    batchInfo.status === "idle" ||
+    batchInfo.status === "completed" ||
+    batchInfo.status === "canceled"
+  ) {
     elements.batchBar.hidden = true;
     return;
   }
@@ -96,7 +101,8 @@ export function updatePlaylistPrompt() {
 
   elements.playlistPrompt.hidden = false;
   if (elements.playlistTitle) {
-    elements.playlistTitle.textContent = playlistTitle || `${source.charAt(0).toUpperCase() + source.slice(1)} Playlist Detected`;
+    elements.playlistTitle.textContent =
+      playlistTitle || `${source.charAt(0).toUpperCase() + source.slice(1)} Playlist Detected`;
   }
 }
 
@@ -149,10 +155,7 @@ export async function downloadAllPlaylist() {
   const batchResponse = await PopupApi.startBatchDownload(tabId, videos);
 
   if (!batchResponse || !batchResponse.ok) {
-    _setMessage(
-      batchResponse && batchResponse.error ? batchResponse.error : "Could not start batch download.",
-      true,
-    );
+    _setMessage(batchResponse && batchResponse.error ? batchResponse.error : "Could not start batch download.", true);
     elements.downloadAllBtn.disabled = false;
     elements.downloadAllBtn.textContent = "Download All";
     return;

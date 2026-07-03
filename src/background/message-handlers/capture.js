@@ -5,7 +5,7 @@
  */
 
 export function registerCaptureHandlers(messageRouter, ctx) {
-  const { recording, segmentCapture, tabState, nativeRequest, notifyPopup } = ctx;
+  const { recording, segmentCapture, tabState, nativeRequest } = ctx;
 
   // ── Recording handlers ─────────────────────────────────────────────────
 

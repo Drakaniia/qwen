@@ -32,7 +32,7 @@ class MockMediaSource {
     return sb;
   }
 
-  endOfStream(reason) {
+  endOfStream(_reason) {
     this.readyState = "ended";
   }
 
@@ -57,7 +57,7 @@ class MockSourceBuffer {
     this._listeners = {};
   }
 
-  appendBuffer(data) {
+  appendBuffer(_data) {
     this.updating = true;
     // Simulate async append
     setTimeout(() => {
@@ -84,28 +84,22 @@ class MockSourceBuffer {
   }
 }
 
-class MockBlob {
-  constructor(content, opts) {
-    this._content = content;
-    this.type = opts.type || "";
-  }
-}
-
-function mockCreateObjectURL(obj) {
+function mockCreateObjectURL(_obj) {
   createObjectURLCallCount++;
   return mockBlobUrl + "_" + createObjectURLCallCount;
 }
 
-function mockRevokeObjectURL(url) {}
+function mockRevokeObjectURL(_url) {}
 
 const originalURL = globalThis.URL;
 const originalMediaSource = globalThis.MediaSource;
-const originalCreateObjectURL = globalThis.URL?.createObjectURL;
 
 // Mock chrome.runtime for module import
 globalThis.chrome = {
   runtime: {
-    sendMessage() { return Promise.resolve(); },
+    sendMessage() {
+      return Promise.resolve();
+    },
     onMessage: { addListener() {} },
   },
 };
@@ -129,21 +123,18 @@ globalThis.chrome = {
 
   // Before init, no interception should be active
   const summaryBefore = mseModule.getCapturedStreamsSummary();
-  assert.ok(Array.isArray(summaryBefore),
-    "getCapturedStreamsSummary should return an array before init");
+  assert.ok(Array.isArray(summaryBefore), "getCapturedStreamsSummary should return an array before init");
 
   // Init
   mseModule.init();
 
   // After init, MediaSource should be overridden
-  assert.ok(window.__qwinMseIntercepted === true,
-    "window.__qwinMseIntercepted should be set after init");
+  assert.ok(window.__qwinMseIntercepted === true, "window.__qwinMseIntercepted should be set after init");
 
   // URL.createObjectURL should be intercepted
   const ms = new MockMediaSource();
   const blobUrl = URL.createObjectURL(ms);
-  assert.ok(blobUrl.startsWith("blob:"),
-    "createObjectURL should still return a blob: URL");
+  assert.ok(blobUrl.startsWith("blob:"), "createObjectURL should still return a blob: URL");
 
   // Cleanup
   mseModule.cleanup();
@@ -169,7 +160,7 @@ globalThis.chrome = {
 
   // Create a MediaSource and add a SourceBuffer
   const ms = new MediaSource();
-  const sb = ms.addSourceBuffer("video/mp4; codecs=\"avc1.64001e\"");
+  const sb = ms.addSourceBuffer('video/mp4; codecs="avc1.64001e"');
 
   // Simulate appending segment data
   const segmentData = new ArrayBuffer(1024);
@@ -181,8 +172,10 @@ globalThis.chrome = {
   const summary = mseModule.getCapturedStreamsSummary();
 
   // Check that at least one stream was created
-  assert.ok(summary.length >= 0, // may be 0 if batch hasn't flushed yet
-    "getCapturedStreamsSummary should return without errors");
+  assert.ok(
+    summary.length >= 0, // may be 0 if batch hasn't flushed yet
+    "getCapturedStreamsSummary should return without errors",
+  );
 
   mseModule.cleanup();
 
@@ -212,8 +205,10 @@ globalThis.chrome = {
   const ms = new MockMediaSource();
   const url = URL.createObjectURL(ms);
 
-  assert.ok(typeof url === "string" && url.startsWith("blob:"),
-    "createObjectURL should return blob URL for MediaSource objects");
+  assert.ok(
+    typeof url === "string" && url.startsWith("blob:"),
+    "createObjectURL should return blob URL for MediaSource objects",
+  );
 
   mseModule.cleanup();
 
@@ -238,9 +233,9 @@ globalThis.chrome = {
 
   // Create two MediaSource instances with SourceBuffers
   const ms1 = new MediaSource();
-  const sb1 = ms1.addSourceBuffer("video/mp4; codecs=\"avc1.64001e\"");
+  const sb1 = ms1.addSourceBuffer('video/mp4; codecs="avc1.64001e"');
   const ms2 = new MediaSource();
-  const sb2 = ms2.addSourceBuffer("audio/mp4; codecs=\"mp4a.40.2\"");
+  const sb2 = ms2.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
 
   // Append to both
   sb1.appendBuffer(new ArrayBuffer(512));
@@ -249,8 +244,7 @@ globalThis.chrome = {
   // Summary should reflect both streams
   const summary = mseModule.getCapturedStreamsSummary();
   // The summary may include 0 or more entries depending on batch timing
-  assert.ok(Array.isArray(summary),
-    "getCapturedStreamsSummary should work with multiple streams");
+  assert.ok(Array.isArray(summary), "getCapturedStreamsSummary should work with multiple streams");
 
   mseModule.cleanup();
 
@@ -270,22 +264,17 @@ globalThis.chrome = {
   };
   globalThis.window = globalThis;
 
-  // Store originals before interception
-  const origMSE = globalThis.MediaSource;
-
   const mseModule = await import("../../../src/content/media_source_intercept.js");
   mseModule.init();
 
-  assert.ok(window.__qwinMseIntercepted === true,
-    "Interception should be active after init");
+  assert.ok(window.__qwinMseIntercepted === true, "Interception should be active after init");
 
   // Cleanup
   mseModule.cleanup();
 
   // After cleanup, summary should be empty
   const summaryAfter = mseModule.getCapturedStreamsSummary();
-  assert.equal(summaryAfter.length, 0,
-    "getCapturedStreamsSummary should be empty after cleanup");
+  assert.equal(summaryAfter.length, 0, "getCapturedStreamsSummary should be empty after cleanup");
 
   console.log("  ✓ cleanup() clears all state");
 }
@@ -309,8 +298,7 @@ globalThis.chrome = {
   const firstFlag = window.__qwinMseIntercepted;
 
   mseModule.init(); // second init
-  assert.equal(window.__qwinMseIntercepted, firstFlag,
-    "Double init should not change interception state");
+  assert.equal(window.__qwinMseIntercepted, firstFlag, "Double init should not change interception state");
 
   mseModule.cleanup();
 

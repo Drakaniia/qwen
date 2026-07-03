@@ -23,7 +23,9 @@ function createDetection(options = {}) {
       if (options.queryAll && options.queryAll[sel]) return options.queryAll[sel];
       return [];
     },
-    getElementById() { return null; },
+    getElementById() {
+      return null;
+    },
   };
   const loc = new URL(options.url || "https://example.com/page");
   return pageDetectionModule.create({
@@ -66,14 +68,22 @@ function createDetection(options = {}) {
 
   const candidates = detection.scanTextForMediaUrls(nextData, "script-config");
 
-  assert.ok(candidates.some((c) => c.url.includes("movie.mp4")),
-    "Should extract movie.mp4 URL from __NEXT_DATA__");
-  assert.ok(candidates.some((c) => c.url.includes("master.m3u8")),
-    "Should extract HLS URL from __NEXT_DATA__");
-  assert.ok(candidates.some((c) => c.url.includes("manifest.mpd")),
-    "Should extract DASH URL from __NEXT_DATA__");
-  assert.ok(candidates.some((c) => c.url.includes("clip1.mp4")),
-    "Should extract related video URLs");
+  assert.ok(
+    candidates.some((c) => c.url.includes("movie.mp4")),
+    "Should extract movie.mp4 URL from __NEXT_DATA__",
+  );
+  assert.ok(
+    candidates.some((c) => c.url.includes("master.m3u8")),
+    "Should extract HLS URL from __NEXT_DATA__",
+  );
+  assert.ok(
+    candidates.some((c) => c.url.includes("manifest.mpd")),
+    "Should extract DASH URL from __NEXT_DATA__",
+  );
+  assert.ok(
+    candidates.some((c) => c.url.includes("clip1.mp4")),
+    "Should extract related video URLs",
+  );
 
   console.log("  ✓ __NEXT_DATA__ video URLs extracted successfully");
   console.log("  Found", candidates.length, "candidates");
@@ -90,13 +100,15 @@ function createDetection(options = {}) {
   });
 
   const nuxtData = JSON.stringify({
-    data: [{
-      video: {
-        url: "https://cdn.example.com/videos/episode.webm",
-        duration: 2400,
-        thumbnails: ["https://cdn.example.com/thumbs/ep1.jpg"],
+    data: [
+      {
+        video: {
+          url: "https://cdn.example.com/videos/episode.webm",
+          duration: 2400,
+          thumbnails: ["https://cdn.example.com/thumbs/ep1.jpg"],
+        },
       },
-    }],
+    ],
     state: {
       video: {
         currentSrc: "https://cdn.example.com/videos/episode.mp4",
@@ -106,10 +118,14 @@ function createDetection(options = {}) {
 
   const candidates = detection.scanTextForMediaUrls(nuxtData, "script-config");
 
-  assert.ok(candidates.some((c) => c.url.includes("episode.webm")),
-    "Should extract episode.webm from __NUXT__");
-  assert.ok(candidates.some((c) => c.url.includes("episode.mp4")),
-    "Should extract episode.mp4 from __NUXT__ state");
+  assert.ok(
+    candidates.some((c) => c.url.includes("episode.webm")),
+    "Should extract episode.webm from __NUXT__",
+  );
+  assert.ok(
+    candidates.some((c) => c.url.includes("episode.mp4")),
+    "Should extract episode.mp4 from __NUXT__ state",
+  );
 
   console.log("  ✓ __NUXT__ video URLs extracted successfully");
 }
@@ -137,8 +153,10 @@ function createDetection(options = {}) {
 
   const candidates = detection.scanTextForMediaUrls(initStateData, "script-config");
 
-  assert.ok(candidates.some((c) => c.url.includes("stream.m3u8")),
-    "Should extract stream URL from __INITIAL_STATE__");
+  assert.ok(
+    candidates.some((c) => c.url.includes("stream.m3u8")),
+    "Should extract stream URL from __INITIAL_STATE__",
+  );
 
   console.log("  ✓ __INITIAL_STATE__ video URLs extracted");
 }
@@ -165,8 +183,7 @@ function createDetection(options = {}) {
     } catch (e) {
       error = e;
     }
-    assert.ok(error === null,
-      "scanTextForMediaUrls should not throw on malformed JSON (got " + error + ")");
+    assert.ok(error === null, "scanTextForMediaUrls should not throw on malformed JSON (got " + error + ")");
   }
 
   console.log("  ✓ Malformed SSR JSON handled without errors");
@@ -210,12 +227,18 @@ function createDetection(options = {}) {
 
   const candidates = detection.scanTextForMediaUrls(deepData, "script-config");
 
-  assert.ok(candidates.some((c) => c.url.includes("video.mp4")),
-    "Should extract deeply nested video.mp4");
-  assert.ok(candidates.some((c) => c.url.includes("playlist.m3u8")),
-    "Should extract deeply nested playlist.m3u8");
-  assert.ok(candidates.some((c) => c.url.includes("item1.mp4")),
-    "Should extract gallery video URLs");
+  assert.ok(
+    candidates.some((c) => c.url.includes("video.mp4")),
+    "Should extract deeply nested video.mp4",
+  );
+  assert.ok(
+    candidates.some((c) => c.url.includes("playlist.m3u8")),
+    "Should extract deeply nested playlist.m3u8",
+  );
+  assert.ok(
+    candidates.some((c) => c.url.includes("item1.mp4")),
+    "Should extract gallery video URLs",
+  );
 
   console.log("  ✓ Deeply nested SSR video URLs extracted");
   console.log("  Found", candidates.length, "candidates");

@@ -93,7 +93,8 @@ async function updateGroupedTitle(tabId, video, title, getVisibleVideosFn, notif
 // ── Native format retrieval ──────────────────────────────────────────────
 
 async function ensureComparisonSizes(tabId, video, getVisibleVideosFn, notifyPopupFn) {
-  const variantsToProbe = downloadHelpers.variantsForVideo(video)
+  const variantsToProbe = downloadHelpers
+    .variantsForVideo(video)
     .filter((variant) => videoUtils.canProbeVideoSize(variant))
     .slice(0, SIZE_PROBE_LIMIT_PER_GROUP);
 
@@ -120,7 +121,11 @@ async function ensureComparisonSizes(tabId, video, getVisibleVideosFn, notifyPop
     if (notifyPopupFn) {
       notifyPopupFn({ type: "videoListUpdated", tabId, videos: getVisibleVideosFn(tabId) });
     }
-    const grouped = downloadHelpers.findGroupedVideoForVariant(tabId, downloadHelpers.variantsForVideo(video)[0], getVisibleVideosFn);
+    const grouped = downloadHelpers.findGroupedVideoForVariant(
+      tabId,
+      downloadHelpers.variantsForVideo(video)[0],
+      getVisibleVideosFn,
+    );
     return grouped || video;
   }
 
@@ -205,10 +210,18 @@ async function getNativeFormatsForVideo(
     firstNativeError = nativeError;
     log("error", "yt-dlp format check failed", nativeError);
     const pageFallback = downloadHelpers.isRetryableSourceError(nativeError)
-      ? await downloadHelpers.pageFallbackVideoForSource(lookupVideo, new Set([headerUtils.normalizeUrl(lookupVideo.url || "")]), buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn))
+      ? await downloadHelpers.pageFallbackVideoForSource(
+          lookupVideo,
+          new Set([headerUtils.normalizeUrl(lookupVideo.url || "")]),
+          buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn),
+        )
       : null;
     if (pageFallback) {
-      log("warn", "yt-dlp failed, trying page URL fallback", `Fallback URL: ${pageFallback.url ? pageFallback.url.substring(0, 120) : "N/A"}`);
+      log(
+        "warn",
+        "yt-dlp failed, trying page URL fallback",
+        `Fallback URL: ${pageFallback.url ? pageFallback.url.substring(0, 120) : "N/A"}`,
+      );
       await status("Checking page fallback...");
       try {
         response = await requestNativeFormats(pageFallback, nativeRequestFn);
@@ -224,7 +237,11 @@ async function getNativeFormatsForVideo(
             downloadable: true,
           })) || pageFallback;
         nativeError = "";
-        log("info", "Page URL fallback succeeded", `Found ${response && response.formats ? response.formats.length : 0} format(s)`);
+        log(
+          "info",
+          "Page URL fallback succeeded",
+          `Found ${response && response.formats ? response.formats.length : 0} format(s)`,
+        );
       } catch (pageError) {
         nativeError = pageError.message || String(pageError);
         log("error", "Page URL fallback also failed", nativeError);
@@ -245,14 +262,20 @@ async function getNativeFormatsForVideo(
       for (const candidate of resolvedCandidates) {
         try {
           const idx = resolvedCandidates.indexOf(candidate) + 1;
-          log("info", `Trying resolved source ${idx}/${resolvedCandidates.length}`, candidate.url ? candidate.url.substring(0, 120) : "N/A");
-          await status(
-            `Checking source ${idx} of ${resolvedCandidates.length}...`,
+          log(
+            "info",
+            `Trying resolved source ${idx}/${resolvedCandidates.length}`,
+            candidate.url ? candidate.url.substring(0, 120) : "N/A",
           );
+          await status(`Checking source ${idx} of ${resolvedCandidates.length}...`);
           response = await requestNativeFormats(candidate, nativeRequestFn);
           formatLookupVideo = candidate;
           nativeError = "";
-          log("info", `Resolved source ${idx} succeeded`, `Found ${response && response.formats ? response.formats.length : 0} format(s)`);
+          log(
+            "info",
+            `Resolved source ${idx} succeeded`,
+            `Found ${response && response.formats ? response.formats.length : 0} format(s)`,
+          );
           break;
         } catch (candidateError) {
           nativeError = candidateError.message || String(candidateError);
@@ -280,9 +303,21 @@ async function getNativeFormatsForVideo(
   const firstHardNativeError = firstNativeError && downloadHelpers.isHardAccessError(firstNativeError);
   const hardNativeError = nativeError && !nativeFormats.length && downloadHelpers.isHardAccessError(nativeError);
   if (firstHardNativeError) {
-    await downloadHelpers.markVideoUrlUnavailable(tabId, lookupVideo.url, firstNativeError, getVisibleVideosFn, notifyPopupFn);
+    await downloadHelpers.markVideoUrlUnavailable(
+      tabId,
+      lookupVideo.url,
+      firstNativeError,
+      getVisibleVideosFn,
+      notifyPopupFn,
+    );
   } else if (hardNativeError) {
-    await downloadHelpers.markVideoUrlUnavailable(tabId, formatLookupVideo.url, nativeError, getVisibleVideosFn, notifyPopupFn);
+    await downloadHelpers.markVideoUrlUnavailable(
+      tabId,
+      formatLookupVideo.url,
+      nativeError,
+      getVisibleVideosFn,
+      notifyPopupFn,
+    );
   }
 
   let refreshedVideo = null;
@@ -290,7 +325,8 @@ async function getNativeFormatsForVideo(
     if (response && response.title) {
       await updateGroupedTitle(tabId, formatLookupVideo, response.title, getVisibleVideosFn, notifyPopupFn);
     }
-    refreshedVideo = downloadHelpers.findGroupedVideoForAnyVariant(tabId, formatLookupVideo, getVisibleVideosFn) || formatLookupVideo;
+    refreshedVideo =
+      downloadHelpers.findGroupedVideoForAnyVariant(tabId, formatLookupVideo, getVisibleVideosFn) || formatLookupVideo;
   } else {
     const sizedVideo = await sizeProbePromise;
     if (response && response.title) {
@@ -314,7 +350,13 @@ async function getNativeFormatsForVideo(
     ? []
     : downloadHelpers.isExtractorPageVideo(refreshedVideo)
       ? []
-      : downloadHelpers.downloadableVariants(refreshedVideo, excludedUrls, buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn)).map(detectedVariantOption);
+      : downloadHelpers
+          .downloadableVariants(
+            refreshedVideo,
+            excludedUrls,
+            buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn),
+          )
+          .map(detectedVariantOption);
 
   if (nativeError && !nativeFormats.length && !sourceFormats.length) {
     const friendlyError = downloadHelpers.userFriendlyDownloadError(nativeError);
@@ -323,11 +365,18 @@ async function getNativeFormatsForVideo(
     throw new Error(errorMsg);
   }
   if (!nativeFormats.length && !sourceFormats.length) {
-    log("error", "No downloadable formats from yt-dlp or detected sources", `video URL: ${(video.url || "").substring(0, 120)}`);
+    log(
+      "error",
+      "No downloadable formats from yt-dlp or detected sources",
+      `video URL: ${(video.url || "").substring(0, 120)}`,
+    );
     throw new Error("yt-dlp did not find any downloadable video formats for this link.");
   }
 
-  log("info", `Format enumeration complete: ${nativeFormats.length} native + ${sourceFormats.length} detected format(s)`);
+  log(
+    "info",
+    `Format enumeration complete: ${nativeFormats.length} native + ${sourceFormats.length} detected format(s)`,
+  );
 
   const formats = nativeFormats.length ? nativeFormats : sourceFormats;
   const pageTitle = refreshedVideo.title || lookupVideo.title || "Video";
@@ -337,7 +386,8 @@ async function getNativeFormatsForVideo(
   if (serverThumbnail) {
     await tabState.patchVideo(
       tabId,
-      (item) => item.id === refreshedVideo.id || downloadHelpers.variantsForVideo(item).some((v) => v.id === refreshedVideo.id),
+      (item) =>
+        item.id === refreshedVideo.id || downloadHelpers.variantsForVideo(item).some((v) => v.id === refreshedVideo.id),
       { thumbnailUrl: serverThumbnail },
     );
   }
@@ -348,10 +398,11 @@ async function getNativeFormatsForVideo(
   if (response && response.hasSubtitles) {
     await tabState.patchVideo(
       tabId,
-      (item) => item.id === refreshedVideo.id || downloadHelpers.variantsForVideo(item).some((v) => v.id === refreshedVideo.id),
+      (item) =>
+        item.id === refreshedVideo.id || downloadHelpers.variantsForVideo(item).some((v) => v.id === refreshedVideo.id),
       {
         hasSubtitles: true,
-        subtitleLanguages: (response.subtitleLanguages) || 0,
+        subtitleLanguages: response.subtitleLanguages || 0,
       },
     );
   }

@@ -232,17 +232,13 @@ def is_cloudflare_challenge(content: bytes) -> bool:
     if "unusual traffic" in text and ("challenge" in text or "captcha" in text or "verify" in text):
         return True
 
-    if "just a moment" in text and (
-        "browser" in text or "checking" in text or "verify" in text or "wait" in text
-    ):
+    if "just a moment" in text and ("browser" in text or "checking" in text or "verify" in text or "wait" in text):
         return True
 
     if "checking your browser" in text and ("before accessing" in text or "before proceeding" in text):
         return True
 
-    if "ddos" in text and (
-        "protection" in text or "challenge" in text or "verify" in text
-    ):
+    if "ddos" in text and ("protection" in text or "challenge" in text or "verify" in text):
         return True
 
     # Generic heuristic: HTML page with multiple anti-bot keywords

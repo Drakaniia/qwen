@@ -41,11 +41,7 @@ const scriptRules = loader.parseFilterList("||analytics.com/track.js$script");
 assert.ok(scriptRules[0].optionTags.has("script"), "optionTags should include script");
 
 // 5. Ignores cosmetic filters (##)
-assert.equal(
-  loader.parseFilterList("example.com##.ad-banner").length,
-  0,
-  "cosmetic filters (##) should be ignored",
-);
+assert.equal(loader.parseFilterList("example.com##.ad-banner").length, 0, "cosmetic filters (##) should be ignored");
 
 assert.equal(
   loader.parseFilterList("example.com##+js(set, var, value)").length,
@@ -59,11 +55,7 @@ assert.equal(mixedRules.length, 1, "should skip blank lines and comments");
 assert.equal(mixedRules[0].domain, "example.com", "comment-skipped rule should have correct domain");
 
 // 7. Ignores section headers ([Adblock Plus 3.8])
-assert.equal(
-  loader.parseFilterList("[Adblock Plus 3.8]").length,
-  0,
-  "section headers should be ignored",
-);
+assert.equal(loader.parseFilterList("[Adblock Plus 3.8]").length, 0, "section headers should be ignored");
 
 assert.equal(
   loader.parseFilterList("! Title: uBlock filters").length,

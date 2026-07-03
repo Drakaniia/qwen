@@ -130,7 +130,6 @@ function scheduleMissingSizeProbes(tabId) {
 export {
   SIZE_PROBE_TIMEOUT_MS,
   SIZE_PROBE_LIMIT_PER_GROUP,
-
   sizeFromFetchResponse,
   probeVideoSize,
   scheduleVideoSizeProbe,

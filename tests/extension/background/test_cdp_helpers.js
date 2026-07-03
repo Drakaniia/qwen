@@ -85,4 +85,7 @@ globalThis.chrome = {
   globalThis.chrome.debugger = savedDebugger;
 
   console.log("✓ All cdp_helpers tests passed");
-})().catch((err) => { console.error(err); process.exitCode = 1; });
+})().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

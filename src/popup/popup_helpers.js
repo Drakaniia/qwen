@@ -4,21 +4,23 @@
 import * as PopupState from "../shared/popup_state.js";
 import * as PopupApi from "../shared/popup_api.js";
 import * as PopupUI from "./popup_ui.js";
-import { elements, qualityChooser, INDICATOR_STATES, INDICATOR_TOOLTIPS, INDICATOR_ARIA_LABELS, RESCAN_IDLE_LABEL, RESCAN_BUSY_LABEL } from "./popup_elements.js";
+import {
+  elements,
+  qualityChooser,
+  INDICATOR_STATES,
+  INDICATOR_TOOLTIPS,
+  INDICATOR_ARIA_LABELS,
+  RESCAN_IDLE_LABEL,
+  RESCAN_BUSY_LABEL,
+} from "./popup_elements.js";
 
 // ─── Re-exports from sub-modules (backward compatibility) ────────────────────
 
 import { initBatchHelpers } from "./popup_batch_helpers.js";
 
-export {
-  updateBatchUI,
-  updatePlaylistPrompt,
-  downloadAllPlaylist,
-} from "./popup_batch_helpers.js";
+export { updateBatchUI, updatePlaylistPrompt, downloadAllPlaylist } from "./popup_batch_helpers.js";
 
-export {
-  renderSyncedHistory,
-} from "./popup_sync_history.js";
+export { renderSyncedHistory } from "./popup_sync_history.js";
 
 // ─── Mutable indicator state ────────────────────────────────────────────────
 let indicatorDebounceTimer = null;
@@ -315,14 +317,16 @@ export async function refresh(options = {}) {
     const overlayEnabled = response.settings && response.settings.overlayEnabled !== false;
     elements.overlayToggle.checked = overlayEnabled;
   }
-  PopupApi.getDownloadSyncHistory().then(function (syncResponse) {
-    if (syncResponse && syncResponse.ok) {
-      PopupState.update({
-        syncedHistory: syncResponse.history || [],
-        syncInfo: syncResponse.syncInfo || { totalCount: 0, isSyncing: false, syncEnabled: syncEnabled },
-      });
-    }
-  }).catch(function () {});
+  PopupApi.getDownloadSyncHistory()
+    .then(function (syncResponse) {
+      if (syncResponse && syncResponse.ok) {
+        PopupState.update({
+          syncedHistory: syncResponse.history || [],
+          syncInfo: syncResponse.syncInfo || { totalCount: 0, isSyncing: false, syncEnabled: syncEnabled },
+        });
+      }
+    })
+    .catch(function () {});
   return true;
 }
 
@@ -347,7 +351,10 @@ export async function checkHelperStatus() {
       } else if (dependencies.cdmCapture) {
         capability = ", CDM capture";
       }
-      setHelperStatus(`Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}${capability}).`, "ok");
+      setHelperStatus(
+        `Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}${capability}).`,
+        "ok",
+      );
     }
   } else {
     setHelperStatus("Helper not connected.", "error");
@@ -358,17 +365,20 @@ export async function checkHelperStatus() {
 
 export function copyInstallCommand(btn) {
   const command = "scripts/install.sh";
-  navigator.clipboard.writeText(command).then(function () {
-    const originalText = btn.innerHTML;
-    btn.classList.add("copied");
-    btn.innerHTML = '<span class="setup-button-icon">\u2713</span> Copied!';
-    window.setTimeout(function () {
-      btn.classList.remove("copied");
-      btn.innerHTML = originalText;
-    }, 2000);
-  }).catch(function () {
-    // Fallback: nothing else to do
-  });
+  navigator.clipboard
+    .writeText(command)
+    .then(function () {
+      const originalText = btn.innerHTML;
+      btn.classList.add("copied");
+      btn.innerHTML = '<span class="setup-button-icon">\u2713</span> Copied!';
+      window.setTimeout(function () {
+        btn.classList.remove("copied");
+        btn.innerHTML = originalText;
+      }, 2000);
+    })
+    .catch(function () {
+      // Fallback: nothing else to do
+    });
 }
 
 export function renderDepBanner(dependencies) {
@@ -403,9 +413,10 @@ export function renderDepBanner(dependencies) {
   }
 
   if (elements.depBannerTitle) {
-    elements.depBannerTitle.textContent = missingCount > 0
-      ? missingCount + " download tool" + (missingCount > 1 ? "s" : "") + " missing"
-      : "All download tools available";
+    elements.depBannerTitle.textContent =
+      missingCount > 0
+        ? missingCount + " download tool" + (missingCount > 1 ? "s" : "") + " missing"
+        : "All download tools available";
   }
 
   if (elements.depBannerToggle) {
@@ -463,7 +474,7 @@ export async function rescanActiveTab() {
 
     await refresh({ syncActiveTab: false });
 
-    await new Promise(resolve => window.setTimeout(resolve, 2000));
+    await new Promise((resolve) => window.setTimeout(resolve, 2000));
     await refresh({ syncActiveTab: false });
   } finally {
     setRescanRefreshing(false);

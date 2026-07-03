@@ -99,10 +99,4 @@ function wipeSensitiveData(completedExchanges, trackedRequests) {
   }
 }
 
-export {
-  checkRateLimit,
-  resetRateLimit,
-  EXCHANGE_MAX_AGE_MS,
-  pruneStaleExchanges,
-  wipeSensitiveData,
-};
+export { checkRateLimit, resetRateLimit, EXCHANGE_MAX_AGE_MS, pruneStaleExchanges, wipeSensitiveData };

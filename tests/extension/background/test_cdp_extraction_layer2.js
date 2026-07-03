@@ -16,24 +16,6 @@
  */
 
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import { JSDOM } from "jsdom";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, "../../..");
-
-// ─── JSDOM environment for DOM-dependent tests ─────────────────────────────
-
-const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
-  url: "https://example.com",
-  pretendToBeVisual: true,
-  // Shadow DOM is supported by jsdom
-});
-
-const domDocument = dom.window.document;
-const domCreateElement = domDocument.createElement.bind(domDocument);
-const domBody = domDocument.body;
 
 // ─── Mock chrome.debugger API (extended for Layer 2) ───────────────────────
 
@@ -246,8 +228,8 @@ function buildFrameTree(frames) {
   const nodeMap = new Map();
   for (const f of frames) {
     nodeMap.set(f.frameId, {
-    frame: { id: f.frameId, url: f.url, mimeType: "text/html", parentId: f.parentId || "" },
-    childFrames: [],
+      frame: { id: f.frameId, url: f.url, mimeType: "text/html", parentId: f.parentId || "" },
+      childFrames: [],
     });
   }
   let root = null;
@@ -328,9 +310,7 @@ try {
   await test("1.2 discoverFrameTree returns single frame when no iframes", async () => {
     mockDebugger.reset();
     cdpExtraction.cleanup();
-    mockDebugger.mockFrameTrees.set(42, [
-      { frameId: "main", url: "https://example.com" },
-    ]);
+    mockDebugger.mockFrameTrees.set(42, [{ frameId: "main", url: "https://example.com" }]);
 
     const result = await cdpExtraction.discoverFrameTree(42);
     assert.ok(result.ok);
@@ -392,10 +372,9 @@ try {
     const scriptKey = script.slice(0, 100);
 
     // Set results for both frames - the mock uses evaluateResults for all evaluations
-    mockDebugger.evaluateResults.set(
-      scriptKey,
-      [{ url: "https://cdn.example.com/video.mp4", type: "video/mp4", source: "video-src" }]
-    );
+    mockDebugger.evaluateResults.set(scriptKey, [
+      { url: "https://cdn.example.com/video.mp4", type: "video/mp4", source: "video-src" },
+    ]);
 
     const result = await cdpExtraction.extractVideosFromTab(42, { recursive: true });
     assert.ok(result.ok, "must return ok: true");
@@ -415,7 +394,6 @@ try {
     ]);
 
     // Default is recursive: false, should only query top frame
-    const prevCount = mockDebugger.callCount;
     const result = await cdpExtraction.extractVideosFromTab(42);
     assert.ok(result.ok);
     assert.equal(result.videos.length, 0, "no videos from top frame");
@@ -436,16 +414,13 @@ try {
 
     // Each frame returns a different video
     let frameEvalCount = 0;
-    mockDebugger.evaluateResults.set(
-      scriptKey,
-      () => {
-        frameEvalCount++;
-        if (frameEvalCount === 1) {
-          return [{ url: "https://cdn.example.com/video.mp4", type: "video/mp4", source: "video-src" }];
-        }
-        return [{ url: "https://cdn.example.com/stream.m3u8", type: "application/x-mpegURL", source: "video-src" }];
+    mockDebugger.evaluateResults.set(scriptKey, () => {
+      frameEvalCount++;
+      if (frameEvalCount === 1) {
+        return [{ url: "https://cdn.example.com/video.mp4", type: "video/mp4", source: "video-src" }];
       }
-    );
+      return [{ url: "https://cdn.example.com/stream.m3u8", type: "application/x-mpegURL", source: "video-src" }];
+    });
 
     const result = await cdpExtraction.extractVideosFromTab(42, { recursive: true });
     assert.ok(result.ok);
@@ -470,20 +445,16 @@ try {
 
     // First call (main frame) succeeds, second (child) fails via evaluateError
     let callNum = 0;
-    const originalEvaluateError = null;
 
     // Override to fail on second call
-    mockDebugger.evaluateResults.set(
-      scriptKey,
-      () => {
-        callNum++;
-        if (callNum === 1) {
-          return [{ url: "https://example.com/top.mp4", type: "video/mp4", source: "video-src" }];
-        }
-        // Return empty for subsequent calls
-        return [];
+    mockDebugger.evaluateResults.set(scriptKey, () => {
+      callNum++;
+      if (callNum === 1) {
+        return [{ url: "https://example.com/top.mp4", type: "video/mp4", source: "video-src" }];
       }
-    );
+      // Return empty for subsequent calls
+      return [];
+    });
 
     const result = await cdpExtraction.extractVideosFromTab(42, { recursive: true });
     assert.ok(result.ok, "overall result should still be ok");
@@ -498,16 +469,13 @@ try {
     mockDebugger.reset();
     cdpExtraction.cleanup();
 
-    mockDebugger.mockFrameTrees.set(42, [
-      { frameId: "main", url: "https://example.com" },
-    ]);
+    mockDebugger.mockFrameTrees.set(42, [{ frameId: "main", url: "https://example.com" }]);
 
     const script = cdpExtraction.getExtractionScript();
     const scriptKey = script.slice(0, 100);
-    mockDebugger.evaluateResults.set(
-      scriptKey,
-      [{ url: "https://example.com/video.mp4", type: "video/mp4", source: "video-src" }]
-    );
+    mockDebugger.evaluateResults.set(scriptKey, [
+      { url: "https://example.com/video.mp4", type: "video/mp4", source: "video-src" },
+    ]);
 
     const result = await cdpExtraction.extractVideosFromTab(42, { recursive: true });
     assert.ok(result.ok);
@@ -527,10 +495,9 @@ try {
     const script = cdpExtraction.getExtractionScript();
     const scriptKey = script.slice(0, 100);
 
-    mockDebugger.evaluateResults.set(
-      scriptKey,
-      [{ url: "https://cdn.example.com/video.mp4", type: "video/mp4", source: "video-src" }]
-    );
+    mockDebugger.evaluateResults.set(scriptKey, [
+      { url: "https://cdn.example.com/video.mp4", type: "video/mp4", source: "video-src" },
+    ]);
 
     const result = await cdpExtraction.extractVideosFromTab(42, { recursive: true });
     assert.ok(result.ok);
@@ -571,7 +538,7 @@ try {
   // Feature 2: Shadow DOM Traversal (§2.2)
   // ───────────────────────────────────────────────────────────────────────
 
-  console.log("\n═══ Feature 2: Shadow DOM Traversal ═══\n");  // Test 2.1: getExtractionScript contains shadow DOM traversal logic
+  console.log("\n═══ Feature 2: Shadow DOM Traversal ═══\n"); // Test 2.1: getExtractionScript contains shadow DOM traversal logic
   await test("2.1 getExtractionScript contains shadow DOM traversal (collectAllVideos)", async () => {
     const script = cdpExtraction.getExtractionScript();
     assert.ok(script.includes("collectAllVideos"), "script must include collectAllVideos helper");
@@ -590,14 +557,20 @@ try {
     const script = cdpExtraction.getExtractionScript();
     // Original DOM query selectors still present
     assert.ok(script.includes("collectAllVideos(document)"), "script must query document for videos");
-    assert.ok(script.includes("collectAllSources(document, 'video source[src]')"), "script must query document for sources");
+    assert.ok(
+      script.includes("collectAllSources(document, 'video source[src]')"),
+      "script must query document for sources",
+    );
   })();
 
   // Test 2.4: collectAllSources helper exists
   await test("2.4 getExtractionScript includes collectAllSources for <source> elements", async () => {
     const script = cdpExtraction.getExtractionScript();
     assert.ok(script.includes("collectAllSources"), "script must include collectAllSources helper");
-    assert.ok(script.includes("collectAllSources(el.shadowRoot, selector)"), "must recurse into shadow roots for sources");
+    assert.ok(
+      script.includes("collectAllSources(el.shadowRoot, selector)"),
+      "must recurse into shadow roots for sources",
+    );
   })();
 
   // Test 2.5: Script is syntactically valid
@@ -641,10 +614,10 @@ try {
     const mutScript = cdpExtraction.getMutationWatchScript(500, 500);
     const mutScriptKey = mutScript.slice(0, 100);
 
-    mockDebugger.evaluateResults.set(
-      mutScriptKey,
-      { videos: [{ url: "https://example.com/mutation-video.mp4", type: "video/mp4", source: "video-src" }], timedOut: false }
-    );
+    mockDebugger.evaluateResults.set(mutScriptKey, {
+      videos: [{ url: "https://example.com/mutation-video.mp4", type: "video/mp4", source: "video-src" }],
+      timedOut: false,
+    });
 
     const result = await cdpExtraction.extractVideosWithMutationWatch(42, { timeout: 500 });
     assert.ok(result.ok, "must return ok: true");
@@ -737,10 +710,10 @@ try {
     const mutScript = cdpExtraction.getMutationWatchScript(500, 500);
     const mutScriptKey = mutScript.slice(0, 100);
 
-    mockDebugger.evaluateResults.set(
-      mutScriptKey,
-      { videos: [{ url: "https://example.com/existing-video.mp4", type: "video/mp4", source: "video-src" }], timedOut: false }
-    );
+    mockDebugger.evaluateResults.set(mutScriptKey, {
+      videos: [{ url: "https://example.com/existing-video.mp4", type: "video/mp4", source: "video-src" }],
+      timedOut: false,
+    });
 
     const result = await cdpExtraction.extractVideosWithMutationWatch(42, { timeout: 500 });
     assert.ok(result.ok);
@@ -775,15 +748,9 @@ try {
     const eventScript = cdpExtraction.getEventSimulationScript(["https://example.com/video.mp4"]);
     const eventScriptKey = eventScript.slice(0, 100);
 
-    mockDebugger.evaluateResults.set(
-      eventScriptKey,
-      { triggered: true, loadCount: 1, playCount: 0 }
-    );
+    mockDebugger.evaluateResults.set(eventScriptKey, { triggered: true, loadCount: 1, playCount: 0 });
 
-    const result = await cdpExtraction.simulateVideoEvents(
-      42,
-      ["https://example.com/video.mp4"]
-    );
+    const result = await cdpExtraction.simulateVideoEvents(42, ["https://example.com/video.mp4"]);
 
     assert.ok(result.ok, "must return ok: true");
     assert.equal(result.triggered, true, "must return triggered: true");
@@ -807,10 +774,7 @@ try {
 
     mockDebugger.attachError = "Target not found";
 
-    const result = await cdpExtraction.simulateVideoEvents(
-      42,
-      ["https://example.com/video.mp4"]
-    );
+    const result = await cdpExtraction.simulateVideoEvents(42, ["https://example.com/video.mp4"]);
     assert.ok(!result.ok, "must return ok: false on attach failure");
     assert.ok(result.error, "error must be set");
   })();
@@ -822,10 +786,7 @@ try {
 
     mockDebugger.evaluateError = "Cannot find function";
 
-    const result = await cdpExtraction.simulateVideoEvents(
-      42,
-      ["https://example.com/video.mp4"]
-    );
+    const result = await cdpExtraction.simulateVideoEvents(42, ["https://example.com/video.mp4"]);
     assert.ok(!result.ok, "must return ok: false on evaluate failure");
     assert.ok(result.error, "error must be set");
   })();
@@ -839,11 +800,9 @@ try {
     const eventScriptKey = eventScript.slice(0, 100);
     mockDebugger.evaluateResults.set(eventScriptKey, { triggered: true, loadCount: 0, playCount: 0 });
 
-    const result = await cdpExtraction.simulateVideoEvents(
-      42,
-      ["https://example.com/video.mp4"],
-      { detachAfter: false }
-    );
+    const result = await cdpExtraction.simulateVideoEvents(42, ["https://example.com/video.mp4"], {
+      detachAfter: false,
+    });
     assert.ok(result.ok);
     assert.ok(mockDebugger.attachedTabs.has(42), "should stay attached");
   })();

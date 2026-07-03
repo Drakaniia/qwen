@@ -78,11 +78,7 @@ import * as PopupStateHelpers from "../../../src/popup/popup_state.js";
 }
 
 {
-  assert.equal(
-    PopupStateHelpers.isUnknownMessageTypeError(null),
-    false,
-    "must return false for null input",
-  );
+  assert.equal(PopupStateHelpers.isUnknownMessageTypeError(null), false, "must return false for null input");
 }
 
 {
@@ -94,11 +90,7 @@ import * as PopupStateHelpers from "../../../src/popup/popup_state.js";
 }
 
 {
-  assert.equal(
-    PopupStateHelpers.isUnknownMessageTypeError(undefined),
-    false,
-    "must return false for undefined input",
-  );
+  assert.equal(PopupStateHelpers.isUnknownMessageTypeError(undefined), false, "must return false for undefined input");
 }
 
 console.log("popup-state helpers tests passed");

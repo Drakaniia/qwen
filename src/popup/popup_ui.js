@@ -21,9 +21,7 @@ function shortenUrl(url) {
     const parsed = new URL(url);
     const path = `${parsed.hostname}${parsed.pathname}`;
     const suffix = parsed.search ? "?..." : "";
-    return path.length > 74
-      ? `${path.slice(0, 34)}...${path.slice(-30)}${suffix}`
-      : `${path}${suffix}`;
+    return path.length > 74 ? `${path.slice(0, 34)}...${path.slice(-30)}${suffix}` : `${path}${suffix}`;
   } catch (_error) {
     return String(url || "").slice(0, 95);
   }
@@ -39,9 +37,7 @@ function videoTitle(video) {
   if (video && video.title) {
     return video.title;
   }
-  const isAudio =
-    video &&
-    String(video.format || "").toUpperCase() === AUDIO_FORMAT;
+  const isAudio = video && String(video.format || "").toUpperCase() === AUDIO_FORMAT;
   return shortenUrl(video && video.url) || (isAudio ? "Music" : "Video");
 }
 
@@ -80,8 +76,7 @@ function videoSizeLabel(video) {
  * @returns {string}
  */
 function videoThumbnailUrl(video) {
-  const value =
-    video && (video.thumbnailUrl || video.poster || video.image || "");
+  const value = video && (video.thumbnailUrl || video.poster || video.image || "");
   if (!value) {
     return "";
   }
@@ -119,12 +114,4 @@ function normalizeManualUrl(value) {
   }
 }
 
-export {
-  shortenUrl,
-  videoTitle,
-  displayFormat,
-  sourceLabel,
-  videoSizeLabel,
-  videoThumbnailUrl,
-  normalizeManualUrl,
-};
+export { shortenUrl, videoTitle, displayFormat, sourceLabel, videoSizeLabel, videoThumbnailUrl, normalizeManualUrl };

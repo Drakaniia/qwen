@@ -339,7 +339,11 @@ assert.match(
   "popup must switch the video list into a boxes layout",
 );
 
-assert.match(popupUiJs, /function\s+videoThumbnailUrl\s*\(/, "popup-ui module must resolve a thumbnail URL for box cards");
+assert.match(
+  popupUiJs,
+  /function\s+videoThumbnailUrl\s*\(/,
+  "popup-ui module must resolve a thumbnail URL for box cards",
+);
 
 assert.match(js, /thumb\.className\s*=\s*"video-thumbnail"/, "popup video box cards must render thumbnail images");
 

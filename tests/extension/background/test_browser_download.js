@@ -5,59 +5,23 @@ import { isBrowserDownloadableFormat, filenameFromVideo } from "../../../src/bac
 
 // ── isBrowserDownloadableFormat ─────────────────────────────────────────
 
-assert.equal(
-  isBrowserDownloadableFormat("MP4"),
-  true,
-  "MP4 should be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat("MP4"), true, "MP4 should be browser-downloadable");
 
-assert.equal(
-  isBrowserDownloadableFormat("mp4"),
-  true,
-  "lowercase mp4 should be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat("mp4"), true, "lowercase mp4 should be browser-downloadable");
 
-assert.equal(
-  isBrowserDownloadableFormat("WEBM"),
-  true,
-  "WebM should be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat("WEBM"), true, "WebM should be browser-downloadable");
 
-assert.equal(
-  isBrowserDownloadableFormat("M3U8"),
-  false,
-  "HLS M3U8 should NOT be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat("M3U8"), false, "HLS M3U8 should NOT be browser-downloadable");
 
-assert.equal(
-  isBrowserDownloadableFormat("MPD"),
-  false,
-  "DASH MPD should NOT be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat("MPD"), false, "DASH MPD should NOT be browser-downloadable");
 
-assert.equal(
-  isBrowserDownloadableFormat("HLS"),
-  false,
-  "HLS format should NOT be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat("HLS"), false, "HLS format should NOT be browser-downloadable");
 
-assert.equal(
-  isBrowserDownloadableFormat("DASH"),
-  false,
-  "DASH format should NOT be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat("DASH"), false, "DASH format should NOT be browser-downloadable");
 
-assert.equal(
-  isBrowserDownloadableFormat("ISM"),
-  false,
-  "Smooth Streaming ISM should NOT be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat("ISM"), false, "Smooth Streaming ISM should NOT be browser-downloadable");
 
-assert.equal(
-  isBrowserDownloadableFormat("SMOOTH"),
-  false,
-  "Smooth format should NOT be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat("SMOOTH"), false, "Smooth format should NOT be browser-downloadable");
 
 assert.equal(
   isBrowserDownloadableFormat(""),
@@ -71,17 +35,9 @@ assert.equal(
   "null format should be browser-downloadable (unknown defaults to direct URL)",
 );
 
-assert.equal(
-  isBrowserDownloadableFormat(undefined),
-  true,
-  "undefined format should be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat(undefined), true, "undefined format should be browser-downloadable");
 
-assert.equal(
-  isBrowserDownloadableFormat("AUDIO"),
-  true,
-  "AUDIO format should be browser-downloadable",
-);
+assert.equal(isBrowserDownloadableFormat("AUDIO"), true, "AUDIO format should be browser-downloadable");
 
 // ── filenameFromVideo ────────────────────────────────────────────────────
 

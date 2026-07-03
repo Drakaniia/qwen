@@ -93,8 +93,4 @@ async function tryCdpTunnelDownload(tabId, url, options = {}) {
   }
 }
 
-export {
-  tryCdpTunnelDownload,
-  buildNativeWriteDataMessage,
-  cleanup,
-};
+export { tryCdpTunnelDownload, buildNativeWriteDataMessage, cleanup };

@@ -1,17 +1,8 @@
 "use strict";
 
-import {
-  finiteNumber,
-  numericVideoSize,
-  humanSize,
-  isLikelyFullLengthVideoCandidate,
-} from "./video_filters.js";
+import { finiteNumber, numericVideoSize, humanSize, isLikelyFullLengthVideoCandidate } from "./video_filters.js";
 
-import {
-  normalizeComparableUrl,
-  isSameFullVideo,
-  enrichVideoVariant,
-} from "./video_identity.js";
+import { normalizeComparableUrl, isSameFullVideo, enrichVideoVariant } from "./video_identity.js";
 
 // ── Format priority ────────────────────────────────────────────────────
 

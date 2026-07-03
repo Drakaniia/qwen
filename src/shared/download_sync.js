@@ -170,10 +170,7 @@ function loadSyncHistory(json) {
       syncedHistory = parsed
         .filter(
           (entry) =>
-            entry &&
-            typeof entry.id === "string" &&
-            typeof entry.url === "string" &&
-            typeof entry.status === "string",
+            entry && typeof entry.id === "string" && typeof entry.url === "string" && typeof entry.status === "string",
         )
         .sort((a, b) => b.completedAt - a.completedAt)
         .slice(0, MAX_SYNCED_ENTRIES);

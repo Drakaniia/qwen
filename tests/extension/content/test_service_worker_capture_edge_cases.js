@@ -19,112 +19,6 @@ import assert from "node:assert/strict";
 
 // ─── Test Harness: Mock Service Worker environment ───────────────────────
 
-/**
- * Evaluate generated SW code with a mock SW environment.
- * Returns an object of exposed helpers for assertion.
- */
-function evaluateSWCode(swCodeString) {
-  const mockClients = new Map();
-  const mockSelf = {
-    addEventListener: (type, handler) => {
-      if (type === "fetch") mockSelf._fetchHandler = handler;
-    },
-    clients: {
-      get: async (id) => mockClients.get(id) || null,
-    },
-    _fetchHandler: null,
-    _capturedMessages: [],
-  };
-
-  // Wrap the SW code in a function that exposes internals
-  const wrapped = `
-    (function(swSelf) {
-      const self = swSelf;
-      const location = { href: "https://example.com" };
-
-      // Exposed for testing
-      const exposed = {};
-
-      ${swCodeString}
-
-      // Capture postMessage calls
-      const origPostMessage = swSelf.clients.get;
-      swSelf.clients.get = async (id) => {
-        const client = await origPostMessage(id);
-        if (client) {
-          const origClientPost = client.postMessage;
-          client.postMessage = (msg) => {
-            swSelf._capturedMessages.push(msg);
-            return origClientPost ? origClientPost.call(client, msg) : undefined;
-          };
-        }
-        return client;
-      };
-
-      return exposed;
-    })
-  `;
-
-  const fn = new Function("return " + wrapped)();
-  return fn(mockSelf);
-}
-
-function createMockClient(id) {
-  return {
-    id,
-    postMessage: () => {},
-    url: `https://example.com/client-${id}`,
-  };
-}
-
-/**
- * Create a mock Response object for testing the generated SW code.
- */
-function createMockResponse({
-  status = 200,
-  statusText = "OK",
-  headers = {},
-  body = new ArrayBuffer(0),
-  url = "https://cdn.example.com/seg-001.m4s",
-  type = "basic",
-  ok = true,
-} = {}) {
-  // We need to mock the response headers as a Headers-like object
-  const headersMap = new Map(Object.entries(headers));
-  return {
-    status,
-    statusText,
-    url,
-    type,
-    ok,
-    headers: {
-      get: (name) => headersMap.get(name?.toLowerCase()) || null,
-      entries: () => headersMap.entries(),
-    },
-    clone: function () {
-      return createMockResponse({ status, statusText, headers, body, url, type, ok });
-    },
-    arrayBuffer: async () => body,
-  };
-}
-
-function createMockFetchEvent(url, options = {}) {
-  const headersMap = new Map(Object.entries(options.headers || {}));
-  return {
-    request: {
-      url,
-      method: options.method || "GET",
-      headers: {
-        get: (name) => headersMap.get(name) || null,
-        has: (name) => headersMap.has(name),
-      },
-    },
-    resultingClientId: options.clientId || "client-1",
-    clientId: options.clientId || "client-1",
-    respondWith: function () {},
-  };
-}
-
 // ─── Import the module ──────────────────────────────────────────────────
 
 const swModule = await import("../../../src/content/service_worker_capture.js");
@@ -154,10 +48,10 @@ await testA("checks response.type before reading body for opaque responses", () 
   const swCode = swModule.generateCaptureSWCode();
   // The RED test asserts the generated code handles opaque responses
   // Currently the code does NOT check response.type — this should fail
-  const hasOpaqueCheck = swCode.includes("response.type") &&
+  const hasOpaqueCheck =
+    swCode.includes("response.type") &&
     (swCode.includes("'opaque'") || swCode.includes('"opaque"') || swCode.includes("opaque"));
-  assert.ok(hasOpaqueCheck,
-    "Generated SW code must check response.type for opaque responses to avoid CORS errors");
+  assert.ok(hasOpaqueCheck, "Generated SW code must check response.type for opaque responses to avoid CORS errors");
 });
 
 // A.2: Opaque responses pass through without body capture
@@ -165,10 +59,9 @@ await testA("opaque media responses are skipped (no body capture attempt)", () =
   const swCode = swModule.generateCaptureSWCode();
   // The generated code's handleFetch should skip body capture for opaque responses
   // but still pass the response through to the page
-  const hasOpaqueSkip = swCode.includes("opaque") &&
-    (swCode.includes("skip") || swCode.includes("return") || swCode.includes("continue"));
-  assert.ok(hasOpaqueSkip,
-    "Generated SW code must skip body capture for opaque responses to prevent CORS errors");
+  const hasOpaqueSkip =
+    swCode.includes("opaque") && (swCode.includes("skip") || swCode.includes("return") || swCode.includes("continue"));
+  assert.ok(hasOpaqueSkip, "Generated SW code must skip body capture for opaque responses to prevent CORS errors");
 });
 
 // A.3: Opaque response detection triggers fallback notification via postMessage metadata
@@ -176,20 +69,25 @@ await testA("opaque response sends metadata-only message (no body) to client for
   const swCode = swModule.generateCaptureSWCode();
   // Should send a smaller message indicating opaque response was detected
   // so the background can trigger CDP Network capture as fallback
-  const hasOpaqueMessage = swCode.includes("opaque") &&
-    swCode.includes("postMessage");
-  assert.ok(hasOpaqueMessage,
-    "Generated SW code should postMessage opaque response metadata for CDP fallback triggering");
+  const hasOpaqueMessage = swCode.includes("opaque") && swCode.includes("postMessage");
+  assert.ok(
+    hasOpaqueMessage,
+    "Generated SW code should postMessage opaque response metadata for CDP fallback triggering",
+  );
 });
 
 // A.4: Non-opaque media responses are still captured (regression test)
 await testA("non-opaque media responses are captured normally (regression)", () => {
   const swCode = swModule.generateCaptureSWCode();
   // Should still capture normal responses
-  assert.ok(swCode.includes("bodyB64") || swCode.includes("arrayBuffer"),
-    "Normal media responses must still be captured");
-  assert.ok(swCode.includes("MEDIA_TYPES") || swCode.includes("looksLikeSegment"),
-    "Media type checking must remain for non-opaque responses");
+  assert.ok(
+    swCode.includes("bodyB64") || swCode.includes("arrayBuffer"),
+    "Normal media responses must still be captured",
+  );
+  assert.ok(
+    swCode.includes("MEDIA_TYPES") || swCode.includes("looksLikeSegment"),
+    "Media type checking must remain for non-opaque responses",
+  );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -216,11 +114,12 @@ async function testB(name, fn) {
 await testB("forwards Range header from original request to fetch()", () => {
   const swCode = swModule.generateCaptureSWCode();
   // Should forward the Range header so the upstream CDN returns 206 Partial Content
-  const hasRangeHandling = swCode.includes("Range") ||
-    swCode.includes("range") ||
-    swCode.includes("headers") && swCode.includes("request");
-  assert.ok(hasRangeHandling,
-    "Generated SW code must forward Range headers from request to upstream fetch to preserve byte-range behavior");
+  const hasRangeHandling =
+    swCode.includes("Range") || swCode.includes("range") || (swCode.includes("headers") && swCode.includes("request"));
+  assert.ok(
+    hasRangeHandling,
+    "Generated SW code must forward Range headers from request to upstream fetch to preserve byte-range behavior",
+  );
 });
 
 // B.2: Generated SW code handles 206 Partial Content response
@@ -228,21 +127,17 @@ await testB("handles 206 Partial Content response status", () => {
   const swCode = swModule.generateCaptureSWCode();
   // Should handle the 206 response status — capture the partial body
   // The SW should not reject or fail on 206
-  const handles206 = swCode.includes("206") ||
-    swCode.includes("status") ||
-    swCode.includes("partial");
-  assert.ok(handles206,
-    "Generated SW code must handle 206 Partial Content responses without crashing");
+  const handles206 = swCode.includes("206") || swCode.includes("status") || swCode.includes("partial");
+  assert.ok(handles206, "Generated SW code must handle 206 Partial Content responses without crashing");
 });
 
 // B.3: Generated SW code captures body from byte-range response
 await testB("captures body from byte-range (206) responses", () => {
   const swCode = swModule.generateCaptureSWCode();
   // The SW should read the body from 206 responses and capture it like any other media
-  const capturesPartialBody = swCode.includes("arrayBuffer") &&
-    (swCode.includes("status") || swCode.includes("response"));
-  assert.ok(capturesPartialBody,
-    "Generated SW code must read and capture body from 206 Partial Content responses");
+  const capturesPartialBody =
+    swCode.includes("arrayBuffer") && (swCode.includes("status") || swCode.includes("response"));
+  assert.ok(capturesPartialBody, "Generated SW code must read and capture body from 206 Partial Content responses");
 });
 
 // B.4: Generated SW code handles If-Range conditional requests
@@ -250,8 +145,7 @@ await testB("forwards If-Range header from original request", () => {
   const swCode = swModule.generateCaptureSWCode();
   // If-Range is used with Range to prevent serving stale data
   const hasIfRange = swCode.includes("If-Range") || swCode.includes("if-range");
-  assert.ok(hasIfRange,
-    "Generated SW code must forward If-Range conditional header for correct range responses");
+  assert.ok(hasIfRange, "Generated SW code must forward If-Range conditional header for correct range responses");
 });
 
 // B.5: Generated SW code sends range request metadata to client
@@ -259,10 +153,9 @@ await testB("sends range request metadata (status, headers) with captured body",
   const swCode = swModule.generateCaptureSWCode();
   // Should include response status and content-range header in the message
   // so the background knows whether this is a full or partial response
-  const hasStatusInMessage = swCode.includes("status") &&
-    (swCode.includes("postMessage") || swCode.includes("postMessage"));
-  assert.ok(hasStatusInMessage,
-    "Generated SW code must include response status in captured message metadata");
+  const hasStatusInMessage =
+    swCode.includes("status") && (swCode.includes("postMessage") || swCode.includes("postMessage"));
+  assert.ok(hasStatusInMessage, "Generated SW code must include response status in captured message metadata");
 });
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -291,50 +184,50 @@ await testC("initMediaCaptureSW starts a keepalive interval timer", () => {
   // The generated SW code (or the init function) should set up a keepalive mechanism
   // Browsers kill idle SWs after ~30s of inactivity
   // We test that the init function or generated code has keepalive logic
-  const hasKeepalive = swCode.includes("keepalive") ||
+  const hasKeepalive =
+    swCode.includes("keepalive") ||
     swCode.includes("keepAlive") ||
     swCode.includes("keep_alive") ||
     swCode.includes("ping");
-  assert.ok(hasKeepalive,
-    "SW capture must include keepalive mechanism to prevent browser from killing idle SW");
+  assert.ok(hasKeepalive, "SW capture must include keepalive mechanism to prevent browser from killing idle SW");
 });
 
 // C.2: Keepalive sends periodic fetch/heartbeat to keep SW awake
 await testC("keepalive mechanism sends periodic fetch or postMessage heartbeat", () => {
   const swCode = swModule.generateCaptureSWCode();
-  const hasHeartbeat = swCode.includes("setInterval") ||
+  const hasHeartbeat =
+    swCode.includes("setInterval") ||
     swCode.includes("setTimeout") ||
     swCode.includes("heartbeat") ||
     swCode.includes("alive");
-  assert.ok(hasHeartbeat,
-    "SW must use setInterval/setTimeout to periodically ping itself and stay alive");
+  assert.ok(hasHeartbeat, "SW must use setInterval/setTimeout to periodically ping itself and stay alive");
 });
 
 // C.3: SW generated code responds to keepalive pings from content script
 await testC("generated SW code responds to keepalive ping messages from content script", () => {
   const swCode = swModule.generateCaptureSWCode();
   // Content script sends periodic pings; SW should respond
-  const respondsToPing = swCode.includes("message") ||
-    swCode.includes("ping") ||
-    swCode.includes("keepalive");
+  const respondsToPing = swCode.includes("message") || swCode.includes("ping") || swCode.includes("keepalive");
   // Check via the SW's message event handler (if it has one)
-  const hasMessageHandler = swCode.includes("addEventListener('message'") ||
-    swCode.includes('addEventListener("message"');
+  const hasMessageHandler =
+    swCode.includes("addEventListener('message'") || swCode.includes('addEventListener("message"');
   const hasPingResponse = respondsToPing || hasMessageHandler;
-  assert.ok(hasPingResponse,
-    "Generated SW code must respond to keepalive pings from content script to stay active");
+  assert.ok(hasPingResponse, "Generated SW code must respond to keepalive pings from content script to stay active");
 });
 
 // C.4: Keepalive stops after stopMediaCaptureSW
 await testC("stopMediaCaptureSW clears the keepalive timer", () => {
   // The stopMediaCaptureSW function should clear any keepalive interval
   const stopFunction = swModule.stopMediaCaptureSW.toString();
-  const hasClearKeepalive = stopFunction.includes("clearInterval") ||
+  const hasClearKeepalive =
+    stopFunction.includes("clearInterval") ||
     stopFunction.includes("clearTimeout") ||
     stopFunction.includes("keepalive") ||
     stopFunction.includes("keepAlive");
-  assert.ok(hasClearKeepalive,
-    "stopMediaCaptureSW must clear the keepalive timer to prevent leaks after capture stops");
+  assert.ok(
+    hasClearKeepalive,
+    "stopMediaCaptureSW must clear the keepalive timer to prevent leaks after capture stops",
+  );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -361,64 +254,64 @@ async function testD(name, fn) {
 await testD("defines MAX_BYTES_PER_RESPONSE constant at 500*1024*1024 (500MB)", () => {
   const swCode = swModule.generateCaptureSWCode();
   // Already has this — regression test
-  assert.ok(swCode.includes("MAX_BYTES_PER_RESPONSE"),
-    "Generated SW code must define MAX_BYTES_PER_RESPONSE constant");
-  assert.ok(swCode.includes("500 * 1024 * 1024") ||
-    swCode.includes(String(500 * 1024 * 1024)),
-    "MAX_BYTES_PER_RESPONSE must be 500MB");
+  assert.ok(swCode.includes("MAX_BYTES_PER_RESPONSE"), "Generated SW code must define MAX_BYTES_PER_RESPONSE constant");
+  assert.ok(
+    swCode.includes("500 * 1024 * 1024") || swCode.includes(String(500 * 1024 * 1024)),
+    "MAX_BYTES_PER_RESPONSE must be 500MB",
+  );
 });
 
 // D.2: Generated SW code enforces MAX_TOTAL_BYTES constant
 await testD("defines MAX_TOTAL_BYTES constant at 2*1024*1024*1024 (2GB)", () => {
   const swCode = swModule.generateCaptureSWCode();
-  assert.ok(swCode.includes("MAX_TOTAL_BYTES"),
-    "Generated SW code must define MAX_TOTAL_BYTES constant");
+  assert.ok(swCode.includes("MAX_TOTAL_BYTES"), "Generated SW code must define MAX_TOTAL_BYTES constant");
 });
 
 // D.3: Generated SW code enforces MAX_CAPTURES constant
 await testD("defines MAX_CAPTURES constant at 5000", () => {
   const swCode = swModule.generateCaptureSWCode();
-  assert.ok(swCode.includes("MAX_CAPTURES"),
-    "Generated SW code must define MAX_CAPTURES constant");
+  assert.ok(swCode.includes("MAX_CAPTURES"), "Generated SW code must define MAX_CAPTURES constant");
 });
 
 // D.4: Generated SW code skips responses over MAX_BYTES_PER_RESPONSE without crashing
 await testD("skips capture of responses exceeding MAX_BYTES_PER_RESPONSE without crashing", () => {
   const swCode = swModule.generateCaptureSWCode();
   // The SW should check body.byteLength before storing
-  const hasSizeCheck = swCode.includes("byteLength") &&
+  const hasSizeCheck =
+    swCode.includes("byteLength") &&
     (swCode.includes("MAX_BYTES_PER_RESPONSE") || swCode.includes("500 * 1024 * 1024"));
-  assert.ok(hasSizeCheck,
-    "Generated SW code must check body.byteLength against MAX_BYTES_PER_RESPONSE before capturing");
+  assert.ok(
+    hasSizeCheck,
+    "Generated SW code must check body.byteLength against MAX_BYTES_PER_RESPONSE before capturing",
+  );
 });
 
 // D.5: Generated SW code stops capturing after MAX_TOTAL_BYTES total
 await testD("stops capturing when totalBytes exceeds MAX_TOTAL_BYTES", () => {
   const swCode = swModule.generateCaptureSWCode();
-  const hasTotalCheck = swCode.includes("totalBytes") &&
-    (swCode.includes("MAX_TOTAL_BYTES") || swCode.includes("2 * 1024 * 1024 * 1024"));
-  assert.ok(hasTotalCheck,
-    "Generated SW code must track totalBytes and stop when MAX_TOTAL_BYTES is exceeded");
+  const hasTotalCheck =
+    swCode.includes("totalBytes") && (swCode.includes("MAX_TOTAL_BYTES") || swCode.includes("2 * 1024 * 1024 * 1024"));
+  assert.ok(hasTotalCheck, "Generated SW code must track totalBytes and stop when MAX_TOTAL_BYTES is exceeded");
 });
 
 // D.6: Generated SW code stops capturing after MAX_CAPTURES
 await testD("stops capturing when capturedCount exceeds MAX_CAPTURES", () => {
   const swCode = swModule.generateCaptureSWCode();
-  const hasCountCheck = swCode.includes("capturedCount") &&
-    (swCode.includes("MAX_CAPTURES") || swCode.includes("5000"));
-  assert.ok(hasCountCheck,
-    "Generated SW code must check capturedCount against MAX_CAPTURES before capturing");
+  const hasCountCheck =
+    swCode.includes("capturedCount") && (swCode.includes("MAX_CAPTURES") || swCode.includes("5000"));
+  assert.ok(hasCountCheck, "Generated SW code must check capturedCount against MAX_CAPTURES before capturing");
 });
 
 // D.7: Generated SW code logs warning when limits reached
 await testD("logs a warning message when capture limits are reached", () => {
   const swCode = swModule.generateCaptureSWCode();
   // Should console.warn or console.log when limits are hit
-  const hasLimitWarning = swCode.includes("console.warn") ||
-    swCode.includes("console.log") ||
-    swCode.includes("console.error");
-  assert.ok(hasLimitWarning,
-    "Generated SW code should log a warning when capture limits are reached for debuggability");
+  const hasLimitWarning =
+    swCode.includes("console.warn") || swCode.includes("console.log") || swCode.includes("console.error");
+  assert.ok(
+    hasLimitWarning,
+    "Generated SW code should log a warning when capture limits are reached for debuggability",
+  );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -445,15 +338,13 @@ async function testE(name, fn) {
 await testE("returns false when navigator.serviceWorker is undefined", () => {
   // We can test this by calling the init function directly
   // This should already work — regression test
-  assert.equal(typeof swModule.initMediaCaptureSW, "function",
-    "initMediaCaptureSW must be a function");
+  assert.equal(typeof swModule.initMediaCaptureSW, "function", "initMediaCaptureSW must be a function");
 });
 
-// E.2: initMediaCaptureSW returns false on insecure page URL  
+// E.2: initMediaCaptureSW returns false on insecure page URL
 await testE("returns false for insecure (http non-localhost) page URLs", () => {
   const result = swModule.isPageUrlSupportedForSWCapture("http://example.com/video");
-  assert.ok(!result,
-    "isPageUrlSupportedForSWCapture must reject non-localhost http URLs");
+  assert.ok(!result, "isPageUrlSupportedForSWCapture must reject non-localhost http URLs");
 });
 
 // E.3: initMediaCaptureSW returns false when registration errors occur
@@ -478,8 +369,10 @@ await testE("returns false to trigger fetch_intercept fallback in content.js", (
   // The return value should be a clear boolean
   const initFn = swModule.initMediaCaptureSW.toString();
   // Should return false for all failure cases
-  assert.ok(initFn.includes("return false"),
-    "initMediaCaptureSW must return false on failure to signal fetch_intercept fallback");
+  assert.ok(
+    initFn.includes("return false"),
+    "initMediaCaptureSW must return false on failure to signal fetch_intercept fallback",
+  );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -506,14 +399,16 @@ async function testF(name, fn) {
 await testF("posts messages with correct structure (type, url, bodyB64, contentType)", () => {
   const swCode = swModule.generateCaptureSWCode();
   // The message should have all required fields
-  assert.ok(swCode.includes("type:") || swCode.includes("'type'") || swCode.includes('"type"'),
-    "Message must include type field");
-  assert.ok(swCode.includes("url:"),
-    "Message must include url field");
-  assert.ok(swCode.includes("bodyB64") || swCode.includes("body"),
-    "Message must include body data");
-  assert.ok(swCode.includes("contentType") || swCode.includes("content-type"),
-    "Message must include contentType field");
+  assert.ok(
+    swCode.includes("type:") || swCode.includes("'type'") || swCode.includes('"type"'),
+    "Message must include type field",
+  );
+  assert.ok(swCode.includes("url:"), "Message must include url field");
+  assert.ok(swCode.includes("bodyB64") || swCode.includes("body"), "Message must include body data");
+  assert.ok(
+    swCode.includes("contentType") || swCode.includes("content-type"),
+    "Message must include contentType field",
+  );
 });
 
 // F.2: Generated SW code handles postMessage when no client is available
@@ -521,11 +416,11 @@ await testF("handles postMessage gracefully when no client is available", () => 
   const swCode = swModule.generateCaptureSWCode();
   // The SW should handle the case where resultingClientId/clientId is null
   // and no client can be found
-  const hasClientGuard = swCode.includes("if (clientId)") ||
+  const hasClientGuard =
+    swCode.includes("if (clientId)") ||
     swCode.includes("if (client)") ||
-    swCode.includes("if (") && swCode.includes("clients.get");
-  assert.ok(hasClientGuard,
-    "Generated SW code must guard against missing client when posting messages");
+    (swCode.includes("if (") && swCode.includes("clients.get"));
+  assert.ok(hasClientGuard, "Generated SW code must guard against missing client when posting messages");
 });
 
 // F.3: Generated SW code handles message event data validation
@@ -533,12 +428,10 @@ await testF("message handler validates event.data before processing", () => {
   const swCode = swModule.generateCaptureSWCode();
   // The content script's message handler should check event.data exists
   // and has the expected type before accessing properties
-  const hasDataCheck = swCode.includes("event.data") &&
-    (swCode.includes("qwinMediaResponse") ||
-     swCode.includes("data.type") ||
-     swCode.includes("data &&"));
-  assert.ok(hasDataCheck,
-    "Message handler must validate event.data before accessing properties");
+  const hasDataCheck =
+    swCode.includes("event.data") &&
+    (swCode.includes("qwinMediaResponse") || swCode.includes("data.type") || swCode.includes("data &&"));
+  assert.ok(hasDataCheck, "Message handler must validate event.data before accessing properties");
 });
 
 // F.4: Generated SW code sends response status and headers for all captured responses
@@ -547,8 +440,7 @@ await testF("sends response status and headers in every captured message", () =>
   // Every message should include status and headers metadata
   const hasStatus = swCode.includes("status:");
   const hasHeaders = swCode.includes("headers:");
-  assert.ok(hasStatus && hasHeaders,
-    "Every captured message must include response status and headers metadata");
+  assert.ok(hasStatus && hasHeaders, "Every captured message must include response status and headers metadata");
 });
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -575,16 +467,14 @@ async function testG(name, fn) {
 await testG("unregisters the Service Worker registration", () => {
   const stopFn = swModule.stopMediaCaptureSW.toString();
   // Should call unregister() on the registration
-  assert.ok(stopFn.includes("unregister"),
-    "stopMediaCaptureSW must call unregister() on the SW registration");
+  assert.ok(stopFn.includes("unregister"), "stopMediaCaptureSW must call unregister() on the SW registration");
 });
 
 // G.2: stopMediaCaptureSW removes message event listener
 await testG("removes the message event listener from navigator.serviceWorker", () => {
   const stopFn = swModule.stopMediaCaptureSW.toString();
   // Should call removeEventListener
-  assert.ok(stopFn.includes("removeEventListener"),
-    "stopMediaCaptureSW must remove the message event listener");
+  assert.ok(stopFn.includes("removeEventListener"), "stopMediaCaptureSW must remove the message event listener");
 });
 
 // G.3: stopMediaCaptureSW resets swActive to false
@@ -592,51 +482,46 @@ await testG("resets swActive state to false", () => {
   // isSWActive should return false after stop
   // This tests via the module's state
   const cleanupFn = swModule.stopMediaCaptureSW.toString();
-  assert.ok(cleanupFn.includes("swActive") && (cleanupFn.includes("false") || cleanupFn.includes("null")),
-    "stopMediaCaptureSW must reset swActive to false");
+  assert.ok(
+    cleanupFn.includes("swActive") && (cleanupFn.includes("false") || cleanupFn.includes("null")),
+    "stopMediaCaptureSW must reset swActive to false",
+  );
 });
 
 // G.4: Multiple stopMediaCaptureSW calls are idempotent
 await testG("multiple calls to stopMediaCaptureSW are idempotent (no error)", () => {
   const stopFn = swModule.stopMediaCaptureSW.toString();
   // Should handle null/undefined state without errors
-  const hasGuard = stopFn.includes("if (messageHandler)") ||
-    stopFn.includes("if (swRegistration)") ||
-    stopFn.includes("try");
-  assert.ok(hasGuard,
-    "stopMediaCaptureSW must guard against null state for idempotent calls");
+  const hasGuard =
+    stopFn.includes("if (messageHandler)") || stopFn.includes("if (swRegistration)") || stopFn.includes("try");
+  assert.ok(hasGuard, "stopMediaCaptureSW must guard against null state for idempotent calls");
 });
 
 // G.5: stopMediaCaptureSW without prior init does not throw
 await testG("calling stopMediaCaptureSW without prior init does not throw", () => {
   // Must be safe to call when no SW was ever registered
   const stopFn = swModule.stopMediaCaptureSW.toString();
-  const hasGuard = stopFn.includes("if (messageHandler)") ||
-    stopFn.includes("if (swRegistration)") ||
-    stopFn.includes("try");
-  assert.ok(hasGuard,
-    "stopMediaCaptureSW must not throw when called without prior init");
+  const hasGuard =
+    stopFn.includes("if (messageHandler)") || stopFn.includes("if (swRegistration)") || stopFn.includes("try");
+  assert.ok(hasGuard, "stopMediaCaptureSW must not throw when called without prior init");
 });
 
 // G.6: clearCapturedResponses clears all stored data
 await testG("clearCapturedResponses resets the captured responses array", () => {
   const clearFn = swModule.clearCapturedResponses.toString();
   // Should clear the array
-  assert.ok(clearFn.includes("length") ||
-    clearFn.includes("splice") ||
-    clearFn.includes("= []"),
-    "clearCapturedResponses must reset the captured responses array");
+  assert.ok(
+    clearFn.includes("length") || clearFn.includes("splice") || clearFn.includes("= []"),
+    "clearCapturedResponses must reset the captured responses array",
+  );
 });
 
 // G.7: getCapturedResponses returns a snapshot (does not share reference)
 await testG("getCapturedResponses returns a snapshot (copy), not internal reference", () => {
   const getFn = swModule.getCapturedResponses.toString();
   // Should use spread operator or slice to return a copy
-  const returnsCopy = getFn.includes("...") ||
-    getFn.includes("slice") ||
-    getFn.includes("concat");
-  assert.ok(returnsCopy,
-    "getCapturedResponses must return a copy of internal array to prevent mutation");
+  const returnsCopy = getFn.includes("...") || getFn.includes("slice") || getFn.includes("concat");
+  assert.ok(returnsCopy, "getCapturedResponses must return a copy of internal array to prevent mutation");
 });
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -668,9 +553,13 @@ console.log(`  TOTAL: ${passedAll}/${totalAll} passed, ${totalAll - passedAll} f
 console.log(`${"=".repeat(55)}`);
 
 if (failedA > 0 || failedB > 0 || failedC > 0 || failedD > 0 || failedE > 0 || failedF > 0 || failedG > 0) {
-  console.log("\n[RED] These tests describe desired behavior that is NOT YET IMPLEMENTED.\n" +
-    "[RED] They will pass once the implementation is completed in GREEN phase.");
+  console.log(
+    "\n[RED] These tests describe desired behavior that is NOT YET IMPLEMENTED.\n" +
+      "[RED] They will pass once the implementation is completed in GREEN phase.",
+  );
   process.exitCode = 1;
 } else {
-  console.log("\n✅ All tests PASSED! (This shouldn't happen in RED phase — implementation may already cover these cases)");
+  console.log(
+    "\n✅ All tests PASSED! (This shouldn't happen in RED phase — implementation may already cover these cases)",
+  );
 }

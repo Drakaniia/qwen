@@ -54,4 +54,7 @@ import assert from "node:assert/strict";
   assert.equal(mp.classifyUrl("").type, "unknown");
 
   console.log("✓ All media_protocols tests passed");
-})().catch((err) => { console.error(err); process.exitCode = 1; });
+})().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

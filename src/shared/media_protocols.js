@@ -38,7 +38,8 @@ const MANIFEST_URL_RE = /\.(m3u8|mpd)(\?|$)/i;
 const DIRECT_MEDIA_RE = /\.(mp4|webm|avi|mkv|mov|wmv|flv)(\?|$)/i;
 
 /** Detect signed/token-authenticated URLs (expiry params). */
-const SIGNED_URL_RE = /[?&](?:expires?|e|exp|se|st|token|signature|sig|Policy|Key-Pair-Id|X-Amz-Expires|AWSAccessKeyId)=/i;
+const SIGNED_URL_RE =
+  /[?&](?:expires?|e|exp|se|st|token|signature|sig|Policy|Key-Pair-Id|X-Amz-Expires|AWSAccessKeyId)=/i;
 
 /** Detect transferMode: "stream" patterns in fetch intercept code. */
 const TRANSFER_MODE_RE = /transferMode\s*[:=]\s*['"]stream['"]/i;

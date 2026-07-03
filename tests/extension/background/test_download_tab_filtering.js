@@ -10,10 +10,7 @@ const __dirname = import.meta.dirname;
 // downloads for the current tab — otherwise old downloads from other tabs
 // clutter the download list and cause confusion (opening the wrong file).
 
-const backgroundSource = fs.readFileSync(
-  path.join(__dirname, "../../../src/background/background.js"),
-  "utf8",
-);
+const backgroundSource = fs.readFileSync(path.join(__dirname, "../../../src/background/background.js"), "utf8");
 
 assert.match(
   backgroundSource,

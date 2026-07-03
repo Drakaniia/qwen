@@ -65,7 +65,9 @@ function cleanup() {
   if (messageListener) {
     try {
       api.runtime.onMessage.removeListener(messageListener);
-    } catch (_e) { /* ignore */ }
+    } catch (_e) {
+      /* ignore */
+    }
     messageListener = null;
   }
   pendingSegments.length = 0;

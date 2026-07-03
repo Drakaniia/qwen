@@ -2,8 +2,8 @@
 
 import struct
 from typing import Optional
-from .iso_box import ISOBox
-from .fragments import parse_moof, _extract_sequence_number
+
+from .fragments import _extract_sequence_number, parse_moof
 
 
 def _extract_mdat_from_segment(seg_data: bytes) -> Optional[bytes]:

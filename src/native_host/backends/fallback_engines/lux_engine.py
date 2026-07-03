@@ -10,6 +10,7 @@ from shutil import which
 from threading import Event
 
 from fallback_engines.helpers import _find_latest_file
+
 from native_protocol import HostError
 from process_control import creation_flags
 

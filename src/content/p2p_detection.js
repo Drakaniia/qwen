@@ -282,11 +282,13 @@ function addDetectedP2pUrl(url, source) {
   if (CONFIG.autoForward) {
     try {
       const api = getExtensionApi();
-      api.runtime.sendMessage({
-        type: "p2pDetectedUrl",
-        p2pUrl: url,
-        source,
-      }).catch(() => {});
+      api.runtime
+        .sendMessage({
+          type: "p2pDetectedUrl",
+          p2pUrl: url,
+          source,
+        })
+        .catch(() => {});
     } catch (_error) {
       // Extension context may be unavailable
     }
@@ -306,11 +308,13 @@ function scanPage() {
   if (p2pFramework || webtorrentAvailable) {
     try {
       const api = getExtensionApi();
-      api.runtime.sendMessage({
-        type: "p2pFrameworkDetected",
-        p2pFramework: true,
-        webtorrent: webtorrentAvailable,
-      }).catch(() => {});
+      api.runtime
+        .sendMessage({
+          type: "p2pFrameworkDetected",
+          p2pFramework: true,
+          webtorrent: webtorrentAvailable,
+        })
+        .catch(() => {});
     } catch (_error) {}
   }
 }
@@ -369,12 +373,4 @@ function getDetectedUrls() {
   return Array.from(detectedP2pUrls);
 }
 
-export {
-  init,
-  cleanup,
-  getDetectedUrls,
-  isLikelyP2pMediaUrl,
-  hasWebTorrent,
-  hasP2pFramework,
-  extractUrlsFromSdp,
-};
+export { init, cleanup, getDetectedUrls, isLikelyP2pMediaUrl, hasWebTorrent, hasP2pFramework, extractUrlsFromSdp };

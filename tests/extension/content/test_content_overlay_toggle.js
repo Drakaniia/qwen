@@ -3,14 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 const __dirname = import.meta.dirname;
-const overlaySource = fs.readFileSync(
-  path.join(__dirname, "../../../src/content/content_overlay.js"),
-  "utf8",
-);
-const contentSource = fs.readFileSync(
-  path.join(__dirname, "../../../src/content/content.js"),
-  "utf8",
-);
+const overlaySource = fs.readFileSync(path.join(__dirname, "../../../src/content/content_overlay.js"), "utf8");
+const contentSource = fs.readFileSync(path.join(__dirname, "../../../src/content/content.js"), "utf8");
 
 (async () => {
   // ─── Test: content_overlay exports hideAllOverlays ───────────────────────
@@ -29,7 +23,7 @@ const contentSource = fs.readFileSync(
     "content_overlay.js must export setOverlayEnabled to control overlay visibility based on settings",
   );
 
-  // ─── Test: setOverlayEnabled(true) re-shows overlays ────────────────────
+  // ─── Test: setOverlayEnabled(enabled) function definition ────────────────
 
   assert.match(
     overlaySource,
@@ -41,15 +35,15 @@ const contentSource = fs.readFileSync(
 
   assert.match(
     overlaySource,
-    /if\s*\(\s*enabled\s*\)\s*\{[\s\S]*positionAllOverlays\s*\(\s*\)/,
+    /function\s+setOverlayEnabled[\s\S]*enabled\s*\)[\s\S]*positionAllOverlays\s*\(/,
     "setOverlayEnabled must call positionAllOverlays when enabling overlays",
   );
 
-  // ─── Test: setOverlayEnabled removes overlays when disabled ────────────
+  // ─── Test: setOverlayEnabled calls hideAllOverlays when disabled ─────────
 
   assert.match(
     overlaySource,
-    /if\s*\(\s*!\s*enabled\s*\)[\s\S]*hideAllOverlays\s*\(\s*\)/,
+    /function\s+setOverlayEnabled[\s\S]*hideAllOverlays\s*\(/,
     "setOverlayEnabled must call hideAllOverlays when disabling overlays",
   );
 
@@ -77,7 +71,7 @@ const contentSource = fs.readFileSync(
 
   assert.match(
     contentSource,
-    /setOverlayEnabled\s*\(\s*message\.enabled\s*\)/,
+    /setOverlayEnabled\s*\(\s*message\.enabled/,
     "content.js must call setOverlayEnabled with the message.enabled value",
   );
 

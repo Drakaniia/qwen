@@ -39,7 +39,7 @@ function userFriendlyDownloadError(error) {
 
   // aria2c unknown option errors — config/compatibility issue, not network
   if (/aria2c.*unknown option/i.test(text)) {
-    return 'The download helper has an invalid configuration option. Please report this as a bug.';
+    return "The download helper has an invalid configuration option. Please report this as a bug.";
   }
 
   // Connection / timeout / transport errors
@@ -48,7 +48,7 @@ function userFriendlyDownloadError(error) {
       text,
     )
   ) {
-    return 'Could not connect to the video server. The site may be down, blocking the request, or your network may be unstable.';
+    return "Could not connect to the video server. The site may be down, blocking the request, or your network may be unstable.";
   }
 
   return "";
@@ -229,12 +229,18 @@ function findIframeDetectedVideo(iframeUrl, tabVideos) {
     return null;
   }
 
-  const normalizedIframe = iframeUrl.toLowerCase().replace(/[?#].*$/, "").replace(/\/+$/, "");
+  const normalizedIframe = iframeUrl
+    .toLowerCase()
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "");
 
   const iframeVideos = tabVideos.filter((v) => {
     if (!v || v.source === "iframe-page") return false;
     if (!v.frameUrl) return false;
-    const vFrameUrl = v.frameUrl.toLowerCase().replace(/[?#].*$/, "").replace(/\/+$/, "");
+    const vFrameUrl = v.frameUrl
+      .toLowerCase()
+      .replace(/[?#].*$/, "")
+      .replace(/\/+$/, "");
     if (vFrameUrl !== normalizedIframe) return false;
     // Accept any downloadable format — even catch-all VIDEO (used by nextflicks-style
     // sites) is better than the PAGE candidate that already failed.

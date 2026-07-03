@@ -1,7 +1,7 @@
 """Encrypted segment detection — sinf, pssh, schm, tenc, frma boxes."""
 
-from .iso_box import ISOBox
 from .container import parse_boxes
+from .iso_box import ISOBox
 
 
 def has_encryption_boxes(boxes: list[ISOBox]) -> bool:

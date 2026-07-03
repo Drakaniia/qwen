@@ -70,7 +70,12 @@ try {
     if (DownloadQueue) {
       DownloadQueue.reset();
       let lastStarted = null;
-      DownloadQueue.init({ startDownload: async (...args) => { lastStarted = args; return { jobId: "test_job" }; } });
+      DownloadQueue.init({
+        startDownload: async (...args) => {
+          lastStarted = args;
+          return { jobId: "test_job" };
+        },
+      });
 
       DownloadQueue.enqueue(1, "video_1");
       DownloadQueue.enqueue(1, "video_2");

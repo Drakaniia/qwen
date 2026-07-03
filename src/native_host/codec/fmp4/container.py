@@ -1,6 +1,6 @@
 """Container box detection and flat/hierarchical parsing."""
 
-from .iso_box import ISOBox, _parse_box_at, BOX_TYPE_CONTAINERS
+from .iso_box import BOX_TYPE_CONTAINERS, ISOBox, _parse_box_at
 
 
 def is_container_box(box_type: str) -> bool:

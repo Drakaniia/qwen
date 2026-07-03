@@ -37,7 +37,9 @@ assert.equal(typeof emeIntercept.cleanup, "function", "module must export cleanu
 assert.equal(typeof emeIntercept.getCapturedData, "function", "module must export getCapturedData()");
 assert.equal(typeof emeIntercept.isInitDataType, "function", "module must export isInitDataType()");
 assert.equal(typeof emeIntercept.getActiveSessions, "function", "module must export getActiveSessions()");
-console.log("✓ Module exports expected interface: init(), cleanup(), getCapturedData(), isInitDataType(), getActiveSessions()");
+console.log(
+  "✓ Module exports expected interface: init(), cleanup(), getCapturedData(), isInitDataType(), getActiveSessions()",
+);
 
 // ─── Test 2: Module loads without errors and functions are callable ────────
 

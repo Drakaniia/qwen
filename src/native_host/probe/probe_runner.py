@@ -172,10 +172,7 @@ def run_parallel_probes(
     # over yt-dlp because it's purpose-built for fragmented stream
     # downloads with multi-threaded segment fetching.
     # Priority order: N_m3u8DL-RE > Streamlink > yt-dlp > curl_cffi > ffmpeg
-    is_stream = (
-        url.endswith(".m3u8") or ".m3u8?" in url or
-        url.endswith(".mpd") or ".mpd?" in url
-    )
+    is_stream = url.endswith(".m3u8") or ".m3u8?" in url or url.endswith(".mpd") or ".mpd?" in url
 
     # Backend priority for stream manifest URLs
     STREAM_PRIORITY = ["n_m3u8dl_re", "streamlink", "yt-dlp", "curl_cffi", "ffmpeg"]

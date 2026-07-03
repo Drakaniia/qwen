@@ -20,7 +20,6 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-
 # ── AVC configuration record builder ──────────────────────────────────────
 
 

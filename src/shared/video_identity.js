@@ -20,15 +20,43 @@ const KBPS_RE = /(?:^|[^\d])(\d{3,6})\s?kbps?(?:[^\d]|$)/i;
 // ── Generic title detection ──────────────────────────────────────────
 
 const GENERIC_WORDS = [
-  "video", "videos", "media", "movie", "file", "download", "master",
-  "playlist", "index", "manifest", "stream", "site", "player", "page",
-  "home", "tab", "window", "link", "none", "undefined", "null",
-  "advertisement", "ad", "content", "container", "wrapper", "box",
-  "watch", "online", "view", "play", "playing", "browsing", "searching",
+  "video",
+  "videos",
+  "media",
+  "movie",
+  "file",
+  "download",
+  "master",
+  "playlist",
+  "index",
+  "manifest",
+  "stream",
+  "site",
+  "player",
+  "page",
+  "home",
+  "tab",
+  "window",
+  "link",
+  "none",
+  "undefined",
+  "null",
+  "advertisement",
+  "ad",
+  "content",
+  "container",
+  "wrapper",
+  "box",
+  "watch",
+  "online",
+  "view",
+  "play",
+  "playing",
+  "browsing",
+  "searching",
 ];
 
-const GENERIC_STEM_RE = new RegExp(
-  `^(?:${GENERIC_WORDS.join("|")})(?:\\s+(?:${GENERIC_WORDS.join("|")}))*$`, "i");
+const GENERIC_STEM_RE = new RegExp(`^(?:${GENERIC_WORDS.join("|")})(?:\\s+(?:${GENERIC_WORDS.join("|")}))*$`, "i");
 
 const GENERIC_TITLE_RE = new RegExp(
   `^(?:video|video player|media player|html5 video|player|none|undefined|null|advertisement|ad|movie|${GENERIC_WORDS.join("|")})$`,

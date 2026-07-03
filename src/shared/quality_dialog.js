@@ -190,7 +190,13 @@ function createChooser(options) {
     }
   }
 
-  function showChoices({ choiceTitle = "", formats = [], nativeError = "", hasBack = false, hasSubtitles = false } = {}) {
+  function showChoices({
+    choiceTitle = "",
+    formats = [],
+    nativeError = "",
+    hasBack = false,
+    hasSubtitles = false,
+  } = {}) {
     return new Promise((resolve) => {
       pendingResolve = resolve;
       const titleSuffix = hasSubtitles ? " — CC" : "";

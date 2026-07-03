@@ -17,7 +17,9 @@ assert.equal(
 );
 
 assert.equal(
-  playlistDetection.isPlaylistUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"),
+  playlistDetection.isPlaylistUrl(
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf",
+  ),
   true,
   "YouTube watch URL with list param should be detected as a playlist",
 );
@@ -114,11 +116,7 @@ assert.equal(
   "YouTube watch URL should NOT be a playlist (no list param)",
 );
 
-assert.equal(
-  playlistDetection.isPlaylistUrl(""),
-  false,
-  "Empty string should NOT be detected as a playlist",
-);
+assert.equal(playlistDetection.isPlaylistUrl(""), false, "Empty string should NOT be detected as a playlist");
 
 assert.equal(
   playlistDetection.isPlaylistUrl("https://example.com"),
@@ -167,7 +165,9 @@ assert.equal(
 );
 
 assert.equal(
-  playlistDetection.extractPlaylistId("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf&index=2"),
+  playlistDetection.extractPlaylistId(
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf&index=2",
+  ),
   "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf",
   "YouTube playlist ID should be extracted from watch URL with list param",
 );
@@ -235,7 +235,9 @@ assert.equal(
 );
 
 assert.equal(
-  playlistDetection.isPlaylistPage("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"),
+  playlistDetection.isPlaylistPage(
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf",
+  ),
   false,
   "YouTube watch page with playlist should NOT be detected (still a watch page)",
 );
@@ -300,33 +302,15 @@ const batchInfo = playlistDetection.getBatchInfo({
   pageUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf",
 });
 
-assert.equal(
-  batchInfo.isPlaylist,
-  true,
-  "getBatchInfo should detect playlist on watch URL with list param",
-);
+assert.equal(batchInfo.isPlaylist, true, "getBatchInfo should detect playlist on watch URL with list param");
 
-assert.equal(
-  batchInfo.source,
-  "youtube",
-  "getBatchInfo should detect YouTube source",
-);
+assert.equal(batchInfo.source, "youtube", "getBatchInfo should detect YouTube source");
 
-assert.equal(
-  batchInfo.title,
-  "YouTube Playlist",
-  "getBatchInfo should provide playlist title",
-);
+assert.equal(batchInfo.title, "YouTube Playlist", "getBatchInfo should provide playlist title");
 
-assert.ok(
-  typeof batchInfo.itemCount === "number",
-  "getBatchInfo should have an itemCount field",
-);
+assert.ok(typeof batchInfo.itemCount === "number", "getBatchInfo should have an itemCount field");
 
-assert.ok(
-  batchInfo.playlistUrl,
-  "getBatchInfo should have a playlistUrl field",
-);
+assert.ok(batchInfo.playlistUrl, "getBatchInfo should have a playlistUrl field");
 
 // Non-playlist video should not have batch info
 const nonBatchInfo = playlistDetection.getBatchInfo({
@@ -335,11 +319,7 @@ const nonBatchInfo = playlistDetection.getBatchInfo({
   pageUrl: "https://example.com/watch/123",
 });
 
-assert.equal(
-  nonBatchInfo.isPlaylist,
-  false,
-  "getBatchInfo for non-playlist video should return isPlaylist=false",
-);
+assert.equal(nonBatchInfo.isPlaylist, false, "getBatchInfo for non-playlist video should return isPlaylist=false");
 
 // YouTube watch without list param should not be a batch
 const noListInfo = playlistDetection.getBatchInfo({
@@ -348,11 +328,7 @@ const noListInfo = playlistDetection.getBatchInfo({
   pageUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
 });
 
-assert.equal(
-  noListInfo.isPlaylist,
-  false,
-  "getBatchInfo for simple YouTube watch should return isPlaylist=false",
-);
+assert.equal(noListInfo.isPlaylist, false, "getBatchInfo for simple YouTube watch should return isPlaylist=false");
 
 // Spotify playlist page
 const spotifyBatchInfo = playlistDetection.getBatchInfo({
@@ -361,17 +337,9 @@ const spotifyBatchInfo = playlistDetection.getBatchInfo({
   pageUrl: "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
 });
 
-assert.equal(
-  spotifyBatchInfo.isPlaylist,
-  true,
-  "getBatchInfo should detect Spotify playlist",
-);
+assert.equal(spotifyBatchInfo.isPlaylist, true, "getBatchInfo should detect Spotify playlist");
 
-assert.equal(
-  spotifyBatchInfo.source,
-  "spotify",
-  "getBatchInfo for Spotify playlist should show source 'spotify'",
-);
+assert.equal(spotifyBatchInfo.source, "spotify", "getBatchInfo for Spotify playlist should show source 'spotify'");
 
 // HLS/DASH stream manifest should NOT be treated as a batch playlist
 // (These are individual stream manifests, not collections of videos)
@@ -381,10 +349,6 @@ const manifestInfo = playlistDetection.getBatchInfo({
   pageUrl: "https://streaming.example.com/video/123",
 });
 
-assert.equal(
-  manifestInfo.isPlaylist,
-  false,
-  "getBatchInfo for HLS manifest should NOT be a batch playlist",
-);
+assert.equal(manifestInfo.isPlaylist, false, "getBatchInfo for HLS manifest should NOT be a batch playlist");
 
 console.log("playlist detection tests passed");

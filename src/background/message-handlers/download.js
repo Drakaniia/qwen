@@ -6,16 +6,32 @@
 
 export function registerDownloadHandlers(messageRouter, ctx) {
   const {
-    senderTabId, getTabVideos, getVisibleVideosForTab, addDetectedVideo,
-    chooseDownloadFolder, tabState, nativeRequest, browserApi, HOST_NAME,
+    senderTabId,
+    getTabVideos,
+    getVisibleVideosForTab,
+    addDetectedVideo,
+    chooseDownloadFolder,
+    tabState,
+    nativeRequest,
+    browserApi,
+    HOST_NAME,
+    notifyPopup,
   } = ctx;
-
-  const { detectFormat } = ctx.videoUtils;
   const { variantsForVideo, findGroupedVideoForVariant } = ctx.downloadHelpers;
   const { getNativeFormatsForVideo } = ctx.formatHelpers;
-  const { startNativeDownload, startNativeDownloadForUrl, getBestDownloadableVideo,
-    startBestNativeDownload, controlActiveDownload, resumeDownload, cancelDownload,
-    retryDownload, openDownloadedPath, removeDownload, clearDownloads } = ctx;
+  const {
+    startNativeDownload,
+    startNativeDownloadForUrl,
+    getBestDownloadableVideo,
+    startBestNativeDownload,
+    controlActiveDownload,
+    resumeDownload,
+    cancelDownload,
+    retryDownload,
+    openDownloadedPath,
+    removeDownload,
+    clearDownloads,
+  } = ctx;
 
   // ── Folder picker helper ───────────────────────────────────────────────
 
@@ -89,7 +105,14 @@ export function registerDownloadHandlers(messageRouter, ctx) {
     }
     return {
       ok: true,
-      ...(await getNativeFormatsForVideo(tabId, video, getVisibleVideosForTab, notifyPopup, nativeRequest, addDetectedVideo)),
+      ...(await getNativeFormatsForVideo(
+        tabId,
+        video,
+        getVisibleVideosForTab,
+        notifyPopup,
+        nativeRequest,
+        addDetectedVideo,
+      )),
     };
   });
 
@@ -136,7 +159,14 @@ export function registerDownloadHandlers(messageRouter, ctx) {
     return {
       ok: true,
       videoId: groupedVideo.id,
-      ...(await getNativeFormatsForVideo(tabId, groupedVideo, getVisibleVideosForTab, notifyPopup, nativeRequest, addDetectedVideo)),
+      ...(await getNativeFormatsForVideo(
+        tabId,
+        groupedVideo,
+        getVisibleVideosForTab,
+        notifyPopup,
+        nativeRequest,
+        addDetectedVideo,
+      )),
     };
   });
 
@@ -148,7 +178,14 @@ export function registerDownloadHandlers(messageRouter, ctx) {
     return {
       ok: true,
       videoId: video.id,
-      ...(await getNativeFormatsForVideo(tabId, video, getVisibleVideosForTab, notifyPopup, nativeRequest, addDetectedVideo)),
+      ...(await getNativeFormatsForVideo(
+        tabId,
+        video,
+        getVisibleVideosForTab,
+        notifyPopup,
+        nativeRequest,
+        addDetectedVideo,
+      )),
     };
   });
 

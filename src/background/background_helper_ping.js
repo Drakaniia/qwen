@@ -118,10 +118,7 @@ export function pingNativeHost(hostName, runtimeApi) {
     port.onDisconnect.addListener(() => {
       clearTimeout(timeout);
       const runtimeError = api.runtime.lastError ? api.runtime.lastError.message : "";
-      console.warn(
-        "[helper-ping] Native messaging port disconnected:",
-        runtimeError || "no error message",
-      );
+      console.warn("[helper-ping] Native messaging port disconnected:", runtimeError || "no error message");
       finish({
         ok: false,
         error: runtimeError || "Native helper is not registered or could not start.",

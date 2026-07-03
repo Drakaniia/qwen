@@ -263,13 +263,7 @@ async function downloadBatchItem(tabId, item) {
   // Use the detected video's ID to start the download directly,
   // bypassing startNativeDownloadForUrl (which calls addDetectedVideo again).
   // This avoids a duplicate detection call and preserves the "batch" source label.
-  return deps.startNativeDownload(
-    tabId,
-    detected.id,
-    item.formatId || "best",
-    "",
-    "auto",
-  );
+  return deps.startNativeDownload(tabId, detected.id, item.formatId || "best", "", "auto");
 }
 
 // ─── Batch control ──────────────────────────────────────────────────────────

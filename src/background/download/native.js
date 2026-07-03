@@ -364,7 +364,12 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
                 });
                 return;
               }
-              dlDebug(deps, "error", "All download methods exhausted", deps.exhaustedSourcesError(errorText, attemptedUrls));
+              dlDebug(
+                deps,
+                "error",
+                "All download methods exhausted",
+                deps.exhaustedSourcesError(errorText, attemptedUrls),
+              );
               deps.updateDownload(jobId, {
                 status: "error",
                 error: deps.exhaustedSourcesError(errorText, attemptedUrls),

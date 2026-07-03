@@ -20,18 +20,9 @@
  *   6. getActivePatterns / refreshAllLists — Orchestration entry points
  */
 
-import {
-  RULE_BLOCK,
-  RULE_EXCEPTION,
-  RULE_REGEX,
-  FILTER_LISTS,
-  getConfiguredLists,
-} from "./filter_list_config.js";
+import { RULE_BLOCK, RULE_EXCEPTION, RULE_REGEX, FILTER_LISTS, getConfiguredLists } from "./filter_list_config.js";
 
-import {
-  parseFilterList,
-  extractVideoRelevantRules,
-} from "./filter_list_parser.js";
+import { parseFilterList, extractVideoRelevantRules } from "./filter_list_parser.js";
 
 import {
   loadFromCache,

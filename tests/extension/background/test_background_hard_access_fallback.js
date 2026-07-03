@@ -931,7 +931,7 @@ async function testChooseDownloadFolderPersistsNativeSelectedPath() {
   assert.equal(response.path, selectedPath);
   assert.equal(response.settings.downloadFolder, selectedPath);
   assert.equal(settingsResponse.settings.downloadFolder, selectedPath);
-  const chooseFolderMsg = nativeMessages.find(m => m.type === "chooseFolder");
+  const chooseFolderMsg = nativeMessages.find((m) => m.type === "chooseFolder");
   assert.ok(chooseFolderMsg, "must have a chooseFolder native message");
   assert.equal(chooseFolderMsg.type, "chooseFolder");
   assert.equal(chooseFolderMsg.initialFolder, "");

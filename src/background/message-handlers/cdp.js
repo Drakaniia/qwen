@@ -5,8 +5,7 @@
  */
 
 export function registerCdpHandlers(messageRouter, ctx) {
-  const { cdpRelay, cdpExtraction, isExtensionPageSender, addDetectedVideo,
-    notifyPopup, getVisibleVideosForTab } = ctx;
+  const { cdpRelay, cdpExtraction, isExtensionPageSender, addDetectedVideo, getVisibleVideosForTab } = ctx;
   const { detectFormat } = ctx.videoUtils;
 
   // ── CDP relay handlers ────────────────────────────────────────────────

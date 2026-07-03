@@ -1,9 +1,8 @@
 "use strict";
 
 import { createOperations } from "../download_operations.js";
-import { dlDebug, isCloudflareBlockError } from "./helpers.js";
-import { startNativeDownloadFromVideo, tryCdpTunnelFallback } from "./native.js";
-import { browserDownload } from "./browser.js";
+import { isCloudflareBlockError } from "./helpers.js";
+import { startNativeDownloadFromVideo } from "./native.js";
 
 export { isCloudflareBlockError };
 
@@ -23,10 +22,6 @@ function create(deps) {
   const ops = createOperations(opsDeps);
 
   // ── Core download flow ───────────────────────────────────────────────
-
-  function settings() {
-    return deps.getSettings();
-  }
 
   async function startNativeDownload(tabId, videoId, formatId = "best", variantId = "", backend = "auto") {
     await deps.ensureStateLoaded();
@@ -90,9 +85,7 @@ function create(deps) {
     const videos = await deps.getTabVideos(tabId);
     const video = videos.find((item) => item.downloadable);
     if (!video) {
-      throw new Error(
-        "No downloadable video page, MP4, WebM, M3U8, or MPD URL has been detected for this player yet.",
-      );
+      throw new Error("No downloadable video page, MP4, WebM, M3U8, or MPD URL has been detected for this player yet.");
     }
     return video;
   }

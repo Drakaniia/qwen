@@ -178,7 +178,7 @@ def probe_yt_dlp(
                 "backend": "yt-dlp",
                 "label": "yt-dlp (skip-download)",
                 "error_type": "cloudflare_block",
-                "message": f"yt-dlp blocked by Cloudflare anti-bot protection (HTTP 403)",
+                "message": "yt-dlp blocked by Cloudflare anti-bot protection (HTTP 403)",
                 "status_code": 403,
                 "raw_output": combined,
                 "duration_ms": 0,
@@ -191,7 +191,7 @@ def probe_yt_dlp(
                 "backend": "yt-dlp",
                 "label": "yt-dlp (skip-download)",
                 "error_type": "token_expired",
-                "message": f"yt-dlp detected token or signature expiry",
+                "message": "yt-dlp detected token or signature expiry",
                 "status_code": completed.returncode,
                 "raw_output": combined,
                 "duration_ms": 0,
@@ -312,7 +312,10 @@ def probe_curl_cffi(
                     "backend": "curl_cffi",
                     "label": "curl-cffi (HEAD)",
                     "error_type": "cloudflare_block",
-                    "message": f"HTTP 403: Cloudflare anti-bot protection blocked request (impersonation: chrome{cv or 'default'})",
+                    "message": (
+                        "HTTP 403: Cloudflare anti-bot protection blocked request"
+                        f" (impersonation: chrome{cv or 'default'})"
+                    ),
                     "status_code": 403,
                     "raw_output": resp_body,
                     "duration_ms": 0,

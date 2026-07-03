@@ -7,13 +7,23 @@
  * registerAll() call that wires every handler into the given router.
  */
 
-export { registerTabHandlers } from "./tab.js";
-export { registerDownloadHandlers } from "./download.js";
-export { registerCdpHandlers } from "./cdp.js";
-export { registerCdmHandlers } from "./cdm.js";
-export { registerSettingsHandlers } from "./settings.js";
-export { registerCaptureHandlers } from "./capture.js";
-export { registerBatchHandlers } from "./batch.js";
+import { registerTabHandlers } from "./tab.js";
+import { registerDownloadHandlers } from "./download.js";
+import { registerCdpHandlers } from "./cdp.js";
+import { registerCdmHandlers } from "./cdm.js";
+import { registerSettingsHandlers } from "./settings.js";
+import { registerCaptureHandlers } from "./capture.js";
+import { registerBatchHandlers } from "./batch.js";
+
+export {
+  registerTabHandlers,
+  registerDownloadHandlers,
+  registerCdpHandlers,
+  registerCdmHandlers,
+  registerSettingsHandlers,
+  registerCaptureHandlers,
+  registerBatchHandlers,
+};
 
 /**
  * Register ALL message handlers into the given router.

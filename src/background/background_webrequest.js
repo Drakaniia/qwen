@@ -6,7 +6,8 @@ import * as headerUtils from "./header_utils.js";
 /**
  * Pattern to detect Service Worker script URLs used as request initiators.
  */
-const SERVICE_WORKER_SCOPE_RE = /(?:^|[/?#._-])(?:sw(?:\.js|\b)|serviceworker(?:\.js|\b)|service-worker(?:\.js|\b)|worker\.js)(?:$|[?#])/i;
+const SERVICE_WORKER_SCOPE_RE =
+  /(?:^|[/?#._-])(?:sw(?:\.js|\b)|serviceworker(?:\.js|\b)|service-worker(?:\.js|\b)|worker\.js)(?:$|[?#])/i;
 
 /**
  * Check if a URL corresponds to a Service Worker script scope.
@@ -141,7 +142,7 @@ export function initWebRequestHandlers(deps) {
     }
 
     const initiator = details.initiator || details.documentUrl || "";
-    const source = isServiceWorkerScopeUrl(initiator) ? "service-worker" : (contentType ? "headers" : "network");
+    const source = isServiceWorkerScopeUrl(initiator) ? "service-worker" : contentType ? "headers" : "network";
 
     addDetectedVideo(details.tabId, {
       url: details.url,
@@ -171,11 +172,10 @@ export function initWebRequestHandlers(deps) {
   });
 
   // Request headers for video download context — narrow patterns + extraHeaders
-  browserApi.webRequest.onBeforeSendHeaders.addListener(
-    handleBeforeSendHeaders,
-    { urls: VIDEO_REQUEST_PATTERNS },
-    ["requestHeaders", "extraHeaders"],
-  );
+  browserApi.webRequest.onBeforeSendHeaders.addListener(handleBeforeSendHeaders, { urls: VIDEO_REQUEST_PATTERNS }, [
+    "requestHeaders",
+    "extraHeaders",
+  ]);
 
   // Response headers for video detection — narrow patterns only
   browserApi.webRequest.onHeadersReceived.addListener(handleHeadersReceived, { urls: VIDEO_REQUEST_PATTERNS }, [

@@ -38,7 +38,12 @@ console.log("download sync initial state: passed");
 // ─── Adding completed downloads ─────────────────────────────────────────────
 
 {
-  const job = makeCompletedJob({ id: "test_1", title: "My Video", url: "https://example.com/video1.mp4", status: "done" });
+  const job = makeCompletedJob({
+    id: "test_1",
+    title: "My Video",
+    url: "https://example.com/video1.mp4",
+    status: "done",
+  });
   const added = DownloadSync.addSyncedDownload(job);
   assert.equal(added, true, "addSyncedDownload should return true for a completed job");
 
@@ -158,10 +163,7 @@ console.log("download sync deduplication: passed");
 
   // The most recent entries should be kept
   const lastEntry = history[history.length - 1];
-  assert.ok(
-    lastEntry.id.startsWith("limit_test_"),
-    "Last entry should be from the batch (newest entries preferred)",
-  );
+  assert.ok(lastEntry.id.startsWith("limit_test_"), "Last entry should be from the batch (newest entries preferred)");
 }
 
 console.log("download sync max entries: passed");
@@ -259,8 +261,24 @@ console.log("download sync in-memory persistence: passed");
 {
   // Simulate loading stored data (as would happen from storage.sync)
   const storedData = JSON.stringify([
-    { id: "roundtrip_1", url: "https://a.com/1.mp4", title: "A", sourceHost: "a.com", status: "done", createdAt: 1000, completedAt: 1001 },
-    { id: "roundtrip_2", url: "https://b.com/2.mp4", title: "B", sourceHost: "b.com", status: "error", createdAt: 2000, completedAt: 2001 },
+    {
+      id: "roundtrip_1",
+      url: "https://a.com/1.mp4",
+      title: "A",
+      sourceHost: "a.com",
+      status: "done",
+      createdAt: 1000,
+      completedAt: 1001,
+    },
+    {
+      id: "roundtrip_2",
+      url: "https://b.com/2.mp4",
+      title: "B",
+      sourceHost: "b.com",
+      status: "error",
+      createdAt: 2000,
+      completedAt: 2001,
+    },
   ]);
 
   DownloadSync.loadSyncHistory(storedData);
@@ -287,8 +305,24 @@ console.log("download sync round-trip: passed");
   // Local state already has entries from the previous test
   // Now simulate syncing from another instance with different entries
   const externalData = JSON.stringify([
-    { id: "external_1", url: "https://c.com/1.mp4", title: "External C", sourceHost: "c.com", status: "done", createdAt: 1500, completedAt: 1501 },
-    { id: "external_2", url: "https://d.com/2.mp4", title: "External D", sourceHost: "d.com", status: "done", createdAt: 2500, completedAt: 2501 },
+    {
+      id: "external_1",
+      url: "https://c.com/1.mp4",
+      title: "External C",
+      sourceHost: "c.com",
+      status: "done",
+      createdAt: 1500,
+      completedAt: 1501,
+    },
+    {
+      id: "external_2",
+      url: "https://d.com/2.mp4",
+      title: "External D",
+      sourceHost: "d.com",
+      status: "done",
+      createdAt: 2500,
+      completedAt: 2501,
+    },
   ]);
 
   DownloadSync.mergeSyncedHistory(externalData);
@@ -299,7 +333,15 @@ console.log("download sync round-trip: passed");
 
   // Dedup by id: if external has same id as local, external wins
   const externalData2 = JSON.stringify([
-    { id: "roundtrip_1", url: "https://a.com/OVERWRITTEN.mp4", title: "Overwritten", sourceHost: "a.com", status: "done", createdAt: 1000, completedAt: 9999 },
+    {
+      id: "roundtrip_1",
+      url: "https://a.com/OVERWRITTEN.mp4",
+      title: "Overwritten",
+      sourceHost: "a.com",
+      status: "done",
+      createdAt: 1000,
+      completedAt: 9999,
+    },
   ]);
 
   DownloadSync.mergeSyncedHistory(externalData2);

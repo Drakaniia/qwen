@@ -32,13 +32,7 @@ const MEDIA_TYPE_REGEX = /^(video\/|audio\/|application\/(x-mpegURL|vnd\.apple\.
 
 /** Regex that matches segment URLs (not manifests). */
 function looksLikeSegment(url) {
-  return /\.(ts|m4s|cmfv|cmfa)(\?|$)/i.test(url) ||
-         /\/seg(ment)?[-_]?\d+/i.test(url);
-}
-
-/** Regex that matches manifest URLs we want to capture separately. */
-function looksLikeManifest(url) {
-  return /\.(m3u8|mpd)(\?|$)/i.test(url);
+  return /\.(ts|m4s|cmfv|cmfa)(\?|$)/i.test(url) || /\/seg(ment)?[-_]?\d+/i.test(url);
 }
 
 /**
@@ -394,10 +388,12 @@ function setupMessageChannel() {
       // Forward to background script
       try {
         const api = typeof browser !== "undefined" ? browser : chrome;
-        api.runtime.sendMessage({
-          type: "swCapturedMediaResponse",
-          data: event.data,
-        }).catch(() => {});
+        api.runtime
+          .sendMessage({
+            type: "swCapturedMediaResponse",
+            data: event.data,
+          })
+          .catch(() => {});
       } catch (_e) {
         // Extension context may be unavailable
       }

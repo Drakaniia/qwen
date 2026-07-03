@@ -66,7 +66,7 @@ async function openCloudflarePage(tabId, url) {
     const api = typeof browser !== "undefined" ? browser : chrome;
     await api.tabs.update(tabId, { url });
     return { ok: true };
-  } catch (e) {
+  } catch (_e) {
     return { ok: false };
   }
 }
@@ -105,9 +105,11 @@ async function waitForChallengeComplete(tabId, timeoutMs) {
 async function isPageShowingChallenge(tabId) {
   try {
     const api = typeof browser !== "undefined" ? browser : chrome;
-    const result = await api.tabs.sendMessage(tabId, {
-      type: "qwinCheckCloudflareChallenge",
-    }).catch(() => null);
+    const result = await api.tabs
+      .sendMessage(tabId, {
+        type: "qwinCheckCloudflareChallenge",
+      })
+      .catch(() => null);
     if (result && result.hasChallenge === false) {
       return false;
     }
@@ -137,9 +139,4 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export {
-  detectAndSolveCloudflare,
-  openCloudflarePage,
-  waitForChallengeComplete,
-  extractCFClearance,
-};
+export { detectAndSolveCloudflare, openCloudflarePage, waitForChallengeComplete, extractCFClearance };

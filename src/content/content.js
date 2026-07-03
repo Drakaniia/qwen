@@ -179,9 +179,9 @@ function scanVisiblePlayerFrames() {
     // branding ("VibePlayer - Fast Streaming with FullHD") rather than
     // the actual content being watched.
     const finalTitle =
-      (pageTitle && !videoFilters.isGenericTitle(pageTitle))
+      pageTitle && !videoFilters.isGenericTitle(pageTitle)
         ? pageTitle
-        : (iframeTitle && !videoFilters.isGenericTitle(iframeTitle))
+        : iframeTitle && !videoFilters.isGenericTitle(iframeTitle)
           ? iframeTitle
           : pageDetection.titleFromUrl(src) || "Video";
 
@@ -400,7 +400,21 @@ function start() {
     getLastDetectedVideos: () => lastDetectedVideos,
   });
 
-  publishScan();
+  // Check current overlay setting from background before any scan runs.
+  // This prevents a flash of overlays when the user has disabled them.
+  sendMessageWithResponse({ type: "getSettings" })
+    .then(function (response) {
+      if (response && response.ok && response.settings && response.settings.overlayEnabled === false) {
+        setOverlayEnabled(false);
+      }
+    })
+    .catch(function () {
+      // Overlay setting check is best-effort
+    })
+    .finally(function () {
+      publishScan();
+    });
+
   window.setInterval(publishScan, 3000);
   window.setInterval(positionAllOverlays, 600);
 }
@@ -449,10 +463,7 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function checkForCloudflareChallenge() {
   try {
     // Cloudflare Turnstile widget
-    if (
-      document.querySelector("#cf-turnstile") ||
-      document.querySelector("[data-turnstile]")
-    ) {
+    if (document.querySelector("#cf-turnstile") || document.querySelector("[data-turnstile]")) {
       return true;
     }
 
@@ -473,10 +484,7 @@ function checkForCloudflareChallenge() {
     }
 
     // Challenge iframes
-    if (
-      document.querySelector('iframe[src*="challenge"]') ||
-      document.querySelector('iframe[src*="turnstile"]')
-    ) {
+    if (document.querySelector('iframe[src*="challenge"]') || document.querySelector('iframe[src*="turnstile"]')) {
       return true;
     }
 

@@ -6,8 +6,16 @@
 
 export function registerTabHandlers(messageRouter, ctx) {
   const {
-    senderTabId, notifyPopup, getVisibleVideosForTab, addDetectedVideo,
-    clearTab, getTabVideos, getTabDownloads, setPageTitle, tabState, browserApi,
+    senderTabId,
+    notifyPopup,
+    getVisibleVideosForTab,
+    addDetectedVideo,
+    clearTab,
+    getTabVideos,
+    getTabDownloads,
+    setPageTitle,
+    tabState,
+    browserApi,
   } = ctx;
 
   // ── MSE captured segments ───────────────────────────────────────────────

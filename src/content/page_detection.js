@@ -232,7 +232,9 @@ function create(options) {
 
     const isWebSocketUrl = absoluteUrl.startsWith("ws://") || absoluteUrl.startsWith("wss://");
     const likelyVideo =
-      absoluteUrl.startsWith("blob:") || isWebSocketUrl || videoFilters.isLikelyVideoRequest(absoluteUrl, "media", mimeType);
+      absoluteUrl.startsWith("blob:") ||
+      isWebSocketUrl ||
+      videoFilters.isLikelyVideoRequest(absoluteUrl, "media", mimeType);
 
     if (!likelyVideo) {
       return null;

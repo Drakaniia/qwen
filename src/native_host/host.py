@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-from pathlib import Path
-from urllib.request import urlopen
-
 # Add all native_host subdirectories to sys.path so flat imports still work
 # after the Phase 3 structural refactoring moved files into subdirectories.
 import sys
+from pathlib import Path
+from urllib.request import urlopen
+
 _host_dir = Path(__file__).resolve().parent
 for _root, _dirs, _files in _host_dir.walk():
     if _root.name == "__pycache__" or _root.name.startswith("_"):

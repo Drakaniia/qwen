@@ -200,14 +200,16 @@ function persistSyncHistoryToStorage() {
  * Merges the loaded data with any in-memory state.
  */
 function loadSyncHistoryFromStorage() {
-  return callStorageSyncGet(["qwinDownloadHistory"]).then(function (items) {
-    const stored = items.qwinDownloadHistory;
-    if (stored) {
-      downloadSync.loadSyncHistory(stored);
-    }
-  }).catch(function () {
-    // Loading sync history is best-effort
-  });
+  return callStorageSyncGet(["qwinDownloadHistory"])
+    .then(function (items) {
+      const stored = items.qwinDownloadHistory;
+      if (stored) {
+        downloadSync.loadSyncHistory(stored);
+      }
+    })
+    .catch(function () {
+      // Loading sync history is best-effort
+    });
 }
 
 function callStorageSyncGet(keys) {

@@ -5,9 +5,16 @@
  */
 
 export function registerSettingsHandlers(messageRouter, ctx) {
-  const { tabState, browserApi, notifyPopup, HOST_NAME,
-    cachedHelperStatus, HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus,
-    pingNativeHost } = ctx;
+  const {
+    tabState,
+    browserApi,
+    notifyPopup,
+    HOST_NAME,
+    cachedHelperStatus,
+    HELPER_PING_INTERVAL_MS,
+    refreshCachedHelperStatus,
+    pingNativeHost,
+  } = ctx;
 
   // ── Save/get settings ──────────────────────────────────────────────────
 

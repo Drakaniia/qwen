@@ -1,7 +1,7 @@
 """ISOBase Media File Format (ISO BMFF) box low-level types and constants."""
 
-from typing import Optional
 import struct
+from typing import Optional
 
 # ─── Constants ─────────────────────────────────────────────────────────────
 

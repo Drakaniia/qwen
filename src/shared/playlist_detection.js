@@ -46,11 +46,7 @@ function searchParams(url) {
 // ─── YouTube helpers ────────────────────────────────────────────────────────
 
 function isYoutubeHost(host) {
-  return (
-    host === "youtube.com" ||
-    host.endsWith(".youtube.com") ||
-    host === "youtu.be"
-  );
+  return host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be";
 }
 
 function isYoutubePlaylistUrl(url) {
@@ -335,11 +331,4 @@ function getBatchInfo(video) {
   };
 }
 
-export {
-  isPlaylistUrl,
-  isPlaylistPage,
-  getPlaylistSource,
-  extractPlaylistId,
-  getPlaylistTitle,
-  getBatchInfo,
-};
+export { isPlaylistUrl, isPlaylistPage, getPlaylistSource, extractPlaylistId, getPlaylistTitle, getBatchInfo };

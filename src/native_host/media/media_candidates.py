@@ -90,7 +90,12 @@ def classify_media_candidate(url, content_type=""):
 
     # Non-HTTP protocols: blob, data, file, ftp — not downloadable via HTTP clients
     if text.startswith(("blob:", "data:", "file:", "ftp:")):
-        return {"tier": TIER_BLOCK, "confidence": 0, "reason": f"Non-HTTP protocol ({text.split(':')[0]}:) — not downloadable via HTTP"}
+        protocol = text.split(":")[0]
+        return {
+            "tier": TIER_BLOCK,
+            "confidence": 0,
+            "reason": f"Non-HTTP protocol ({protocol}:) — not downloadable via HTTP",
+        }
 
     # Static assets: JS, CSS, maps, fonts
     if STATIC_ASSET_RE.search(text):
@@ -180,6 +185,7 @@ def classify_media_candidate(url, content_type=""):
     # Has HTTP/HTTPS scheme but no video indicators
     try:
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         if parsed.scheme in ("http", "https") and parsed.netloc:
             return {"tier": TIER_SUSPICIOUS, "confidence": 10, "reason": "URL without video indicators"}
