@@ -31,7 +31,7 @@ Use this skill to act as a **Codebase Health Auditor** — inspecting any codeba
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
-│  1. Ask user preference:                                          │
+│  1. Use `ask_user` tool to ask user preference:                     │
 │     a) Full report (comprehensive + diagrams)                     │
 │     b) Quick spec (concise, fast-track for AI implement)          │
 │                                                                   │
@@ -58,7 +58,7 @@ Use this skill to act as a **Codebase Health Auditor** — inspecting any codeba
 
 The agent performs the audit by directly inspecting the codebase using:
 
-- **File listing tools** — to count files per directory, measure nesting depth, and detect naming patterns
+- **Hybrid `find + wc` pipeline** — pipe `find` results into `wc -l` and `sort` to count lines per file for identifying oversized files, and to count files per directory for detecting bloated folders. Prefer this hybrid approach over bare `find` alone.
 - **`wc -l` command** — to find oversized files that need refactoring:
 
   ```bash
@@ -289,12 +289,13 @@ After generating the report, do a quick consistency check against the [reference
 - [ ] Each split plan includes proposed file names, target directory, import changes, and verification steps
 - [ ] The report is saved and the file path is communicated to the user
 - [ ] The report contains enough context for the implement-folder-architecture skill to execute fixes independently
+- [ ] Each oversized file flagged should be reviewed with `code-design` afterward — splitting a file by line count is structural, but the extracted functions must also follow single responsibility, guard clauses, and side-effect management principles
 
 ## Execution Checklist
 
 Before finishing the audit, verify every item below is complete:
 
-- [ ] Asked user preference: full report or quick spec
+- [ ] Used `ask_user` tool to ask user preference: full report or quick spec
 - [ ] Scanned all directories (excluded vendor/build/generated dirs)
 - [ ] **Metric 1** — Checked folder file counts (>30 files flagged, ASCII tree diagrams added)
 - [ ] **Metric 2** — Checked file line counts (>400 lines flagged)
