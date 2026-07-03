@@ -4,13 +4,11 @@ These tests follow the spec in parallel-reachability-spec.md.
 """
 
 import json
-import sys
 import threading
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 # These will fail until probe_runner.py is created — that's the RED phase
 from probe_runner import (

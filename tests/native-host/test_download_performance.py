@@ -6,13 +6,11 @@ the first run should fail (RED), then optimizations are implemented
 (GREEN), then all pass.
 """
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from path_setup import *
-
+import path_setup  # noqa: F401
 from fallback_engines import download_direct
 
 from download_manager import MAGNET_ARIA2_ARGS
@@ -76,9 +74,9 @@ class Aria2ConnectionsOptimizationTests(unittest.TestCase):
         Values above 16 cause immediate error code 28 on download.
         """
         self.assertLessEqual(
-            MAX_ARIA2_CONNECTIONS, 16,
-            "aria2c --max-connection-per-server only supports values 1-16, but got "
-            f"{MAX_ARIA2_CONNECTIONS}",
+            MAX_ARIA2_CONNECTIONS,
+            16,
+            f"aria2c --max-connection-per-server only supports values 1-16, but got {MAX_ARIA2_CONNECTIONS}",
         )
 
     def test_max_aria2_connections_is_optimized(self):
@@ -187,7 +185,7 @@ class DirectDownloadChunkSizeOptimizationTests(unittest.TestCase):
         # We can't easily inspect the default, but we can test that passing
         # different chunk sizes works (1MB should be the default)
         with tempfile.TemporaryDirectory() as tmp:
-            output = Path(tmp) / "test.bin"
+            Path(tmp) / "test.bin"
             # This will fail with a network error but we can check the chunk
             # size is used by inspecting the function signature
             pass

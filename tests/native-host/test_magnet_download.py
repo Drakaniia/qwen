@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 import native_protocol
 from download_manager import build_aria2c_magnet_command

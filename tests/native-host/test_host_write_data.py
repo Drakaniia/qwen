@@ -8,15 +8,12 @@ Tests that run_write_data in host.py correctly:
 5. Handles invalid base64 data
 """
 
-import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from path_setup import *
-
 import host
+import path_setup  # noqa: F401
 
 
 class WriteDataHandlerIntegrationTests(unittest.TestCase):
@@ -32,11 +29,13 @@ class WriteDataHandlerIntegrationTests(unittest.TestCase):
         """GIVEN valid base64 data and output path, run_write_data writes the file."""
         with tempfile.TemporaryDirectory() as tmp:
             output_path = Path(tmp) / "segment_001.ts"
-            result = host.run_write_data({
-                "id": "test-001",
-                "data": "aGVsbG8=",  # "hello" in base64
-                "outputPath": str(output_path),
-            })
+            result = host.run_write_data(
+                {
+                    "id": "test-001",
+                    "data": "aGVsbG8=",  # "hello" in base64
+                    "outputPath": str(output_path),
+                }
+            )
 
             self.assertTrue(result["ok"])
             self.assertEqual(result["bytesWritten"], 5)
@@ -47,14 +46,17 @@ class WriteDataHandlerIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             original = bytes(range(256))  # 256-byte binary data
             import base64
+
             b64_data = base64.b64encode(original).decode("ascii")
             output_path = Path(tmp) / "large_segment.bin"
 
-            result = host.run_write_data({
-                "id": "test-large",
-                "data": b64_data,
-                "outputPath": str(output_path),
-            })
+            result = host.run_write_data(
+                {
+                    "id": "test-large",
+                    "data": b64_data,
+                    "outputPath": str(output_path),
+                }
+            )
 
             self.assertTrue(result["ok"])
             self.assertEqual(result["bytesWritten"], 256)
@@ -64,11 +66,13 @@ class WriteDataHandlerIntegrationTests(unittest.TestCase):
         """GIVEN output path with nested directories, run_write_data creates them."""
         with tempfile.TemporaryDirectory() as tmp:
             nested_path = Path(tmp) / "nested" / "dirs" / "segment.ts"
-            result = host.run_write_data({
-                "id": "test-nested",
-                "data": "dGVzdA==",  # "test"
-                "outputPath": str(nested_path),
-            })
+            result = host.run_write_data(
+                {
+                    "id": "test-nested",
+                    "data": "dGVzdA==",  # "test"
+                    "outputPath": str(nested_path),
+                }
+            )
 
             self.assertTrue(result["ok"])
             self.assertTrue(nested_path.exists())
@@ -76,31 +80,37 @@ class WriteDataHandlerIntegrationTests(unittest.TestCase):
 
     def test_run_write_data_reports_error_for_missing_data(self):
         """GIVEN no base64 data, run_write_data returns error."""
-        result = host.run_write_data({
-            "id": "test-no-data",
-            "data": "",
-            "outputPath": "C:\\output.ts",
-        })
+        result = host.run_write_data(
+            {
+                "id": "test-no-data",
+                "data": "",
+                "outputPath": "C:\\output.ts",
+            }
+        )
         self.assertFalse(result["ok"])
         self.assertIn("No base64 data", result.get("error", ""))
 
     def test_run_write_data_reports_error_for_missing_output_path(self):
         """GIVEN no output path, run_write_data returns error."""
-        result = host.run_write_data({
-            "id": "test-no-path",
-            "data": "dGVzdA==",
-            "outputPath": "",
-        })
+        result = host.run_write_data(
+            {
+                "id": "test-no-path",
+                "data": "dGVzdA==",
+                "outputPath": "",
+            }
+        )
         self.assertFalse(result["ok"])
         self.assertIn("No output path", result.get("error", ""))
 
     def test_run_write_data_handles_invalid_base64(self):
         """GIVEN invalid base64, run_write_data returns error instead of crashing."""
-        result = host.run_write_data({
-            "id": "test-invalid",
-            "data": "not valid base64!!!",
-            "outputPath": "C:\\output.ts",
-        })
+        result = host.run_write_data(
+            {
+                "id": "test-invalid",
+                "data": "not valid base64!!!",
+                "outputPath": "C:\\output.ts",
+            }
+        )
         self.assertFalse(result["ok"])
         self.assertIn("Failed to write data", result.get("error", ""))
 
@@ -108,11 +118,13 @@ class WriteDataHandlerIntegrationTests(unittest.TestCase):
         """GIVEN valid input, run_write_data response has expected keys."""
         with tempfile.TemporaryDirectory() as tmp:
             output_path = Path(tmp) / "out.bin"
-            result = host.run_write_data({
-                "id": "test-structure",
-                "data": "dGVzdA==",
-                "outputPath": str(output_path),
-            })
+            result = host.run_write_data(
+                {
+                    "id": "test-structure",
+                    "data": "dGVzdA==",
+                    "outputPath": str(output_path),
+                }
+            )
 
             for key in ("type", "id", "ok", "bytesWritten", "outputPath"):
                 self.assertIn(key, result)
@@ -125,21 +137,25 @@ class WriteDataHandlerIntegrationTests(unittest.TestCase):
             output_path = Path(tmp) / "existing.bin"
             output_path.write_text("old content")
 
-            result = host.run_write_data({
-                "id": "test-overwrite",
-                "data": "bmV3IGNvbnRlbnQ=",  # "new content"
-                "outputPath": str(output_path),
-            })
+            result = host.run_write_data(
+                {
+                    "id": "test-overwrite",
+                    "data": "bmV3IGNvbnRlbnQ=",  # "new content"
+                    "outputPath": str(output_path),
+                }
+            )
 
             self.assertTrue(result["ok"])
             self.assertEqual(Path(result["outputPath"]).read_text(), "new content")
 
     def test_run_write_data_handles_missing_output_path_key(self):
         """GIVEN outputPath is omitted, run_write_data returns error."""
-        result = host.run_write_data({
-            "id": "test-none-path",
-            "data": "dGVzdA==",
-        })
+        result = host.run_write_data(
+            {
+                "id": "test-none-path",
+                "data": "dGVzdA==",
+            }
+        )
         self.assertFalse(result["ok"])
         self.assertIn("No output path", result.get("error", ""))
 

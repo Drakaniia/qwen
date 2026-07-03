@@ -5,12 +5,11 @@ Tests will fail initially (RED phase) until the corresponding
 code is implemented in fallback_engines.py and download_manager.py.
 """
 
-import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 # These imports will fail until the functions are implemented — RED phase
 from fallback_engines import (

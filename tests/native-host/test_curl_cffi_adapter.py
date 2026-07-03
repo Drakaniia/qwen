@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock, patch
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 import curl_cffi_adapter as cca
 from native_protocol import HostError

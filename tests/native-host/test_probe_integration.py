@@ -1,12 +1,11 @@
 """Tests for probe runner integration in download_manager.run_download()."""
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 import download_manager as dm
 from probe_runner import ProbeError, ProbeResult

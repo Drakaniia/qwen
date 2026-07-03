@@ -4,11 +4,9 @@ Tests the is_ll_hls_url(), is_cmaf_url(), and is_low_latency_stream()
 functions in stream_backends.py.
 """
 
-import os
-import sys
 import unittest
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 from stream_backends import is_cmaf_url, is_ll_hls_url, is_low_latency_stream
 

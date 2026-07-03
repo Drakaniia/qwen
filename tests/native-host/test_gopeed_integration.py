@@ -1,9 +1,9 @@
 import os
+import sys
 import unittest
 from pathlib import Path
 
-from path_setup import *
-
+import path_setup  # noqa: F401
 from gopeed_adapter import (
     build_gopeed_http_command,
     build_gopeed_magnet_command,

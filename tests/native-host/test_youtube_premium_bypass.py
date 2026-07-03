@@ -11,12 +11,11 @@ These tests verify the complete command-building pipeline for YouTube
 Premium URLs (www.youtube.com, music.youtube.com, youtu.be).
 """
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 from browser_context import (
     clean_request_headers,

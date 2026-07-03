@@ -1,9 +1,7 @@
 import json
-import sys
 import unittest
-from pathlib import Path
 
-from path_setup import *
+from path_setup import ROOT_DIR
 
 import media_candidates
 import media_resolver

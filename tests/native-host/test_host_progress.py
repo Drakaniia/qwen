@@ -1,11 +1,9 @@
 import io
-import sys
 import unittest
-from pathlib import Path
-
-from path_setup import *
 
 import host
+import path_setup  # noqa: F401
+
 from progress_parser import is_cloudflare_challenge
 
 
@@ -105,19 +103,31 @@ class HostProgressParsingTests(unittest.TestCase):
     # ── Cloudflare challenge detection tests ─────────────────────────────
 
     def test_is_cloudflare_challenge_detects_attention_required(self):
-        html = b"<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title><body>Please check the URL and try again.</body></html>"
+        html = (
+            b"<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title>"
+            b"<body>Please check the URL and try again.</body></html>"
+        )
         self.assertTrue(is_cloudflare_challenge(html))
 
     def test_is_cloudflare_challenge_detects_cf_chl(self):
-        html = b'<html data-cf-chl="test">Cloudflare challenge</html><body>Some content here to make it longer than 100 bytes for validation purposes.</body>'
+        html = (
+            b'<html data-cf-chl="test">Cloudflare challenge</html>'
+            b'<body>Some content here to make it longer than 100 bytes for validation purposes.</body>'
+        )
         self.assertTrue(is_cloudflare_challenge(html))
 
     def test_is_cloudflare_challenge_detects_challenge_platform(self):
-        html = b'<html class="no-js"><script src="/cdn-cgi/challenge-platform/...">Cloudflare</script><body>Content here for length.</body></html>'
+        html = (
+            b'<html class="no-js"><script src="/cdn-cgi/challenge-platform/...">Cloudflare</script>'
+            b'<body>Content here for length.</body></html>'
+        )
         self.assertTrue(is_cloudflare_challenge(html))
 
     def test_is_cloudflare_challenge_detects_checking_browser(self):
-        html = b"<html><head><title>Attention Required! | Cloudflare</title></head><body>Checking your browser before accessing the site...</body></html>"
+        html = (
+            b"<html><head><title>Attention Required! | Cloudflare</title></head>"
+            b"<body>Checking your browser before accessing the site...</body></html>"
+        )
         self.assertTrue(is_cloudflare_challenge(html))
 
     def test_is_cloudflare_challenge_rejects_small_content(self):
@@ -129,7 +139,10 @@ class HostProgressParsingTests(unittest.TestCase):
         self.assertFalse(is_cloudflare_challenge(video_header))
 
     def test_is_cloudflare_challenge_rejects_normal_html(self):
-        html = b"<html><head><title>My Video Page</title></head><body>Video content here for testing purposes and more content to reach 100 bytes.</body></html>"
+        html = (
+            b"<html><head><title>My Video Page</title></head>"
+            b"<body>Video content here for testing purposes and more content to reach 100 bytes.</body></html>"
+        )
         self.assertFalse(is_cloudflare_challenge(html))
 
 

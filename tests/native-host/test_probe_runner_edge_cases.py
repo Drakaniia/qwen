@@ -13,16 +13,13 @@ Coverage areas:
   G. Probe cancellation on winner found
 """
 
-import json
-import sys
 import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
-from path_setup import *
-
+import path_setup  # noqa: F401
 
 # ═══════════════════════════════════════════════════════════════════════
 # A. Token-Expired Error Detection
@@ -34,8 +31,9 @@ class TestTokenExpiredDetection(unittest.TestCase):
 
     def _make_probe_result(self, stderr_text):
         """Simulate probe_yt_dlp with a given stderr output."""
-        from probe_backends import probe_yt_dlp
         from unittest.mock import patch
+
+        from probe_backends import probe_yt_dlp
 
         with patch("probe_backends.subprocess.run") as mock_run:
             mock_result = MagicMock()
@@ -54,24 +52,18 @@ class TestTokenExpiredDetection(unittest.TestCase):
 
     def test_detects_expired_url_with_expiry_param(self):
         """Signed URL with 'expired' keyword should be detected as token_expired."""
-        result = self._make_probe_result(
-            "ERROR: [example.com] HTTP Error 410: Gone (video URL has expired)"
-        )
+        result = self._make_probe_result("ERROR: [example.com] HTTP Error 410: Gone (video URL has expired)")
         self.assertFalse(result["ok"])
         self.assertEqual(
-            result["error_type"], "token_expired",
-            "yt-dlp probe should report token_expired for expired URLs with 410"
+            result["error_type"], "token_expired", "yt-dlp probe should report token_expired for expired URLs with 410"
         )
 
     def test_detects_expired_signed_url_with_expires_param(self):
         """Signed URL with 'expires' in the URL should be detected when failing."""
-        result = self._make_probe_result(
-            "ERROR: [example.com] HTTP Error 403: Forbidden (signed URL may have expired)"
-        )
+        result = self._make_probe_result("ERROR: [example.com] HTTP Error 403: Forbidden (signed URL may have expired)")
         self.assertFalse(result["ok"])
         self.assertEqual(
-            result["error_type"], "token_expired",
-            "yt-dlp probe should report token_expired for signed URL 403 errors"
+            result["error_type"], "token_expired", "yt-dlp probe should report token_expired for signed URL 403 errors"
         )
 
     def test_detects_signed_url_signature_error(self):
@@ -81,36 +73,32 @@ class TestTokenExpiredDetection(unittest.TestCase):
         )
         self.assertFalse(result["ok"])
         self.assertEqual(
-            result["error_type"], "token_expired",
-            "yt-dlp probe should report token_expired for signature errors"
+            result["error_type"], "token_expired", "yt-dlp probe should report token_expired for signature errors"
         )
 
     def test_detects_aws_cloudfront_signed_url_expiry(self):
         """AWS CloudFront signed URLs with Policy/Key-Pair-Id expiry detection."""
-        result = self._make_probe_result(
-            "ERROR: [cdn.example.com] HTTP Error 403: Forbidden (CloudFront URL expired)"
-        )
+        result = self._make_probe_result("ERROR: [cdn.example.com] HTTP Error 403: Forbidden (CloudFront URL expired)")
         self.assertFalse(result["ok"])
         self.assertEqual(
-            result["error_type"], "token_expired",
-            "yt-dlp probe should report token_expired for CloudFront signed URL expiry"
+            result["error_type"],
+            "token_expired",
+            "yt-dlp probe should report token_expired for CloudFront signed URL expiry",
         )
 
     def test_regular_403_without_expiry_is_not_token_expired(self):
         """Regular 403 without token/expiry hints should still be exit_code."""
-        result = self._make_probe_result(
-            "ERROR: [example.com] HTTP Error 403: Forbidden"
-        )
+        result = self._make_probe_result("ERROR: [example.com] HTTP Error 403: Forbidden")
         self.assertFalse(result["ok"])
         self.assertEqual(
-            result["error_type"], "exit_code",
-            "Regular 403 without token/expiry hints must NOT be token_expired"
+            result["error_type"], "exit_code", "Regular 403 without token/expiry hints must NOT be token_expired"
         )
 
     def test_detects_token_expiry_in_stdout(self):
         """Token expiry detected in stdout as well as stderr."""
-        from probe_backends import probe_yt_dlp
         from unittest.mock import patch
+
+        from probe_backends import probe_yt_dlp
 
         with patch("probe_backends.subprocess.run") as mock_run:
             mock_result = MagicMock()
@@ -129,20 +117,14 @@ class TestTokenExpiredDetection(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(
-            result["error_type"], "token_expired",
-            "yt-dlp probe should check stdout for expiry messages too"
+            result["error_type"], "token_expired", "yt-dlp probe should check stdout for expiry messages too"
         )
 
     def test_detects_m3u8_playlist_not_found_as_not_token_expired(self):
         """M3U8 playlist not found (404) should NOT be classified as token_expired."""
-        result = self._make_probe_result(
-            "ERROR: [example.com] HTTP Error 404: Not Found (playlist not found)"
-        )
+        result = self._make_probe_result("ERROR: [example.com] HTTP Error 404: Not Found (playlist not found)")
         self.assertFalse(result["ok"])
-        self.assertNotEqual(
-            result["error_type"], "token_expired",
-            "404 for playlist should NOT be token_expired"
-        )
+        self.assertNotEqual(result["error_type"], "token_expired", "404 for playlist should NOT be token_expired")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -155,7 +137,7 @@ class TestProbeTimeoutBehavior(unittest.TestCase):
 
     def test_parallel_probes_timeout_on_hanging_thread(self):
         """run_parallel_probes should handle a thread that exceeds the join timeout."""
-        from probe_runner import ProbeConfig, ProbeResult, run_parallel_probes
+        from probe_runner import ProbeConfig, run_parallel_probes
 
         cancel_event = threading.Event()
         send_messages = []
@@ -200,19 +182,13 @@ class TestProbeTimeoutBehavior(unittest.TestCase):
 
         timer.cancel()
 
-        self.assertIsNotNone(
-            result,
-            "run_parallel_probes should return a result even when a probe hangs"
-        )
+        self.assertIsNotNone(result, "run_parallel_probes should return a result even when a probe hangs")
         self.assertIsNone(result.winner, "No winner expected with hanging probe")
-        self.assertGreaterEqual(
-            len(result.errors), 0,
-            "Should have zero or more errors"
-        )
+        self.assertGreaterEqual(len(result.errors), 0, "Should have zero or more errors")
 
     def test_parallel_probes_cancels_all_on_first_success(self):
         """When one probe succeeds, cancel_event is set so other probes can stop."""
-        from probe_runner import ProbeConfig, ProbeResult, run_parallel_probes
+        from probe_runner import ProbeConfig, run_parallel_probes
 
         cancel_event = threading.Event()
         send_messages = []
@@ -274,8 +250,7 @@ class TestProbeTimeoutBehavior(unittest.TestCase):
 
         self.assertEqual(result.winner, "yt-dlp", "Fast probe should win")
         self.assertTrue(
-            cancel_event.is_set(),
-            "cancel_event must be set when a winner is found so other probes can stop"
+            cancel_event.is_set(), "cancel_event must be set when a winner is found so other probes can stop"
         )
         self.assertIn("fast", probes_called, "Fast probe should have been called")
         # slow probe may or may not have been called depending on timing,
@@ -314,13 +289,9 @@ class TestCurlCffiProbeHeaderPassing(unittest.TestCase):
         if call_kwargs:
             _, kwargs = call_kwargs
             passed_headers = kwargs.get("headers", {})
-            self.assertIn(
-                "Referer", passed_headers,
-                "Referer header must be passed to curl_cffi requests.head"
-            )
+            self.assertIn("Referer", passed_headers, "Referer header must be passed to curl_cffi requests.head")
             self.assertEqual(
-                passed_headers["Referer"], "https://example.com/video-page",
-                "Referer header value must be preserved"
+                passed_headers["Referer"], "https://example.com/video-page", "Referer header value must be preserved"
             )
 
     @patch("curl_cffi.requests.head")
@@ -346,10 +317,7 @@ class TestCurlCffiProbeHeaderPassing(unittest.TestCase):
         if call_kwargs:
             _, kwargs = call_kwargs
             passed_headers = kwargs.get("headers", {})
-            self.assertIn(
-                "Origin", passed_headers,
-                "Origin header must be passed to curl_cffi requests.head"
-            )
+            self.assertIn("Origin", passed_headers, "Origin header must be passed to curl_cffi requests.head")
 
     @patch("curl_cffi.requests.head")
     @patch("probe_backends.curl_cffi_available", return_value=True)
@@ -378,18 +346,9 @@ class TestCurlCffiProbeHeaderPassing(unittest.TestCase):
         if call_kwargs:
             _, kwargs = call_kwargs
             passed_headers = kwargs.get("headers", {})
-            self.assertEqual(
-                passed_headers.get("Referer"), "https://example.com/page",
-                "Referer must be passed"
-            )
-            self.assertEqual(
-                passed_headers.get("Origin"), "https://example.com",
-                "Origin must be passed"
-            )
-            self.assertIn(
-                "User-Agent", passed_headers,
-                "User-Agent must be passed"
-            )
+            self.assertEqual(passed_headers.get("Referer"), "https://example.com/page", "Referer must be passed")
+            self.assertEqual(passed_headers.get("Origin"), "https://example.com", "Origin must be passed")
+            self.assertIn("User-Agent", passed_headers, "User-Agent must be passed")
 
     @patch("curl_cffi.requests.head")
     @patch("probe_backends.curl_cffi_available", return_value=True)
@@ -431,13 +390,11 @@ class TestFfmpegDirectCommand(unittest.TestCase):
 
         self.assertEqual(command[0], "ffmpeg", "First arg should be ffmpeg")
         self.assertIn("-i", command, "Should specify input with -i")
-        self.assertIn("https://cdn.example.com/hls/master.m3u8", command,
-                      "URL should be the input")
+        self.assertIn("https://cdn.example.com/hls/master.m3u8", command, "URL should be the input")
         self.assertIn("-c", command, "Should specify codec with -c")
         self.assertIn("copy", command, "Should use stream copy (not re-encode)")
         self.assertIn("-y", command, "Should overwrite output without asking")
-        self.assertIn(r"C:\Downloads\Movie\Movie.mp4", command,
-                      "Output path should be the last argument")
+        self.assertIn(r"C:\Downloads\Movie\Movie.mp4", command, "Output path should be the last argument")
 
     def test_ffmpeg_custom_location(self):
         """Custom ffmpeg location should be used."""
@@ -449,10 +406,7 @@ class TestFfmpegDirectCommand(unittest.TestCase):
             ffmpeg_location=r"C:\Tools\ffmpeg.exe",
         )
 
-        self.assertEqual(
-            command[0], r"C:\Tools\ffmpeg.exe",
-            "Custom ffmpeg location should be the first argument"
-        )
+        self.assertEqual(command[0], r"C:\Tools\ffmpeg.exe", "Custom ffmpeg location should be the first argument")
 
     def test_ffmpeg_with_request_headers(self):
         """Request headers should be passed as -headers to ffmpeg."""
@@ -467,14 +421,11 @@ class TestFfmpegDirectCommand(unittest.TestCase):
             ],
         )
 
-        self.assertIn("-headers", command,
-                       "ffmpeg should use -headers for custom HTTP headers")
+        self.assertIn("-headers", command, "ffmpeg should use -headers for custom HTTP headers")
         headers_idx = command.index("-headers")
         headers_str = command[headers_idx + 1]
-        self.assertIn("Referer: https://example.com/watch", headers_str,
-                       "Referer should be in -headers")
-        self.assertIn("User-Agent: Mozilla/5.0 Test", headers_str,
-                       "User-Agent should be in -headers")
+        self.assertIn("Referer: https://example.com/watch", headers_str, "Referer should be in -headers")
+        self.assertIn("User-Agent: Mozilla/5.0 Test", headers_str, "User-Agent should be in -headers")
 
     def test_ffmpeg_without_headers(self):
         """No -headers flag should be added when no request headers provided."""
@@ -485,10 +436,7 @@ class TestFfmpegDirectCommand(unittest.TestCase):
             output_path=r"C:\Output\video.mp4",
         )
 
-        self.assertNotIn(
-            "-headers", command,
-            "No -headers flag when no request headers provided"
-        )
+        self.assertNotIn("-headers", command, "No -headers flag when no request headers provided")
 
     def test_ffmpeg_command_is_executable_via_subprocess(self):
         """The ffmpeg command list should be valid for subprocess.Popen."""
@@ -513,7 +461,7 @@ class TestFfmpegDirectCommand(unittest.TestCase):
         # The output path should be the last argument
         self.assertTrue(
             command[-1].endswith("Video.mp4") or command[-1] == r"C:\Downloads\Video\Video.mp4",
-            f"Last argument should be the output path, got: {command[-1]}"
+            f"Last argument should be the output path, got: {command[-1]}",
         )
 
 
@@ -554,9 +502,7 @@ class TestFallbackChainPriorityOrder(unittest.TestCase):
             if format_hint:
                 msg["format"] = format_hint
 
-            n_m3u8dl_re_resolver = (
-                (lambda: r"C:\Tools\N_m3u8DL-RE.exe") if with_n_m3u8dl_re else (lambda: None)
-            )
+            n_m3u8dl_re_resolver = (lambda: r"C:\Tools\N_m3u8DL-RE.exe") if with_n_m3u8dl_re else (lambda: None)
 
             with (
                 patch.object(dm, "resolve_download_dir", return_value=dl_dir),
@@ -580,68 +526,39 @@ class TestFallbackChainPriorityOrder(unittest.TestCase):
 
     def test_fallback_chain_priority_for_direct_mp4(self):
         """Direct MP4 URL fallback chain must follow: yt-dlp > curl-cffi > yt-dlp variants > yt-dlp native."""
-        labels = self._capture_fallback_commands(
-            "https://cdn.example.com/video.mp4"
-        )
+        labels = self._capture_fallback_commands("https://cdn.example.com/video.mp4")
 
         # Fallback chain for direct MP4:
-        expected_order = [
-            "curl-cffi (direct download)",
-            # yt-dlp variants (multiple):
-            "yt-dlp (no SSL check)",
-            "yt-dlp (geo bypass)",
-            "yt-dlp (no impersonate)",
-            "yt-dlp (max retries)",
-            "yt-dlp (single fragment)",
-            "yt-dlp (generic extractor)",
-            "yt-dlp (throttle detect)",
-            # you-get (if available)
-            # lux (if available)
-            # yt-dlp native must be last:
-        ]
 
         # Find the indices of expected labels in the actual list
-        curl_cffi_idx = next(
-            (i for i, l in enumerate(labels) if "curl-cffi" in l), -1
-        )
-        yt_dlp_variants_start = next(
-            (i for i, l in enumerate(labels) if l.startswith("yt-dlp")), -1
-        )
-        native_idx = next(
-            (i for i, l in enumerate(labels) if "native" in l.lower()), -1
-        )
+        curl_cffi_idx = next((i for i, label in enumerate(labels) if "curl-cffi" in label), -1)
+        yt_dlp_variants_start = next((i for i, label in enumerate(labels) if label.startswith("yt-dlp")), -1)
+        native_idx = next((i for i, label in enumerate(labels) if "native" in label.lower()), -1)
 
-        self.assertGreaterEqual(
-            curl_cffi_idx, 0,
-            f"curl-cffi must be in fallback chain for MP4. Got: {labels}"
-        )
-        self.assertGreaterEqual(
-            yt_dlp_variants_start, 0,
-            f"yt-dlp variants must be in fallback chain. Got: {labels}"
-        )
-        self.assertGreaterEqual(
-            native_idx, 0,
-            f"yt-dlp (native downloader) must be in fallback chain. Got: {labels}"
-        )
+        self.assertGreaterEqual(curl_cffi_idx, 0, f"curl-cffi must be in fallback chain for MP4. Got: {labels}")
+        self.assertGreaterEqual(yt_dlp_variants_start, 0, f"yt-dlp variants must be in fallback chain. Got: {labels}")
+        self.assertGreaterEqual(native_idx, 0, f"yt-dlp (native downloader) must be in fallback chain. Got: {labels}")
 
         # curl-cffi should come before yt-dlp variants
         if curl_cffi_idx >= 0 and yt_dlp_variants_start >= 0:
             self.assertLess(
-                curl_cffi_idx, yt_dlp_variants_start,
+                curl_cffi_idx,
+                yt_dlp_variants_start,
                 f"curl-cffi (at {curl_cffi_idx}) should come before yt-dlp variants "
-                f"(at {yt_dlp_variants_start}). Full chain: {labels}"
+                f"(at {yt_dlp_variants_start}). Full chain: {labels}",
             )
 
         # yt-dlp (native downloader) should be the LAST entry
         if native_idx >= 0:
             self.assertEqual(
-                native_idx, len(labels) - 1,
+                native_idx,
+                len(labels) - 1,
                 f"yt-dlp (native downloader) should be the last fallback "
-                f"(at {native_idx} of {len(labels)}). Full chain: {labels}"
+                f"(at {native_idx} of {len(labels)}). Full chain: {labels}",
             )
 
     def test_fallback_chain_priority_for_hls_url(self):
-        """HLS URL fallback chain must follow: yt-dlp > N_m3u8DL-RE > yt-dlp variants > Streamlink > ffmpeg > yt-dlp native."""
+        """HLS URL fallback: yt-dlp > N_m3u8DL-RE > yt-dlp variants > Streamlink > ffmpeg > native."""
         labels = self._capture_fallback_commands(
             "https://cdn.example.com/hls/master.m3u8",
             format_hint="M3U8",
@@ -649,54 +566,41 @@ class TestFallbackChainPriorityOrder(unittest.TestCase):
         )
 
         # Find key entries
-        n_m3u8dl_re_idx = next(
-            (i for i, l in enumerate(labels) if "N_m3u8DL-RE" in l), -1
-        )
-        yt_dlp_variants_start = next(
-            (i for i, l in enumerate(labels) if l.startswith("yt-dlp")), -1
-        )
-        ffmpeg_idx = next(
-            (i for i, l in enumerate(labels) if "ffmpeg" in l.lower()), -1
-        )
-        native_idx = next(
-            (i for i, l in enumerate(labels) if "native" in l.lower()), -1
-        )
+        n_m3u8dl_re_idx = next((i for i, label in enumerate(labels) if "N_m3u8DL-RE" in label), -1)
+        yt_dlp_variants_start = next((i for i, label in enumerate(labels) if label.startswith("yt-dlp")), -1)
+        ffmpeg_idx = next((i for i, label in enumerate(labels) if "ffmpeg" in label.lower()), -1)
+        native_idx = next((i for i, label in enumerate(labels) if "native" in label.lower()), -1)
 
+        self.assertGreaterEqual(n_m3u8dl_re_idx, 0, f"N_m3u8DL-RE must be in fallback chain for HLS. Got: {labels}")
         self.assertGreaterEqual(
-            n_m3u8dl_re_idx, 0,
-            f"N_m3u8DL-RE must be in fallback chain for HLS. Got: {labels}"
+            ffmpeg_idx, 0, f"ffmpeg (direct stream copy) must be in fallback chain for HLS. Got: {labels}"
         )
-        self.assertGreaterEqual(
-            ffmpeg_idx, 0,
-            f"ffmpeg (direct stream copy) must be in fallback chain for HLS. Got: {labels}"
-        )
-        self.assertGreaterEqual(
-            native_idx, 0,
-            f"yt-dlp (native downloader) must be in fallback. Got: {labels}"
-        )
+        self.assertGreaterEqual(native_idx, 0, f"yt-dlp (native downloader) must be in fallback. Got: {labels}")
 
         # N_m3u8DL-RE should come before yt-dlp variants
         if n_m3u8dl_re_idx >= 0 and yt_dlp_variants_start >= 0:
             self.assertLess(
-                n_m3u8dl_re_idx, yt_dlp_variants_start,
+                n_m3u8dl_re_idx,
+                yt_dlp_variants_start,
                 f"N_m3u8DL-RE (at {n_m3u8dl_re_idx}) should come before yt-dlp variants "
-                f"(at {yt_dlp_variants_start}). Full chain: {labels}"
+                f"(at {yt_dlp_variants_start}). Full chain: {labels}",
             )
 
         # ffmpeg should be before yt-dlp native
         if ffmpeg_idx >= 0 and native_idx >= 0:
             self.assertLess(
-                ffmpeg_idx, native_idx,
-                f"ffmpeg (at {ffmpeg_idx}) should come before yt-dlp native "
-                f"(at {native_idx}). Full chain: {labels}"
+                ffmpeg_idx,
+                native_idx,
+                f"ffmpeg (at {ffmpeg_idx}) should come before yt-dlp native (at {native_idx}). Full chain: {labels}",
             )
 
         # yt-dlp (native downloader) should be the LAST entry
         if native_idx >= 0:
             self.assertEqual(
-                native_idx, len(labels) - 1,
+                native_idx,
+                len(labels) - 1,
                 f"yt-dlp (native downloader) should be the last fallback "
-                f"(at {native_idx} of {len(labels)}). Full chain: {labels}"
+                f"(at {native_idx} of {len(labels)}). Full chain: {labels}",
             )
 
     def test_fallback_chain_excludes_curl_cffi_for_hls(self):
@@ -705,11 +609,8 @@ class TestFallbackChainPriorityOrder(unittest.TestCase):
             "https://cdn.example.com/hls/master.m3u8",
             format_hint="M3U8",
         )
-        curl_cffi_entries = [l for l in labels if "curl-cffi" in l]
-        self.assertEqual(
-            len(curl_cffi_entries), 0,
-            f"curl-cffi should NOT be in fallback for HLS URLs. Got: {labels}"
-        )
+        curl_cffi_entries = [label for label in labels if "curl-cffi" in label]
+        self.assertEqual(len(curl_cffi_entries), 0, f"curl-cffi should NOT be in fallback for HLS URLs. Got: {labels}")
 
     def test_fallback_chain_excludes_you_get_lux_for_hls(self):
         """you-get and lux should NOT be in the fallback chain for HLS URLs."""
@@ -717,16 +618,10 @@ class TestFallbackChainPriorityOrder(unittest.TestCase):
             "https://cdn.example.com/hls/master.m3u8",
             format_hint="M3U8",
         )
-        you_get_entries = [l for l in labels if "you-get" in l.lower()]
-        lux_entries = [l for l in labels if "lux" in l.lower()]
-        self.assertEqual(
-            len(you_get_entries), 0,
-            f"you-get should NOT be in fallback for HLS URLs. Got: {labels}"
-        )
-        self.assertEqual(
-            len(lux_entries), 0,
-            f"lux should NOT be in fallback for HLS URLs. Got: {labels}"
-        )
+        you_get_entries = [label for label in labels if "you-get" in label.lower()]
+        lux_entries = [label for label in labels if "lux" in label.lower()]
+        self.assertEqual(len(you_get_entries), 0, f"you-get should NOT be in fallback for HLS URLs. Got: {labels}")
+        self.assertEqual(len(lux_entries), 0, f"lux should NOT be in fallback for HLS URLs. Got: {labels}")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -842,7 +737,7 @@ class TestProbeCancellationOnWinner(unittest.TestCase):
 
     def test_cancel_event_set_when_winner_found(self):
         """cancel_event must be set immediately when a probe succeeds."""
-        from probe_runner import ProbeConfig, ProbeResult, run_parallel_probes
+        from probe_runner import ProbeConfig, run_parallel_probes
 
         cancel_event = threading.Event()
         send_messages = []
@@ -873,10 +768,7 @@ class TestProbeCancellationOnWinner(unittest.TestCase):
         )
 
         self.assertEqual(result.winner, "yt-dlp", "Probe should succeed")
-        self.assertTrue(
-            cancel_event.is_set(),
-            "cancel_event must be set after winner is found"
-        )
+        self.assertTrue(cancel_event.is_set(), "cancel_event must be set after winner is found")
 
     def test_probe_checks_cancel_event_before_work(self):
         """Probe functions should check cancel_event before starting work."""
@@ -895,8 +787,7 @@ class TestProbeCancellationOnWinner(unittest.TestCase):
 
         self.assertFalse(result["ok"], "Should not succeed when cancelled")
         self.assertEqual(
-            result["error_type"], "cancelled",
-            "Should report cancelled error_type when cancel_event is set"
+            result["error_type"], "cancelled", "Should report cancelled error_type when cancel_event is set"
         )
 
     def test_probe_checks_cancel_event_during_work(self):
@@ -904,6 +795,7 @@ class TestProbeCancellationOnWinner(unittest.TestCase):
         # This test verifies all probe backends are aware of cancellation
         # by checking their function signatures.
         import inspect
+
         from probe_backends import (
             probe_curl_cffi,
             probe_n_m3u8dl_re,
@@ -911,42 +803,30 @@ class TestProbeCancellationOnWinner(unittest.TestCase):
             probe_yt_dlp,
         )
 
-        cancel_event = threading.Event()
+        threading.Event()
 
         # Verify probe_curl_cffi accepts cancel_event
         sig = inspect.signature(probe_curl_cffi)
-        self.assertIn(
-            "cancel_event", sig.parameters,
-            "probe_curl_cffi must accept cancel_event parameter"
-        )
+        self.assertIn("cancel_event", sig.parameters, "probe_curl_cffi must accept cancel_event parameter")
 
         # Verify probe_yt_dlp accepts cancel_event
         sig2 = inspect.signature(probe_yt_dlp)
-        self.assertIn(
-            "cancel_event", sig2.parameters,
-            "probe_yt_dlp must accept cancel_event parameter"
-        )
+        self.assertIn("cancel_event", sig2.parameters, "probe_yt_dlp must accept cancel_event parameter")
 
         # Verify probe_n_m3u8dl_re accepts cancel_event
         sig3 = inspect.signature(probe_n_m3u8dl_re)
-        self.assertIn(
-            "cancel_event", sig3.parameters,
-            "probe_n_m3u8dl_re must accept cancel_event parameter"
-        )
+        self.assertIn("cancel_event", sig3.parameters, "probe_n_m3u8dl_re must accept cancel_event parameter")
 
         # Verify probe_streamlink accepts cancel_event
         sig4 = inspect.signature(probe_streamlink)
-        self.assertIn(
-            "cancel_event", sig4.parameters,
-            "probe_streamlink must accept cancel_event parameter"
-        )
+        self.assertIn("cancel_event", sig4.parameters, "probe_streamlink must accept cancel_event parameter")
 
 
 class TestBuildDownloadCommandFallbackVariants(unittest.TestCase):
     """build_yt_dlp_fallback_variants should produce the correct ordered list."""
 
     def test_fallback_variants_ordered_by_strategy(self):
-        """Fallback variants should follow: no-SSL > geo > no-impersonate > max-retries > single-fragment > generic > throttle."""
+        """Fallback variants: no-SSL > geo > no-impersonate > max-retries > single-fragment > generic > throttle."""
         from yt_dlp_command import build_yt_dlp_fallback_variants
 
         variants = build_yt_dlp_fallback_variants(
@@ -968,15 +848,12 @@ class TestBuildDownloadCommandFallbackVariants(unittest.TestCase):
         ]
 
         for i, expected in enumerate(expected_labels):
-            self.assertIn(
-                expected, labels,
-                f"Fallback variant #{i + 1} should be '{expected}'. Got: {labels}"
-            )
+            self.assertIn(expected, labels, f"Fallback variant #{i + 1} should be '{expected}'. Got: {labels}")
             self.assertEqual(
                 labels[i],
                 expected,
                 f"Fallback variant at position {i} should be '{expected}'. "
-                f"Got: '{labels[i] if i < len(labels) else 'N/A'}'. Full: {labels}"
+                f"Got: '{labels[i] if i < len(labels) else 'N/A'}'. Full: {labels}",
             )
 
     def test_yt_dlp_variants_have_valid_commands(self):
@@ -991,7 +868,7 @@ class TestBuildDownloadCommandFallbackVariants(unittest.TestCase):
 
         for variant in variants:
             self.assertIn("command", variant, f"Variant {variant.get('label')} must have 'command'")
-            self.assertIn("label", variant, f"Variant must have 'label'")
+            self.assertIn("label", variant, "Variant must have 'label'")
             cmd = variant["command"]
             self.assertIsInstance(cmd, list, f"Command for {variant['label']} must be a list")
             self.assertGreater(len(cmd), 0, f"Command for {variant['label']} must not be empty")

@@ -7,12 +7,10 @@ and CMAF detection during the capture pipeline.
 
 import os
 import struct
-import sys
 import tempfile
 import unittest
-from pathlib import Path
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 from cdm_capture import (
     _check_cmaf_from_files,

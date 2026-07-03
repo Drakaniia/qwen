@@ -1,15 +1,12 @@
 """Tests for fix_mp4_codec — mp4v→avc1 codec metadata fixer."""
 
-import io
 import os
 import struct
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from path_setup import *
-
+import path_setup  # noqa: F401
 from fix_mp4_codec import (
     _build_avcc_box,
     _extract_nal_units,
@@ -20,7 +17,6 @@ from fix_mp4_codec import (
     fix_mp4_codec_metadata,
     needs_codec_fix,
 )
-
 
 # ── Helper to build minimal MP4 files ─────────────────────────────────
 
@@ -77,7 +73,11 @@ def _build_moov(audio_only: bool = False) -> bytes:
 def _build_mdat(h264_data: bytes = b"") -> bytes:
     """Build an mdat box with optional H.264 data."""
     if not h264_data:
-        h264_data = b"\x00\x00\x00\x01\x67\x64\x00\x1e\xac\x52\x80\x40\x01\x00\x04\x7f\xff\x01\x40\x00\x00\x03\x00\x10\x00\x00\x03\x02\x8c\xa0\xc1\x48\x00\x00\x00\x01\x68\xee\x3c\x80"
+        h264_data = (
+            b"\x00\x00\x00\x01\x67\x64\x00\x1e\xac\x52\x80\x40\x01"
+            b"\x00\x04\x7f\xff\x01\x40\x00\x00\x03\x00\x10\x00\x00"
+            b"\x03\x02\x8c\xa0\xc1\x48\x00\x00\x00\x01\x68\xee\x3c\x80"
+        )
     return _build_box(b"mdat", h264_data)
 
 

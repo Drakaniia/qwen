@@ -10,11 +10,10 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock, patch
 
-from path_setup import *
+from path_setup import ROOT_DIR
+from probe_types import ProbeError, ProbeResult
 
 from progress_parser import is_cloudflare_challenge, is_html_error_page
-from probe_types import ProbeConfig, ProbeError, ProbeResult
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. Enhanced is_cloudflare_challenge — Turnstile & generic anti-bot
@@ -25,10 +24,11 @@ class TestEnhancedCloudflareChallengeDetection(unittest.TestCase):
 
     def test_detects_turnstile_challenge(self):
         """Cloudflare Turnstile widget should be detected."""
-        html = b"""<!DOCTYPE html><html><head><title>Just a moment...</title>
-        <script src="/cdn-cgi/challenge-platform/scripts/turnstile.js"></script>
-        <div id="cf-turnstile"></div><body>Checking your browser...</body></html>"""
-        self.assertTrue(is_cloudflare_challenge(html))
+        self.assertTrue(is_cloudflare_challenge(
+            b"""<!DOCTYPE html><html><head><title>Just a moment...</title>
+            <script src="/cdn-cgi/challenge-platform/scripts/turnstile.js"></script>
+            <div id="cf-turnstile"></div><body>Checking your browser...</body></html>"""
+        ))
 
     def test_detects_generic_just_a_moment(self):
         """'Just a moment...' with anti-bot indicators should be detected."""
@@ -102,37 +102,61 @@ class TestEnhancedHtmlErrorPageDetection(unittest.TestCase):
 
     def test_detects_cloudflare_403_page(self):
         """Cloudflare 403 forbidden page should be detected."""
-        html = b"<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body>Access denied by Cloudflare</body></html>"
+        html = (
+            b"<!DOCTYPE html><html><head><title>403 Forbidden</title></head>"
+            b"<body>Access denied by Cloudflare</body></html>"
+        )
         self.assertTrue(is_html_error_page(html))
 
     def test_detects_error_title_403(self):
         """Generic 403 error with HTML should be detected."""
-        html = b"<!DOCTYPE html><html><head><title>403 - Forbidden</title></head><body>You don't have permission to access this resource.</body></html>"
+        html = (
+            b"<!DOCTYPE html><html><head><title>403 - Forbidden</title></head>"
+            b"<body>You don't have permission to access this resource.</body></html>"
+        )
         self.assertTrue(is_html_error_page(html))
 
     def test_detects_error_title_404(self):
         """404 error with HTML should be detected."""
-        html = b"<!DOCTYPE html><html><head><title>404 Not Found</title></head><body>The requested URL was not found on this server.</body></html>"
+        html = (
+            b"<!DOCTYPE html><html><head><title>404 Not Found</title></head>"
+            b"<body>The requested URL was not found on this server.</body></html>"
+        )
         self.assertTrue(is_html_error_page(html))
 
     def test_detects_error_title_500(self):
         """500 error with HTML should be detected."""
-        html = b"<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head><body>Internal server error occurred.</body></html>"
+        html = (
+            b"<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head>"
+            b"<body>Internal server error occurred.</body></html>"
+        )
         self.assertTrue(is_html_error_page(html))
 
     def test_detects_access_denied(self):
         """Access denied error page should be detected."""
-        html = b"<!DOCTYPE html><html><head><title>Access Denied</title></head><body><h1>Access Denied</h1><p>You don't have permission to access this page.</p></body></html>"
+        html = (
+            b"<!DOCTYPE html><html><head><title>Access Denied</title></head>"
+            b"<body><h1>Access Denied</h1><p>You don't have permission"
+            b" to access this page.</p></body></html>"
+        )
         self.assertTrue(is_html_error_page(html))
 
     def test_rejects_video_html5(self):
         """HTML5 video page without error indicators should not be flagged."""
-        html = b"<!DOCTYPE html><html><head><title>Video Player</title></head><body><video width='640' height='360' controls><source src='movie.mp4' type='video/mp4'></video></body></html>"
+        html = (
+            b"<!DOCTYPE html><html><head><title>Video Player</title></head>"
+            b"<body><video width='640' height='360' controls>"
+            b"<source src='movie.mp4' type='video/mp4'></video></body></html>"
+        )
         self.assertFalse(is_html_error_page(html))
 
     def test_rejects_blog_page(self):
         """Normal HTML blog content without error keywords should not be flagged."""
-        html = b"<!DOCTYPE html><html><head><title>My Blog</title></head><body><article><h1>Welcome</h1><p>This is my blog where I share thoughts about technology.</p></article></body></html>"
+        html = (
+            b"<!DOCTYPE html><html><head><title>My Blog</title></head>"
+            b"<body><article><h1>Welcome</h1><p>This is my blog"
+            b" where I share thoughts about technology.</p></article></body></html>"
+        )
         self.assertFalse(is_html_error_page(html))
 
 
@@ -152,7 +176,9 @@ class TestProbeCloudflareDetection(unittest.TestCase):
             url="https://example.com/master.m3u8",
             cancel_event=Event(),
             yt_dlp_command=[sys.executable, "-c",
-                "import sys; print('ERROR: [example.com] HTTP Error 403: Forbidden (caused by Cloudflare)', file=sys.stderr); sys.exit(1)"],
+                "import sys; print("
+                "'ERROR: [example.com] HTTP Error 403: Forbidden"
+                " (caused by Cloudflare)', file=sys.stderr); sys.exit(1)"],
         )
         self.assertFalse(result["ok"])
         self.assertEqual(result["error_type"], "cloudflare_block",
@@ -167,7 +193,10 @@ class TestProbeCloudflareDetection(unittest.TestCase):
             mock_resp = MagicMock()
             mock_resp.ok = False
             mock_resp.status_code = 403
-            mock_resp.text = "<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title></head><body>...</body></html>"
+            mock_resp.text = (
+                "<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title></head>"
+                "<body>...</body></html>"
+            )
             mock_head.return_value = mock_resp
 
             with patch("probe_backends.curl_cffi_available", return_value=True):
@@ -332,7 +361,9 @@ class TestFragmentCloudflareCheckAllExtensions(unittest.TestCase):
             frag_dir.mkdir()
             frag_file = frag_dir / "seg-001.m4s"
             frag_file.write_bytes(
-                b"<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title></head><body>...</body></html>"
+                b"<!DOCTYPE html><html><head>"
+                b"<title>Attention Required! | Cloudflare</title>"
+                b"</head><body>...</body></html>"
             )
 
             task.artifact_root = str(frag_dir)
@@ -364,7 +395,9 @@ class TestFragmentCloudflareCheckAllExtensions(unittest.TestCase):
             frag_dir.mkdir()
             frag_file = frag_dir / "audio_track_1.cmfv"
             frag_file.write_bytes(
-                b"<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title><body>Checking your browser...</body></html>"
+                b"<!DOCTYPE html><html><head>"
+                b"<title>Attention Required! | Cloudflare</title>"
+                b"<body>Checking your browser...</body></html>"
             )
 
             task.artifact_root = str(frag_dir)
@@ -394,7 +427,10 @@ class TestFragmentCloudflareCheckAllExtensions(unittest.TestCase):
             frag_dir.mkdir()
             frag_file = frag_dir / "init"
             frag_file.write_bytes(
-                b"<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title></head><body>Challenge page content for testing purposes that needs to be long enough</body></html>"
+                b"<!DOCTYPE html><html><head>"
+                b"<title>Attention Required! | Cloudflare</title></head>"
+                b"<body>Challenge page content for testing"
+                b" purposes that needs to be long enough</body></html>"
             )
 
             task.artifact_root = str(frag_dir)

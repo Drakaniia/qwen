@@ -11,12 +11,11 @@ RED phase: These tests fail because the function doesn't exist yet.
 GREEN phase: After implementing, these tests pass.
 """
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 try:
     from cdm_capture import decrypt_with_mp4decrypt

@@ -1,8 +1,6 @@
-import sys
 import unittest
-from pathlib import Path
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 import media_candidates
 

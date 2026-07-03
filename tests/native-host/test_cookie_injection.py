@@ -6,12 +6,11 @@ Verifies:
 3. run_download() properly extracts cookieHeader from messages
 """
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from path_setup import *
+import path_setup  # noqa: F401
 
 
 class WriteCookieFileFromStringTests(unittest.TestCase):
@@ -64,8 +63,8 @@ class WriteCookieFileFromStringTests(unittest.TestCase):
                 temp_dir=temp_dir,
             )
             content = Path(filepath).read_text(encoding="utf-8")
-            lines = [l for l in content.split("\n") if l and not l.startswith("#")]
-            self.assertTrue(any("FALSE" in l for l in lines), "HTTP should have secure=FALSE")
+            lines = [label for label in content.split("\n") if label and not label.startswith("#")]
+            self.assertTrue(any("FALSE" in label for label in lines), "HTTP should have secure=FALSE")
 
     def test_write_cookie_file_from_string_multiple_cookies(self):
         """Multiple cookies should all be written."""

@@ -4,18 +4,17 @@ RED phase — these tests describe desired behavior that is NOT YET IMPLEMENTED.
 They will fail until the corresponding GREEN phase implementation is written.
 """
 
-import sys
 import unittest
 from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock, patch
 
-from path_setup import *
-
+import path_setup  # noqa: F401
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. Browser context headers — sec-ch-ua* should be allowed
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestBrowserContextSecChUaHeaders(unittest.TestCase):
     """browser_context should forward sec-ch-ua* headers for Cloudflare detection."""
@@ -23,7 +22,9 @@ class TestBrowserContextSecChUaHeaders(unittest.TestCase):
     def setUp(self):
         # Re-import to get fresh module state
         import importlib
+
         import browser_context
+
         importlib.reload(browser_context)
         self.bc = browser_context
 
@@ -89,6 +90,7 @@ class TestBrowserContextSecChUaHeaders(unittest.TestCase):
 # 2. Version-specific Chrome impersonation in probes
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestVersionSpecificImpersonation(unittest.TestCase):
     """Probe functions should accept a chrome_version parameter for version-specific impersonation."""
 
@@ -97,9 +99,10 @@ class TestVersionSpecificImpersonation(unittest.TestCase):
         from probe_backends import probe_curl_cffi
 
         # Mock to avoid actual network request
-        with patch("probe_backends.curl_cffi_available", return_value=True), \
-             patch("curl_cffi.requests.head") as mock_head:
-
+        with (
+            patch("probe_backends.curl_cffi_available", return_value=True),
+            patch("curl_cffi.requests.head") as mock_head,
+        ):
             mock_resp = MagicMock()
             mock_resp.ok = True
             mock_resp.status_code = 200
@@ -116,16 +119,18 @@ class TestVersionSpecificImpersonation(unittest.TestCase):
             self.assertTrue(result["ok"])
             # Verify impersonate was called with chrome131
             call_kwargs = mock_head.call_args[1]
-            self.assertEqual(call_kwargs.get("impersonate"), "chrome131",
-                             "Should use version-specific impersonate parameter")
+            self.assertEqual(
+                call_kwargs.get("impersonate"), "chrome131", "Should use version-specific impersonate parameter"
+            )
 
     def test_probe_curl_cffi_uses_chrome_default_without_version(self):
         """probe_curl_cffi should use 'chrome' default when no version specified."""
         from probe_backends import probe_curl_cffi
 
-        with patch("probe_backends.curl_cffi_available", return_value=True), \
-             patch("curl_cffi.requests.head") as mock_head:
-
+        with (
+            patch("probe_backends.curl_cffi_available", return_value=True),
+            patch("curl_cffi.requests.head") as mock_head,
+        ):
             mock_resp = MagicMock()
             mock_resp.ok = True
             mock_resp.status_code = 200
@@ -139,13 +144,15 @@ class TestVersionSpecificImpersonation(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             call_kwargs = mock_head.call_args[1]
-            self.assertEqual(call_kwargs.get("impersonate"), "chrome",
-                             "Should use default 'chrome' impersonate parameter")
+            self.assertEqual(
+                call_kwargs.get("impersonate"), "chrome", "Should use default 'chrome' impersonate parameter"
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # 3. curl_cffi_adapter — version-specific impersonation
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestCurlCffiAdapterVersionSpecific(unittest.TestCase):
     """curl_cffi_adapter download functions should support version-specific impersonation."""
@@ -154,9 +161,7 @@ class TestCurlCffiAdapterVersionSpecific(unittest.TestCase):
         """fetch_page_text should pass chrome_version through to impersonation."""
         import curl_cffi_adapter as cca
 
-        with patch.object(cca, "curl_cffi_available", return_value=True), \
-             patch("curl_cffi.requests.get") as mock_get:
-
+        with patch.object(cca, "curl_cffi_available", return_value=True), patch("curl_cffi.requests.get") as mock_get:
             mock_resp = MagicMock()
             mock_resp.content = b"<html><body>OK</body></html>"
             mock_resp.status_code = 200
@@ -176,15 +181,14 @@ class TestCurlCffiAdapterVersionSpecific(unittest.TestCase):
         """download_with_curl_cffi should accept impersonate parameter."""
         import curl_cffi_adapter as cca
 
-        with patch.object(cca, "curl_cffi_available", return_value=True), \
-             patch("curl_cffi.requests.get") as mock_get:
-
+        with patch.object(cca, "curl_cffi_available", return_value=True), patch("curl_cffi.requests.get") as mock_get:
             mock_resp = MagicMock()
             mock_resp.headers = {"content-length": "512"}
             mock_resp.iter_content.return_value = [b"x" * 512]
             mock_get.return_value = mock_resp
 
             import tempfile
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 output = Path(tmpdir) / "test.bin"
                 result = cca.download_with_curl_cffi(
@@ -203,6 +207,7 @@ class TestCurlCffiAdapterVersionSpecific(unittest.TestCase):
 # 4. download_curl_cffi_command — should encode chrome version in script
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestDownloadCurlCffiCommandVersion(unittest.TestCase):
     """download_curl_cffi_command should encode chrome version in the generated script."""
 
@@ -218,8 +223,7 @@ class TestDownloadCurlCffiCommandVersion(unittest.TestCase):
 
         script = cmd[2]
         # The script should contain an impersonate parameter
-        self.assertIn("impersonate", script,
-                      "Generated script should include impersonate parameter")
+        self.assertIn("impersonate", script, "Generated script should include impersonate parameter")
 
 
 if __name__ == "__main__":

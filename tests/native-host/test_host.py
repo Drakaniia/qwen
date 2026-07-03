@@ -1,14 +1,12 @@
 import io
 import struct
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from path_setup import *
-
 import host
+import path_setup  # noqa: F401
 
 import native_protocol
 

@@ -8,18 +8,14 @@ Tests the edge case handling functions added in Phase 4:
 """
 
 import struct
-import sys
 import unittest
-from pathlib import Path
 
-from path_setup import *
-
+import path_setup  # noqa: F401
 from codec.fmp4 import (
     demux_streams,
     detect_track_gaps,
     interleave_tracks,
     is_cmaf,
-    parse_init_segment,
 )
 
 

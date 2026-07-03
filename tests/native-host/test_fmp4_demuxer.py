@@ -5,12 +5,9 @@ Following TDD: these tests are written BEFORE the implementation.
 """
 
 import struct
-import sys
 import unittest
-from pathlib import Path
 
-from path_setup import *
-
+import path_setup  # noqa: F401
 from codec.fmp4 import (
     ISOBox,
     demux_streams,
@@ -523,8 +520,9 @@ class TestInitSegmentParsing(unittest.TestCase):
 
     def test_parse_init_segment_encrypted_init(self):
         """Init segment with pssh should detect encryption."""
-        system_id = bytes([0xED, 0xEF, 0x8B, 0xA9, 0x79, 0xD6, 0x4A, 0xCE,
-                           0xA3, 0xC8, 0x10, 0x0D, 0x6F, 0x33, 0x26, 0x7E])
+        system_id = bytes(
+            [0xED, 0xEF, 0x8B, 0xA9, 0x79, 0xD6, 0x4A, 0xCE, 0xA3, 0xC8, 0x10, 0x0D, 0x6F, 0x33, 0x26, 0x7E]
+        )
         pssh_payload = b"\x00\x00\x00\x00" + system_id + b"\x00\x00\x00\x00"
         pssh_payload += b"\x00\x00\x00\x0c" + b"testpsshdata"
         pssh = self._build_box("pssh", pssh_payload)
@@ -940,8 +938,8 @@ class TestFMP4DemuxReassembly(unittest.TestCase):
         trun_payload = struct.pack(">I", 0 << 24 | trun_flags)
         trun_payload += struct.pack(">I", 2)  # 2 samples
         trun_payload += struct.pack(">i", data_offset)
-        trun_payload += struct.pack(">I", 0)    # sample 1: size 0 (skipped)
-        trun_payload += struct.pack(">I", 50)   # sample 2: size 50 (included)
+        trun_payload += struct.pack(">I", 0)  # sample 1: size 0 (skipped)
+        trun_payload += struct.pack(">I", 50)  # sample 2: size 50 (included)
         trun = self._build_box("trun", trun_payload)
         mfhd = self._build_mfhd(1)
         tfhd = self._build_tfhd(1)

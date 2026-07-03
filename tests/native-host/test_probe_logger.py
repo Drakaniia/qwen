@@ -1,13 +1,11 @@
 """Tests for DownloadLogger probe event types."""
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from path_setup import *
-
+import path_setup  # noqa: F401
 from download_logger import DownloadLogger
 
 from probe_runner import ProbeError

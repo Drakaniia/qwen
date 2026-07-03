@@ -1,14 +1,12 @@
 import io
-import sys
 import tempfile
 import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from path_setup import *
-
 import host
+import path_setup  # noqa: F401
 
 import download_manager as dm
 
@@ -534,13 +532,12 @@ class TestRunDownloadFallbackChain(unittest.TestCase):
         self.assertEqual(
             first_label,
             "N_m3u8DL-RE",
-            f"First fallback should be N_m3u8DL-RE for HLS URLs. Got: {first_label}. "
-            f"Full chain: {labels}",
+            f"First fallback should be N_m3u8DL-RE for HLS URLs. Got: {first_label}. Full chain: {labels}",
         )
 
         # N_m3u8DL-RE should appear before any 'yt-dlp (' variant
-        n_m3u8dl_re_idx = next(i for i, l in enumerate(labels) if l == "N_m3u8DL-RE")
-        yt_dlp_variant_indices = [i for i, l in enumerate(labels) if l.startswith("yt-dlp (")]
+        n_m3u8dl_re_idx = next(i for i, label in enumerate(labels) if label == "N_m3u8DL-RE")
+        yt_dlp_variant_indices = [i for i, label in enumerate(labels) if label.startswith("yt-dlp (")]
         if yt_dlp_variant_indices:
             first_yt_dlp_variant = min(yt_dlp_variant_indices)
             self.assertLess(
@@ -606,8 +603,7 @@ class TestRunDownloadFallbackChain(unittest.TestCase):
         self.assertEqual(
             first_label,
             "N_m3u8DL-RE",
-            f"First fallback should be N_m3u8DL-RE for DASH URLs. Got: {first_label}. "
-            f"Full chain: {labels}",
+            f"First fallback should be N_m3u8DL-RE for DASH URLs. Got: {first_label}. Full chain: {labels}",
         )
 
     def test_n_m3u8dl_re_not_in_fallback_when_unavailable(self):
@@ -659,7 +655,7 @@ class TestRunDownloadFallbackChain(unittest.TestCase):
                 )
 
         labels = [cmd.get("label", "") for cmd in captured_fallback_commands]
-        n_m3u8dl_re_entries = [l for l in labels if "N_m3u8DL-RE" in l]
+        n_m3u8dl_re_entries = [label for label in labels if "N_m3u8DL-RE" in label]
         self.assertEqual(
             len(n_m3u8dl_re_entries),
             0,
@@ -718,7 +714,7 @@ class TestRunDownloadFallbackChain(unittest.TestCase):
         labels = [cmd.get("label", "") for cmd in captured_fallback_commands]
 
         # yt-dlp (native downloader) should still be the last entry
-        native_indices = [i for i, l in enumerate(labels) if "native downloader" in l.lower()]
+        native_indices = [i for i, label in enumerate(labels) if "native downloader" in label.lower()]
         self.assertGreater(len(native_indices), 0, f"Should have yt-dlp (native downloader). Got: {labels}")
         self.assertEqual(
             native_indices[-1],
