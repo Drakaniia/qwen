@@ -99,6 +99,8 @@ export const elements = {
   depBannerList: document.getElementById("depBannerList"),
   depBannerTitle: document.getElementById("depBannerTitle"),
   depBannerCopyBtn: document.getElementById("depBannerCopyBtn"),
+  // Overlay toggle
+  overlayToggle: document.getElementById("overlayToggle"),
   // Debug log panel elements
   debugLogPanel: document.getElementById("debugLogPanel"),
   debugLogToggle: document.getElementById("debugLogToggle"),
