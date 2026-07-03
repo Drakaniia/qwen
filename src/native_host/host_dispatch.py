@@ -135,6 +135,10 @@ def handle_message(message, deps):
             # Write base64-encoded segment data to disk
             result = deps.run_write_data(message)
             deps.send_native_message(result)
+        case "debugLog":
+            # Write debug log entries to a local file
+            result = deps.run_debug_log(message)
+            deps.send_native_message(result)
         case "cdpRelayResult" | "cdpRelayError":
             # Result from extension for a CDP relay command — forward to Go
             if hasattr(deps, "send_cdp_relay_result"):

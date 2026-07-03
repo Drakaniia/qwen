@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
+from pathlib import Path
 from urllib.request import urlopen
+
+# Add all native_host subdirectories to sys.path so flat imports still work
+# after the Phase 3 structural refactoring moved files into subdirectories.
+import sys
+_host_dir = Path(__file__).resolve().parent
+for _root, _dirs, _files in _host_dir.walk():
+    if _root.name == "__pycache__" or _root.name.startswith("_"):
+        continue
+    _path = str(_root)
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 import capture_manager as _capture_manager
 import cdm_capture as _cdm_capture
@@ -387,6 +399,48 @@ def run_write_data(message):
         }
 
 
+def run_debug_log(message):
+    """Write debug log entries to a local file for troubleshooting.
+
+    Receives a message with:
+        - entries: list of {timestamp, level, message, details} objects
+
+    Writes a formatted log to <project-root>/logs/debug.log.
+    Creates the logs/ directory if it doesn't exist.
+    """
+    from pathlib import Path as _Path
+
+    entries = message.get("entries", [])
+    msg_id = message.get("id", "debug_log")
+
+    if not entries:
+        return {"type": "debugLogResult", "id": msg_id, "ok": True, "count": 0}
+
+    # Resolve logs directory relative to this script's project root
+    script_dir = _Path(__file__).resolve().parent  # src/native_host/
+    log_dir = script_dir.parent / "logs"  # <project>/logs/
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    log_file = log_dir / "debug.log"
+    lines = []
+    for entry in entries:
+        ts = entry.get("timestamp", 0)
+        level = (entry.get("level", "info") or "info").upper()
+        msg = entry.get("message", "")
+        details = entry.get("details", "")
+        line = f"[{ts}] [{level}] {msg}"
+        if details:
+            line += f"\n  -> {details[:2000]}"
+        lines.append(line)
+
+    try:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        return {"type": "debugLogResult", "id": msg_id, "ok": True, "count": len(entries)}
+    except Exception as exc:
+        return {"type": "debugLogResult", "id": msg_id, "ok": False, "error": str(exc)}
+
+
 def dependency_status():
     return _host_dispatch.dependency_status(_dispatch_deps(include_dispatch=False))
 
@@ -437,6 +491,7 @@ def _dispatch_deps(include_dispatch=True):
         "run_decrypt_segments": run_decrypt_segments,
         "run_assemble_segments": run_assemble_segments,
         "run_analyze_segments": run_analyze_segments,
+        "run_debug_log": run_debug_log,
         "send_native_message": send_native_message,
         "send_cdp_relay_result": send_cdp_relay_result,
         "get_pending_cdp_forward": get_pending_cdp_forward,
