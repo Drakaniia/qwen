@@ -8,6 +8,9 @@ import {
   renderDepBanner,
   checkHelperStatus,
   copyInstallCommand,
+  appendDebugLogEntry,
+  renderAllDebugLogEntries,
+  clearDebugLog,
 } from "./popup_helpers.js";
 
 // ─── Background message listener ────────────────────────────────────────────
@@ -82,6 +85,11 @@ api.runtime.onMessage.addListener((message) => {
 
     checkHelperStatus();
   }
+
+  if (message.type === "downloadDebugLog") {
+    appendDebugLogEntry(message.level || "info", message.message, message.details || "");
+    return;
+  }
 });
 
 // ─── Dep banner toggle ───────────────────────────────────────────────────
@@ -97,4 +105,22 @@ elements.depBannerToggle.addEventListener("click", function () {
 
 elements.depBannerCopyBtn.addEventListener("click", function () {
   copyInstallCommand(elements.depBannerCopyBtn);
+});
+
+// ─── Debug log panel toggle ──────────────────────────────────────────────
+
+elements.debugLogToggle.addEventListener("click", function () {
+  const expanded = elements.debugLogToggle.getAttribute("aria-expanded") === "true";
+  const nextExpanded = !expanded;
+  elements.debugLogToggle.setAttribute("aria-expanded", String(nextExpanded));
+  elements.debugLogBody.classList.toggle("expanded", nextExpanded);
+  if (nextExpanded) {
+    renderAllDebugLogEntries();
+  }
+});
+
+// ─── Debug log clear button ──────────────────────────────────────────────
+
+elements.debugLogClear.addEventListener("click", function () {
+  clearDebugLog();
 });

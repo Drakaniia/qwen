@@ -1,4 +1,8 @@
 @import url("../shared/qwin_overlay.css");
 @import url("popup-base.css");
-@import url("popup-components.css");
+@import url("styles/layout.css");
+@import url("styles/download-list.css");
+@import url("styles/buttons.css");
+@import url("styles/quality-dialog.css");
+@import url("styles/debug-panel.css");
 @import url("popup-theme.css");

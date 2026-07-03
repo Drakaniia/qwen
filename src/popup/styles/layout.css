@@ -1,0 +1,548 @@
+/* ─── Download indicator ───────────────────────────────────────────────── */
+
+.download-indicator {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  background: #9ca3af;
+  transition:
+    background-color 200ms ease,
+    box-shadow 200ms ease;
+  flex-shrink: 0;
+  cursor: help;
+}
+
+.download-indicator[data-status="available"] {
+  background: #10b981;
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
+}
+
+.download-indicator[data-status="unavailable"] {
+  background: #ef4444;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3);
+}
+
+.download-indicator[data-status="checking"] {
+  background: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3);
+  animation: indicator-pulse 1.5s ease-in-out infinite;
+}
+
+/* ─── Helper / hint text ──────────────────────────────────────────────── */
+
+.helper-status,
+.hint {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.helper-status.error {
+  color: var(--danger);
+}
+
+.helper-status.ok {
+  color: var(--ok);
+}
+
+/* ─── Settings panel ──────────────────────────────────────────────────── */
+
+.settings-panel {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #eef7f5;
+}
+
+.settings-panel[hidden] {
+  display: none !important;
+}
+
+.settings-select {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.settings-select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.settings-divider {
+  grid-column: 1 / -1;
+  height: 0;
+  margin: 6px 0;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+.settings-status {
+  min-height: 18px;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.settings-status.error {
+  color: var(--danger);
+}
+
+/* ─── Checkbox label ──────────────────────────────────────────────────── */
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  font-weight: 650;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-height: unset;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ─── Music link section ──────────────────────────────────────────────── */
+
+.music-link-section {
+  display: grid;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, #fef2f2 0%, #fff 50%, #f0fdf4 100%);
+}
+
+.music-link-section[hidden] {
+  display: none !important;
+}
+
+.music-link-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.music-link-input-row input {
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+}
+
+.music-link-input-row input:focus {
+  outline: 2px solid #b91c1c;
+  outline-offset: -1px;
+  border-color: #b91c1c;
+}
+
+.music-link-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.platform-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.more-platforms {
+  color: #9ca3af;
+  font-style: italic;
+  font-size: 10px;
+}
+
+/* ─── View toggle ──────────────────────────────────────────────────────── */
+
+.view-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.view-toggle button {
+  min-height: 30px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.view-toggle button.active {
+  border-color: var(--accent);
+  background: #dff1ee;
+  color: #075c55;
+}
+
+.view-toggle[hidden],
+#contentView[hidden],
+#footerActions[hidden] {
+  display: none !important;
+}
+
+/* ─── Folder picker ───────────────────────────────────────────────────── */
+
+.folder-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.folder-picker button {
+  min-width: 74px;
+}
+
+/* ─── Message ─────────────────────────────────────────────────────────── */
+
+.message {
+  margin-bottom: 10px;
+  color: var(--muted);
+}
+
+.message.error {
+  color: var(--danger);
+}
+
+.message[hidden] {
+  display: none !important;
+}
+
+/* ─── Video toolbar ───────────────────────────────────────────────────── */
+
+.video-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: -2px 0 10px;
+}
+
+.video-toolbar[hidden] {
+  display: none !important;
+}
+
+.layout-toggle {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #edf2f5;
+}
+
+.layout-toggle button {
+  width: 30px;
+  min-height: 28px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.layout-toggle button.active {
+  border-color: #c8d2dc;
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgba(23, 27, 34, 0.08);
+}
+
+.layout-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+/* ─── Video preview / thumbnail ───────────────────────────────────────── */
+
+.video-preview {
+  display: none;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #202936;
+}
+
+.video-thumbnail {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-placeholder {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, rgba(15, 118, 110, 0.92), rgba(32, 41, 54, 0.98)), #202936;
+}
+
+.video-placeholder-icon {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.video-placeholder-icon::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 13px;
+  width: 0;
+  height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 10px solid #fff;
+}
+
+/* ─── Box layout ──────────────────────────────────────────────────────── */
+
+.video-list.boxes {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.video-list.boxes .video-item {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  box-shadow: 0 8px 20px rgba(23, 27, 34, 0.08);
+}
+
+.video-list.boxes .video-preview {
+  display: grid;
+  place-items: center;
+}
+
+.video-list.boxes .video-content {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+}
+
+.video-list.boxes .video-main {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+}
+
+.video-list.boxes .video-main button {
+  width: 100%;
+}
+
+.video-list.boxes .video-title {
+  min-height: 32px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.video-list.boxes .meta {
+  gap: 4px;
+  margin-top: 0;
+}
+
+.video-list.boxes .badge {
+  min-height: 18px;
+  padding: 1px 5px;
+}
+
+/* ─── Batch download bar ──────────────────────────────────────────────── */
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, #f0fdf4 0%, var(--surface) 100%);
+}
+
+.batch-bar[hidden] {
+  display: none !important;
+}
+
+.batch-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.batch-label {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--ok);
+}
+
+.batch-progress-bar {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #d1fae5;
+}
+
+.batch-progress-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 300ms ease;
+}
+
+.batch-status-text {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.batch-actions {
+  flex: 0 0 auto;
+}
+
+/* ─── Playlist prompt ────────────────────────────────────────────────── */
+
+.playlist-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, #f0fdf4 0%, #eef7f5 100%);
+}
+
+.playlist-prompt[hidden] {
+  display: none !important;
+}
+
+.playlist-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.playlist-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.playlist-title-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ok);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playlist-actions {
+  flex: 0 0 auto;
+}
+
+.playlist-actions button {
+  white-space: nowrap;
+  min-height: 30px;
+}
+
+/* ─── Recording styles ────────────────────────────────────────────────── */
+
+.recording-item {
+  border-color: #fecaca;
+  background: linear-gradient(135deg, #fef2f2 0%, var(--surface) 100%);
+}
+
+.recording-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+  animation: recording-pulse 1.5s ease-in-out infinite;
+}
+
+.recording-badge {
+  background: #fecaca;
+  color: #991b1b;
+  font-weight: 800;
+}
+
+.recording-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fef2f2;
+  font-size: 11px;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.recording-duration {
+  font-weight: 800;
+}
+
+.recording-size {
+  color: #4d596b;
+}
+
+.recording-fps {
+  color: #4d596b;
+}
+
+.recording-dropped {
+  color: #b91c1c;
+}

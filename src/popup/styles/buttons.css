@@ -1,0 +1,161 @@
+/* ─── Icon buttons ─────────────────────────────────────────────────────── */
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-button svg {
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
+}
+
+.icon-button.is-refreshing svg {
+  animation: qwin-refresh-spin 720ms linear infinite;
+  transform-origin: 50% 50%;
+}
+
+/* ─── Special buttons ─────────────────────────────────────────────────── */
+
+.magnet-button {
+  margin-top: 4px;
+  border-color: #7c3aed;
+  background: #7c3aed;
+  color: #fff;
+}
+
+.magnet-button:hover {
+  background: #6d28d9;
+}
+
+.settings-button {
+  width: 100%;
+  margin-top: 8px;
+}
+
+#saveSettings {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.music-link-input-row button {
+  min-height: 34px;
+  white-space: nowrap;
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #fff;
+}
+
+.music-link-input-row button:hover {
+  background: #991b1b;
+}
+
+/* ─── Batch actions ────────────────────────────────────────────────────── */
+
+.batch-cancel-button {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-color: var(--danger);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.batch-cancel-button:hover {
+  background: #fef2f2;
+}
+
+/* ─── Recording buttons ────────────────────────────────────────────────── */
+
+.record-button {
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 12px;
+  min-height: 28px;
+  padding: 3px 8px;
+}
+
+.record-button:hover {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+.record-page-button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.record-page-button:hover {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+/* ─── Dep banner button ───────────────────────────────────────────────── */
+
+.dep-banner-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 200ms ease,
+    background 200ms ease,
+    color 200ms ease,
+    transform 150ms ease;
+  opacity: 0;
+  transition: opacity 350ms ease, border-color 200ms ease, background 200ms ease, color 200ms ease, transform 150ms ease;
+  transition-delay: 350ms;
+}
+
+.dep-banner-body.expanded .dep-banner-copy-btn {
+  opacity: 1;
+}
+
+.dep-banner-copy-btn:hover {
+  border-color: var(--warning);
+  background: #fffef5;
+  transform: translateY(-1px);
+}
+
+.dep-banner-copy-btn:active {
+  transform: scale(0.97) translateY(0);
+}
+
+.dep-banner-copy-btn.copied {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.setup-button-icon {
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 200ms ease;
+}
+
+.dep-banner-copy-btn.copied .setup-button-icon {
+  transform: scale(1.2);
+}

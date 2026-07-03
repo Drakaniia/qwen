@@ -99,6 +99,13 @@ export const elements = {
   depBannerList: document.getElementById("depBannerList"),
   depBannerTitle: document.getElementById("depBannerTitle"),
   depBannerCopyBtn: document.getElementById("depBannerCopyBtn"),
+  // Debug log panel elements
+  debugLogPanel: document.getElementById("debugLogPanel"),
+  debugLogToggle: document.getElementById("debugLogToggle"),
+  debugLogBody: document.getElementById("debugLogBody"),
+  debugLogEntries: document.getElementById("debugLogEntries"),
+  debugLogCount: document.getElementById("debugLogCount"),
+  debugLogClear: document.getElementById("debugLogClear"),
 };
 
 // ─── Quality chooser ────────────────────────────────────────────────────────

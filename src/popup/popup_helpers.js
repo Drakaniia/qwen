@@ -506,6 +506,89 @@ export async function clearActiveTabVideos() {
   }
 }
 
+// ─── Debug log helpers ─────────────────────────────────────────────────────
+
+const debugLogEntries = [];
+
+export function appendDebugLogEntry(level, message, details) {
+  const timestamp = Date.now();
+  debugLogEntries.push({ timestamp, level, message, details });
+
+  // Update the count badge
+  if (elements.debugLogCount) {
+    elements.debugLogCount.textContent = String(debugLogEntries.length);
+  }
+
+  // Show the panel when first entry arrives
+  if (debugLogEntries.length === 1 && elements.debugLogPanel) {
+    elements.debugLogPanel.hidden = false;
+  }
+
+  // Add the entry to the DOM if the panel is expanded
+  if (elements.debugLogBody && elements.debugLogBody.classList.contains("expanded")) {
+    renderDebugLogEntry(elements.debugLogEntries, { timestamp, level, message, details });
+  }
+}
+
+function renderDebugLogEntry(container, entry) {
+  const doc = container.ownerDocument;
+  const div = doc.createElement("div");
+  div.className = "debug-log-entry";
+
+  const time = doc.createElement("span");
+  time.className = "debug-log-entry-time";
+  const d = new Date(entry.timestamp);
+  time.textContent = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+
+  const content = doc.createElement("div");
+  content.style.display = "contents";
+
+  const levelSpan = doc.createElement("span");
+  levelSpan.className = `debug-log-entry-level debug-log-entry-level-${entry.level}`;
+  levelSpan.textContent = entry.level;
+
+  const msg = doc.createElement("span");
+  msg.className = "debug-log-entry-message";
+  msg.textContent = entry.message;
+
+  content.append(levelSpan, msg);
+  div.append(time, content);
+
+  if (entry.details) {
+    const details = doc.createElement("div");
+    details.className = "debug-log-entry-details";
+    details.textContent = entry.details;
+    div.append(details);
+  }
+
+  container.append(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+export function clearDebugLog() {
+  debugLogEntries.length = 0;
+  if (elements.debugLogCount) {
+    elements.debugLogCount.textContent = "0";
+  }
+  if (elements.debugLogEntries) {
+    elements.debugLogEntries.textContent = "";
+  }
+  if (elements.debugLogPanel) {
+    elements.debugLogPanel.hidden = true;
+  }
+}
+
+export function renderAllDebugLogEntries() {
+  if (!elements.debugLogEntries) return;
+  elements.debugLogEntries.textContent = "";
+  for (const entry of debugLogEntries) {
+    renderDebugLogEntry(elements.debugLogEntries, entry);
+  }
+  if (elements.debugLogCount) {
+    elements.debugLogCount.textContent = String(debugLogEntries.length);
+  }
+}
+
 // ─── Active download jobs helper (re-export) ──────────────────────────────
 import { activeDownloadJobs, isUnknownMessageTypeError } from "./popup_state.js";
 export { activeDownloadJobs, isUnknownMessageTypeError };

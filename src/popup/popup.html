@@ -227,6 +227,20 @@
       </div>
       <div id="videoList" class="video-list"></div>
       <div id="downloadList" class="download-list"></div>
+
+      <!-- ─── Collapsible debug log panel ──────────────────────────── -->
+      <div id="debugLogPanel" class="debug-log-panel" hidden>
+        <button id="debugLogToggle" class="debug-log-toggle" type="button" aria-expanded="false">
+          <span class="debug-log-icon">📋</span>
+          <span id="debugLogTitle" class="debug-log-title">Download debug log</span>
+          <span class="debug-log-count" id="debugLogCount">0</span>
+          <span class="debug-log-chevron">▶</span>
+        </button>
+        <div id="debugLogBody" class="debug-log-body">
+          <div id="debugLogEntries" class="debug-log-entries"></div>
+          <button id="debugLogClear" class="debug-log-clear-btn" type="button">Clear log</button>
+        </div>
+      </div>
     </main>
 
     <section id="qualityDialog" class="quality-dialog" hidden>
