@@ -1,5 +1,7 @@
 # src/shared
 
+> ⚡ **PRIMARY BROWSER: Yandex** — Shared contracts are validated against Yandex Browser as the primary target.
+
 Shared JavaScript contracts used by both the extension (service worker/background) and content scripts. Must stay in sync — changes here affect multiple consumer modules. Also mirrored in Python native host (`src/native_host/`) for some modules.
 
 ## WHERE TO LOOK

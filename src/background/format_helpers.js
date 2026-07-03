@@ -361,16 +361,14 @@ async function getNativeFormatsForVideo(
   if (nativeError && !nativeFormats.length && !sourceFormats.length) {
     const friendlyError = downloadHelpers.userFriendlyDownloadError(nativeError);
     const errorMsg = friendlyError ? `${friendlyError}\n\nTechnical details: ${nativeError}` : nativeError;
-    log("error", "Format enumeration failed - no formats found", nativeError);
-    throw new Error(errorMsg);
+    log("warn", "Format enumeration found no formats, using fallback", nativeError);
   }
   if (!nativeFormats.length && !sourceFormats.length) {
     log(
-      "error",
-      "No downloadable formats from yt-dlp or detected sources",
+      "warn",
+      "No downloadable formats from yt-dlp or detected sources, using fallback",
       `video URL: ${(video.url || "").substring(0, 120)}`,
     );
-    throw new Error("yt-dlp did not find any downloadable video formats for this link.");
   }
 
   log(

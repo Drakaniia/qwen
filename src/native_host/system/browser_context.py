@@ -167,7 +167,59 @@ def write_cookie_file_from_string(cookie_str, url, temp_dir=None):
         raise HostError(f"Could not create temporary cookie file from string: {exc}") from exc
 
 
-def append_browser_context_options(command, referer=None, user_agent=None, request_headers=None, cookies_file=None):
+def _quote_ytdlp_config_value(value):
+    """Quote a value for yt-dlp's config file parser (shlex).
+
+    yt-dlp's config file uses shlex.split() which splits on whitespace
+    unless quoted. Values containing spaces, quotes, or shell metacharacters
+    must be wrapped in double quotes with internal quotes escaped.
+
+    Returns the value, double-quoted if it needs quoting, or as-is if
+    it is safe (single token).  Even when quoting is not strictly needed,
+    wrapping in quotes is idempotent-safe — yt-dlp strips the outer quotes.
+    """
+    cleaned = str(value or "")
+    # Always quote to avoid any edge case with special characters
+    escaped = cleaned.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def write_header_config_file(headers, user_agent, config_path):
+    """Write browser-context headers to a yt-dlp-compatible config file.
+
+    Writes ``--user-agent`` and ``--add-header`` directives so they can be
+    loaded via ``--config-location`` instead of being placed on the command
+    line.  This avoids Windows ``CreateProcess`` command-line length limits
+    (``ERROR_FILENAME_EXCED_RANGE`` — WinError 206).
+
+    Values with spaces are quoted so yt-dlp's shlex-based config parser
+    treats them as a single argument (not split on spaces).
+
+    The caller is responsible for deleting *config_path* after use.
+
+    Returns True if any lines were written, False if the file is empty.
+    """
+    written = False
+    with open(config_path, "w", encoding="utf-8", newline="\n") as f:
+        if user_agent:
+            f.write(f"--user-agent {_quote_ytdlp_config_value(user_agent)}\n")
+            written = True
+        for header in headers.values():
+            if header["name"].lower() == "cookie":
+                continue
+            f.write("--add-header {}\n".format(_quote_ytdlp_config_value(f"{header['name']}:{header['value']}")))
+            written = True
+    return written
+
+
+def append_browser_context_options(
+    command,
+    referer=None,
+    user_agent=None,
+    request_headers=None,
+    cookies_file=None,
+    headers_config_path=None,
+):
     headers = {header["name"].lower(): header for header in clean_request_headers(request_headers)}
     cleaned_referer = clean_header_value(referer)
     cleaned_user_agent = clean_header_value(user_agent)
@@ -177,12 +229,18 @@ def append_browser_context_options(command, referer=None, user_agent=None, reque
     if cleaned_user_agent and "user-agent" not in headers:
         headers["user-agent"] = {"name": "User-Agent", "value": cleaned_user_agent}
 
-    if cleaned_user_agent:
-        command.extend(["--user-agent", cleaned_user_agent])
     if cookies_file:
         command.extend(["--cookies", str(cookies_file)])
 
-    for header in headers.values():
-        if header["name"].lower() == "cookie":
-            continue
-        command.extend(["--add-header", f"{header['name']}:{header['value']}"])
+    if headers_config_path:
+        # Write all headers to a yt-dlp config file to avoid blowing the
+        # Windows command-line length limit (32 767 chars for CreateProcess).
+        write_header_config_file(headers, cleaned_user_agent, headers_config_path)
+        command.extend(["--config-location", str(headers_config_path)])
+    else:
+        if cleaned_user_agent:
+            command.extend(["--user-agent", cleaned_user_agent])
+        for header in headers.values():
+            if header["name"].lower() == "cookie":
+                continue
+            command.extend(["--add-header", f"{header['name']}:{header['value']}"])

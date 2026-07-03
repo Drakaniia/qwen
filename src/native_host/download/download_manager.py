@@ -6,9 +6,15 @@ download functions, and Spotify fallback pipeline have been extracted into
 sibling modules and are re-exported here for backward compatibility.
 """
 
+import tempfile
 import threading
 
 # ── Re-exports from sub-modules (backward compatibility) ─────────────────
+from aria2c_commands import (  # noqa: F401 — re-exports
+    MAGNET_ARIA2_ARGS,
+    build_aria2c_magnet_command,
+    build_aria2c_torrent_command,
+)
 from bittorrent_downloads import (  # noqa: F401 — re-exports, consumed via _download_manager.X in host.py
     ACTIVE_DOWNLOADS,
     ACTIVE_DOWNLOADS_LOCK,
@@ -88,6 +94,8 @@ def _build_probe_configs(
     extract_audio=False,
     audio_format=None,
     download_subtitles=True,
+    headers_config_path=None,
+    temp_files=None,
 ):
     """Build the list of probe configs for parallel reachability checks.
 
@@ -129,6 +137,7 @@ def _build_probe_configs(
                 audio_format=audio_format,
                 download_subtitles=download_subtitles,
                 aria2c_location=aria2c_location,
+                headers_config_path=headers_config_path,
             ),
         )
     )
@@ -139,6 +148,14 @@ def _build_probe_configs(
         impersonate_str = f"chrome{chrome_version}" if chrome_version else "chrome"
         # Chrome versions for TLS fingerprint rotation on 403/block
         chrome_versions = ["131", "127", "124", "120"]
+        curl_cmd, curl_tmp = _curl_cffi_adapter.download_curl_cffi_command(
+            url=url,
+            output_path=stream_output_path(download_dir, message.get("title") or "Video"),
+            headers=request_headers,
+            impersonate=impersonate_str,
+        )
+        if temp_files is not None:
+            temp_files.extend(curl_tmp)
         probes.append(
             ProbeConfig(
                 backend="curl_cffi",
@@ -150,12 +167,7 @@ def _build_probe_configs(
                     chrome_version=cv,
                     chrome_versions=cvs,
                 ),
-                command=_curl_cffi_adapter.download_curl_cffi_command(
-                    url=url,
-                    output_path=stream_output_path(download_dir, message.get("title") or "Video"),
-                    headers=request_headers,
-                    impersonate=impersonate_str,
-                ),
+                command=curl_cmd,
             )
         )
 
@@ -283,6 +295,16 @@ def run_download(
     # Extract browser version for version-specific impersonation (used in fallback chain)
     chrome_version = str(message.get("browserVersion") or "").strip()[:10] or None
 
+    # Create a temporary yt-dlp config file for browser headers to avoid
+    # Windows command-line length limits (WinError 206).  The file is written
+    # lazily by append_browser_context_options and cleaned up via temp_files.
+    _hdrs_cfg = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", newline="\n", suffix=".conf", delete=False, prefix="qwin-ytdlp-hdrs-"
+    )
+    headers_config_path = _hdrs_cfg.name
+    _hdrs_cfg.close()
+    temp_files.append(headers_config_path)
+
     # ---- Spotify YouTube fallback ------------------------------------------------
     from spotify_metadata import is_spotify_url
 
@@ -315,6 +337,7 @@ def run_download(
             extract_audio=extract_audio,
             audio_format=audio_format,
             download_subtitles=download_subtitles,
+            headers_config_path=headers_config_path,
         )
         if extra:
             kwargs.update(extra)
@@ -338,6 +361,8 @@ def run_download(
         extract_audio=extract_audio,
         audio_format=audio_format,
         download_subtitles=download_subtitles,
+        headers_config_path=headers_config_path,
+        temp_files=temp_files,
     )
 
     probe_result = probe_runner_fn(
@@ -414,14 +439,16 @@ def run_download(
     # 2. curl-cffi direct download (with version-specific impersonation if available)
     if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
         impersonate_str = f"chrome{chrome_version}" if chrome_version else "chrome"
+        curl_cmd, curl_tmp = _curl_cffi_adapter.download_curl_cffi_command(
+            url=url,
+            output_path=stream_output_path(download_dir, message.get("title") or "Video"),
+            headers=request_headers_with_cookies,
+            impersonate=impersonate_str,
+        )
+        temp_files.extend(curl_tmp)
         fallback_commands.append(
             {
-                "command": _curl_cffi_adapter.download_curl_cffi_command(
-                    url=url,
-                    output_path=stream_output_path(download_dir, message.get("title") or "Video"),
-                    headers=request_headers_with_cookies,
-                    impersonate=impersonate_str,
-                ),
+                "command": curl_cmd,
                 "label": "curl-cffi (direct download)",
             }
         )

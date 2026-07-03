@@ -75,6 +75,10 @@ function downloadableVariants(video, attemptedUrls, deps) {
     if (!url || seenUrls.has(url) || attemptedUrls.has(url) || !variant.downloadable) {
       continue;
     }
+    // Skip blob:, data:, and file: URLs - they cannot be sent to yt-dlp
+    if (url.startsWith("blob:") || url.startsWith("data:") || url.startsWith("file:")) {
+      continue;
+    }
     seenUrls.add(url);
     result.push(variant);
   }

@@ -9,6 +9,7 @@ Usage:
     python tests/native-host/test_browser_impersonation.py -v
 """
 
+import os
 import sys
 import tempfile
 import unittest
@@ -250,25 +251,37 @@ class TestCurlCffiAdapterIntegration(unittest.TestCase):
             self.assertGreater(len(text), 0)
 
     def test_download_curl_cffi_command_includes_impersonation(self):
-        """download_curl_cffi_command should build a syntactically valid script
-        that calls download_with_curl_cffi (which internally uses impersonation)."""
-        cmd = cca.download_curl_cffi_command(
+        """download_curl_cffi_command should build a command that calls
+        the CLI entry point with --header-file and --impersonate."""
+        cmd, tmp = cca.download_curl_cffi_command(
             url="https://example.com/video.mp4",
             output_path=r"C:\Downloads\test.mp4",
             headers={"Referer": "https://example.com/"},
         )
-        script = cmd[2]
-
-        # The impersonation is INSIDE download_with_curl_cffi, not in the script string
-        self.assertIn("Referer", script, "Referer header must be in the script")
-        self.assertIn("download_with_curl_cffi", script, "Script must call download function")
-        self.assertIn("curl_cffi_adapter", script, "Script must import from curl_cffi_adapter")
-
-        # Verify the script is syntactically valid Python
         try:
-            compile(script, "<test>", "exec")
-        except SyntaxError as exc:
-            self.fail(f"Generated script has syntax error: {exc}")
+            # The command now invokes the adapter's __main__ CLI directly
+            self.assertIn("--impersonate", cmd, "Command must include --impersonate parameter")
+            self.assertIn("--header-file", cmd, "Command must include --header-file parameter")
+            # The adapter path should be in the command (instead of "-c")
+            self.assertTrue(
+                any("curl_cffi_adapter" in arg for arg in cmd[:3]),
+                f"Command should reference curl_cffi_adapter.py, got: {cmd}",
+            )
+
+            # Verify headers were written to the temp JSON file
+            hdrs_path = tmp[0]
+            self.assertTrue(os.path.exists(hdrs_path), "Header temp file was not created")
+            import json as _json
+
+            with open(hdrs_path, "r", encoding="utf-8") as f:
+                saved = _json.load(f)
+            self.assertIn("Referer", saved, "Referer header must be in the temp file")
+        finally:
+            for p in tmp:
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
 
     def test_download_with_curl_cffi_creates_file_correctly(self):
         """download_with_curl_cffi should stream data to a file."""

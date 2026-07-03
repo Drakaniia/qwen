@@ -313,9 +313,11 @@ async function initMediaCaptureSW() {
     return false;
   }
 
-  // Don't override an existing controlling SW
-  if (hasExistingServiceWorker()) {
-    console.warn("[qwin] Page already has a Service Worker — not registering capture SW");
+  // Blob-injected SW scripts are rejected by browsers even on valid https: pages.
+  // Check this first so we bail silently (the normal path) before reaching
+  // the existing-SW check — that warning only matters when capture is actually
+  // possible for the current page.
+  if (!isCaptureServiceWorkerRegistrationSupported()) {
     return false;
   }
 
@@ -325,8 +327,10 @@ async function initMediaCaptureSW() {
     return false;
   }
 
-  // Blob-injected SW scripts are rejected by browsers even on valid https: pages.
-  if (!isCaptureServiceWorkerRegistrationSupported()) {
+  // Don't override an existing controlling SW — only reached when the page
+  // is a secure context *and* the runtime supports blob SW scripts.
+  if (hasExistingServiceWorker()) {
+    console.debug("[qwin] Page already has a Service Worker — not registering capture SW");
     return false;
   }
 

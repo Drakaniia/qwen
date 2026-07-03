@@ -4,6 +4,10 @@
 **Commit:** 56f6942
 **Branch:** main
 
+> ⚡ **PRIMARY BROWSER: Yandex** — All development, debugging, and testing targets Yandex Browser first.
+> Chrome/Chromium are secondary; only test there after Yandex is confirmed working.
+> Extension ID for Yandex: `dbjddokdmkodnkiaccmbjagfalmmmkmi`
+
 ## OVERVIEW
 
 Qwin Video Downloader — multi-browser extension (Chrome/Firefox/Yandex) + Python native host + Go CDM binary for detecting and downloading videos with Widevine DRM decryption.
@@ -89,9 +93,8 @@ npm run format         # Prettier (JS/CSS/JSON) + Ruff format (Python)
 
 ## NOTES
 
-- Extension ID (Chrome): `dbjddokdmkodnkiaccmbjagfalmmmkmi` — must match native host manifest `allowed_origins`.
+- Extension ID (Yandex/Chrome): `dbjddokdmkodnkiaccmbjagfalmmmkmi` — must match native host manifest `allowed_origins`
 - Pre-commit hook in `.githooks/` runs lints/format on staged files.
 - Troubleshooting skills available: `@failed-download-troubleshooting`, `@chrome-extension-development`.
 
-OUR MAIN BROWSER IS YANDEX
-follow skills folder archtecture
+follow skills folder architecture

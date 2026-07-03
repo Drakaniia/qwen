@@ -4,6 +4,7 @@ RED phase — these tests describe desired behavior that is NOT YET IMPLEMENTED.
 They will fail until the corresponding GREEN phase implementation is written.
 """
 
+import os
 import unittest
 from pathlib import Path
 from threading import Event
@@ -209,21 +210,30 @@ class TestCurlCffiAdapterVersionSpecific(unittest.TestCase):
 
 
 class TestDownloadCurlCffiCommandVersion(unittest.TestCase):
-    """download_curl_cffi_command should encode chrome version in the generated script."""
+    """download_curl_cffi_command should encode chrome version in the generated command."""
+
+    @staticmethod
+    def _cleanup(tmp_paths):
+        for p in tmp_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
 
     def test_command_includes_impersonate_parameter(self):
-        """The generated script should include the impersonate parameter."""
+        """The generated command should include the --impersonate parameter."""
         import curl_cffi_adapter as cca
 
-        cmd = cca.download_curl_cffi_command(
+        cmd, tmp = cca.download_curl_cffi_command(
             url="https://example.com/video.mp4",
             output_path=r"C:\Downloads\video.mp4",
             headers={},
         )
-
-        script = cmd[2]
-        # The script should contain an impersonate parameter
-        self.assertIn("impersonate", script, "Generated script should include impersonate parameter")
+        try:
+            # The command list now uses --impersonate instead of an inline script
+            self.assertIn("--impersonate", cmd, "Command should include --impersonate parameter")
+        finally:
+            self._cleanup(tmp)
 
 
 if __name__ == "__main__":

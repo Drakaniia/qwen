@@ -1,5 +1,7 @@
 # src/background
 
+> ⚡ **PRIMARY BROWSER: Yandex** — Background service worker is tested and debugged against Yandex Browser first.
+
 Extension service worker (Manifest V3). Handles all background processing: download orchestration, CDM intercept, CDP relay, native host communication, and filter integration.
 
 ## WHERE TO LOOK

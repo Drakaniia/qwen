@@ -175,8 +175,8 @@
     "url": "https://playmogo.com/e/k2c18kmf5fea",
     "contentType": "",
     "format": "VIDEO",
-    "blocked": false,
-    "downloadable": true,
+    "blocked": true,
+    "downloadable": false,
     "reusable": false
   },
   {
@@ -184,8 +184,8 @@
     "url": "https://playmogo.com/some-video-title-here",
     "contentType": "",
     "format": "VIDEO",
-    "blocked": false,
-    "downloadable": true,
+    "blocked": true,
+    "downloadable": false,
     "reusable": false
   },
   {
@@ -193,8 +193,8 @@
     "url": "https://playmogo.com/e/l6vrloft7rzt",
     "contentType": "",
     "format": "VIDEO",
-    "blocked": false,
-    "downloadable": true,
+    "blocked": true,
+    "downloadable": false,
     "reusable": false
   },
   {
@@ -204,6 +204,24 @@
     "format": "VIDEO",
     "blocked": false,
     "downloadable": true,
+    "reusable": false
+  },
+  {
+    "name": "vidsrc-embed.ru embed page URL",
+    "url": "https://vidsrc-embed.ru/embed/movie?tmdb=1339713&autoplay=1",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": true,
+    "downloadable": false,
+    "reusable": false
+  },
+  {
+    "name": "vsembed.ru embed page URL",
+    "url": "https://vsembed.ru/embed/movie?tmdb=1339713&autoplay=1",
+    "contentType": "",
+    "format": "VIDEO",
+    "blocked": true,
+    "downloadable": false,
     "reusable": false
   }
 ]

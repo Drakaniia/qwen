@@ -1,5 +1,7 @@
 # src/content
 
+> ⚡ **PRIMARY BROWSER: Yandex** — Content script behavior is validated against Yandex Browser first.
+
 Content scripts injected into web pages. Responsible for video element detection, page analysis, MSE/EME interception, P2P detection, and overlay UI.
 
 ## WHERE TO LOOK

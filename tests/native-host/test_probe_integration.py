@@ -144,7 +144,7 @@ class TestProbeIntegration(unittest.TestCase):
                 patch.object(dm, "resolve_download_dir", return_value=dl_dir),
                 patch.object(dm, "write_cookie_file_from_headers", return_value=None),
                 patch.object(dm, "validate_download_url", return_value=None),
-                patch("spotify_resolver.is_spotify_url", return_value=True),
+                patch("spotify_metadata.is_spotify_url", return_value=True),
                 patch.object(dm, "run_spotify_fallback_download"),
             ):
                 dm.run_download(

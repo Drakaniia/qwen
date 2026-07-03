@@ -7,7 +7,7 @@ from pathlib import Path
 from native_paths import has_unexpanded_env_vars
 from native_protocol import HostError
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 LOCAL_ARIA2C = PROJECT_ROOT / "tools" / "aria2" / "aria2c.exe"
 LOCAL_N_M3U8DL_RE = PROJECT_ROOT / "tools" / "n_m3u8dl-re" / "N_m3u8DL-RE.exe"
 

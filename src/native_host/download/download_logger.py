@@ -73,6 +73,11 @@ class DownloadLogger:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         # Track per-download captures: downloadId → list of output lines
         self._output_lines: dict[str, list[str]] = {}
+        # Track which download IDs have already received a terminal event
+        # (DOWNLOAD_COMPLETE, DOWNLOAD_ERROR, DOWNLOAD_CANCEL).  Only the
+        # first terminal event per download_id is written; subsequent calls
+        # are silently dropped so a download cannot be both complete and failed.
+        self._terminated: set[str] = set()
 
     @property
     def log_path(self) -> Path:
@@ -171,7 +176,15 @@ class DownloadLogger:
         duration_seconds: float = 0.0,
         message: str = "",
     ) -> None:
-        """Log a successful download."""
+        """Log a successful download.
+
+        No-op if a terminal event was already logged for this download_id
+        (DOWNLOAD_COMPLETE, DOWNLOAD_ERROR, or DOWNLOAD_CANCEL).
+        """
+        with self._lock:
+            if download_id in self._terminated:
+                return
+            self._terminated.add(download_id)
         self._write(
             {
                 "event": "DOWNLOAD_COMPLETE",
@@ -184,7 +197,14 @@ class DownloadLogger:
         )
 
     def error(self, download_id: str, error_text: str, duration_seconds: float = 0.0) -> None:
-        """Log a failed download with the full error text."""
+        """Log a failed download with the full error text.
+
+        No-op if a terminal event was already logged for this download_id.
+        """
+        with self._lock:
+            if download_id in self._terminated:
+                return
+            self._terminated.add(download_id)
         self._write(
             {
                 "event": "DOWNLOAD_ERROR",
@@ -195,7 +215,14 @@ class DownloadLogger:
         )
 
     def cancel(self, download_id: str, message: str = "") -> None:
-        """Log a cancelled download."""
+        """Log a cancelled download.
+
+        No-op if a terminal event was already logged for this download_id.
+        """
+        with self._lock:
+            if download_id in self._terminated:
+                return
+            self._terminated.add(download_id)
         self._write(
             {
                 "event": "DOWNLOAD_CANCEL",

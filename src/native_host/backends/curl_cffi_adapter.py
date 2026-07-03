@@ -8,11 +8,26 @@ installed, so the rest of the host keeps working without it.
 """
 
 import json
+import os
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
 from threading import Event
+
+# ── Path bootstrap (subprocess-safe) ──────────────────────────────────────
+# When this script is launched as a subprocess by download_manager.py, Python
+# only puts the script's own directory (backends/) on sys.path.  We need the
+# rest of the native_host tree (system/, download/, fallback_engines/, …) too.
+# Mirroring host.py's walk ensures imports work identically in both contexts.
+_native_host_dir = Path(__file__).resolve().parent.parent  # …/src/native_host
+for _root, _dirs, _files in _native_host_dir.walk():
+    _dirs[:] = [d for d in _dirs if d != "__pycache__" and not d.startswith("_")]
+    _p = str(_root)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+# ──────────────────────────────────────────────────────────────────────────
 
 from fallback_engines import download_direct as _download_direct_fallback
 
@@ -185,10 +200,19 @@ def download_with_curl_cffi(
 def download_curl_cffi_command(url, output_path, headers, impersonate="chrome"):
     """Build a subprocess command that downloads a URL via curl_cffi.
 
-    The returned command list is suitable for ``subprocess.Popen`` and mimics
-    the shape expected by :class:`download_task.DownloadTask` fallback entries::
+    The returned tuple can be unpacked as ``command, temp_files`` where
+    *command* is a list of strings suitable for ``subprocess.Popen`` and
+    *temp_files* is a list of temporary file paths the caller should clean
+    up after the subprocess completes::
 
-        {"command": <returned list>, "label": "curl-cffi (direct download)"}
+        cmd, tmp = download_curl_cffi_command(...)
+        task = DownloadTask(..., command=cmd, temp_files=tmp)
+
+    Unlike the old behaviour (inline ``-c`` script), this implementation
+    writes headers to a temporary JSON file and invokes the module's own
+    ``__main__`` CLI via ``python curl_cffi_adapter.py --header-file ...``.
+    This avoids the Windows ``CreateProcess`` 32 KiB command-line limit
+    (WinError 206) when the browser sends hundreds of cookie/header entries.
 
     The subprocess writes the response body to *output_path* and exits with
     code 0 on success or 1 on failure.
@@ -207,33 +231,45 @@ def download_curl_cffi_command(url, output_path, headers, impersonate="chrome"):
 
     Returns
     -------
-    list[str]
-        Command arguments for subprocess.
+    tuple[list[str], list[str]]
+        ``(command, temp_files)`` — subprocess command and list of paths
+        to clean up after execution.
     """
-    # Encode headers as JSON so the child process can decode them safely
-    headers_json = json.dumps(dict(headers or {}))
-
-    script = (
-        f"import json,sys; sys.path.insert(0,{json.dumps(str(Path(__file__).resolve().parent))}); "
-        f"from curl_cffi_adapter import download_with_curl_cffi; "
-        f"h=json.loads({json.dumps(headers_json)}); "
-        f"r=download_with_curl_cffi({json.dumps(url)},{json.dumps(str(output_path))},h,"
-        f"impersonate={json.dumps(impersonate)}); "
-        f"sys.exit(0 if r else 1)"
+    # Write headers to a temporary JSON file to avoid Windows command-line
+    # length limits (WinError 206). The caller is responsible for cleanup.
+    hdrs_fd, hdrs_path = tempfile.mkstemp(
+        suffix=".json", prefix="qwin-curl-hdrs-", text=True
     )
-    return [sys.executable, "-c", script]
+    with os.fdopen(hdrs_fd, "w", encoding="utf-8") as f:
+        json.dump(dict(headers or {}), f)
+
+    adapter_path = str(Path(__file__).resolve())
+    command = [
+        sys.executable,
+        adapter_path,
+        url,
+        "--output",
+        str(output_path),
+        "--header-file",
+        hdrs_path,
+        "--impersonate",
+        impersonate,
+    ]
+    return command, [hdrs_path]
 
 
 # ── CLI entry point (for subprocess invocation) ────────────────────────────
 
 if __name__ == "__main__":
-    """CLI wrapper: python curl_cffi_adapter.py <url> --output <path> [--header K:V ...]."""
+    """CLI wrapper: python curl_cffi_adapter.py <url> --output <path> [--header K:V ...] [--header-file <json>] [--impersonate <str>]."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Download a media URL with curl_cffi TLS impersonation.")
     parser.add_argument("url", help="Direct media URL to download")
     parser.add_argument("--output", "-o", required=True, help="Output file path")
     parser.add_argument("--header", "-H", action="append", default=[], help="HTTP header (Key: Value)")
+    parser.add_argument("--header-file", "--hf", help="JSON file containing HTTP headers dict")
+    parser.add_argument("--impersonate", default="chrome", help="Browser version to impersonate (e.g. chrome131)")
     args = parser.parse_args()
 
     headers = {}
@@ -242,8 +278,15 @@ if __name__ == "__main__":
             key, val = h.split(":", 1)
             headers[key.strip()] = val.strip()
 
+    if args.header_file:
+        with open(args.header_file, "r", encoding="utf-8") as _f:
+            _from_file = json.load(_f)
+        if isinstance(_from_file, dict):
+            # File headers take precedence over inline --header args
+            headers.update(_from_file)
+
     try:
-        result = download_with_curl_cffi(args.url, args.output, headers)
+        result = download_with_curl_cffi(args.url, args.output, headers, impersonate=args.impersonate)
         sys.exit(0 if result else 1)
     except HostError:
         sys.exit(1)

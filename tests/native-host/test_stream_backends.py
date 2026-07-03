@@ -106,6 +106,115 @@ class StreamBackendsTests(unittest.TestCase):
         self.assertEqual(command[key_indices[0] + 1], "1:KEY_ONE")
         self.assertEqual(command[key_indices[1] + 1], "2:KEY_TWO")
 
+    # ── GAP: Streamlink Command ────────────────────────────────────────────
+
+    def test_build_streamlink_command_basic_structure(self):
+        """build_streamlink_command produces: streamlink [options] <url> best"""
+        command = stream_backends.build_streamlink_command(
+            url="https://cdn.example.com/stream.m3u8",
+            output_path=Path(r"C:\Users\Viewer\Downloads\Video\Video.mp4"),
+        )
+
+        # Must NOT contain deprecated HLS-specific flags (removed in streamlink 7.x)
+        deprecated_flags = {"--hls-segment-attempts", "--hls-segment-timeout"}
+        cmd_set = set(command)
+        deprecated_found = cmd_set & deprecated_flags
+        self.assertEqual(
+            deprecated_found,
+            set(),
+            f"Deprecated flags found in command: {deprecated_found}",
+        )
+
+        # Must use stream-type-agnostic replacements
+        self.assertIn("--stream-segment-attempts", command)
+        self.assertIn("--stream-segment-timeout", command)
+
+        # Core structure
+        self.assertEqual(command[0], "streamlink")
+        self.assertIn("--retry-streams", command)
+        self.assertIn("--retry-max", command)
+        self.assertIn("--ringbuffer-size", command)
+        self.assertIn("--force", command)
+        self.assertIn("-o", command)
+        self.assertIn(r"C:\Users\Viewer\Downloads\Video\Video.mp4", command)
+        # Last two args: URL + quality
+        self.assertEqual(command[-2], "https://cdn.example.com/stream.m3u8")
+        self.assertEqual(command[-1], "best")
+
+    def test_build_streamlink_command_custom_binary(self):
+        """build_streamlink_command accepts custom streamlink binary path"""
+        command = stream_backends.build_streamlink_command(
+            url="https://cdn.example.com/stream.m3u8",
+            output_path=Path(r"C:\Users\Viewer\Downloads\Video\Video.mp4"),
+            streamlink_command=[r"C:\Tools\streamlink.exe"],
+        )
+
+        self.assertEqual(command[0], r"C:\Tools\streamlink.exe")
+
+    def test_build_streamlink_command_with_ffmpeg(self):
+        """build_streamlink_command includes ffmpeg arguments when location given"""
+        command = stream_backends.build_streamlink_command(
+            url="https://cdn.example.com/stream.m3u8",
+            output_path=Path(r"C:\Users\Viewer\Downloads\Video\Video.mp4"),
+            ffmpeg_location=r"C:\Tools\ffmpeg.exe",
+        )
+
+        self.assertIn("--ffmpeg-ffmpeg", command)
+        ffmpeg_idx = command.index("--ffmpeg-ffmpeg")
+        self.assertEqual(command[ffmpeg_idx + 1], r"C:\Tools\ffmpeg.exe")
+        self.assertIn("--ffmpeg-fout", command)
+        fout_idx = command.index("--ffmpeg-fout")
+        self.assertEqual(command[fout_idx + 1], "mp4")
+
+    def test_build_streamlink_command_with_cookies(self):
+        """build_streamlink_command includes --http-cookies-file when cookies_file given"""
+        command = stream_backends.build_streamlink_command(
+            url="https://cdn.example.com/stream.m3u8",
+            output_path=Path(r"C:\Users\Viewer\Downloads\Video\Video.mp4"),
+            cookies_file=r"C:\Temp\qwin-cookies-abc123.txt",
+        )
+
+        self.assertIn("--http-cookies-file", command)
+        ck_idx = command.index("--http-cookies-file")
+        self.assertEqual(command[ck_idx + 1], r"C:\Temp\qwin-cookies-abc123.txt")
+
+    def test_build_streamlink_command_with_headers(self):
+        """build_streamlink_command includes --http-header for referer/user-agent/origin"""
+        command = stream_backends.build_streamlink_command(
+            url="https://cdn.example.com/stream.m3u8",
+            output_path=Path(r"C:\Users\Viewer\Downloads\Video\Video.mp4"),
+            request_headers=[
+                {"name": "Referer", "value": "https://example.com/watch"},
+                {"name": "User-Agent", "value": "Mozilla/5.0 Test"},
+                {"name": "Origin", "value": "https://example.com"},
+                {"name": "Cookie", "value": "session=abc123"},  # Should be skipped
+            ],
+        )
+
+        # Cookie header should be excluded
+        cookie_args = [
+            command[i + 1]
+            for i, v in enumerate(command)
+            if v == "--http-header" and "cookie" in command[i + 1].lower()
+        ]
+        self.assertEqual(len(cookie_args), 0, "Cookie header should not be passed to streamlink")
+
+        # Referer, User-Agent, Origin should be included
+        header_args = [
+            command[i + 1]
+            for i, v in enumerate(command)
+            if v == "--http-header"
+        ]
+        self.assertTrue(
+            any("Referer=https://example.com/watch" in h for h in header_args),
+        )
+        self.assertTrue(
+            any("User-Agent=Mozilla/5.0 Test" in h for h in header_args),
+        )
+        self.assertTrue(
+            any("Origin=https://example.com" in h for h in header_args),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

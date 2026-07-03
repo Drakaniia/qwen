@@ -95,6 +95,34 @@ class DownloadTask(DownloadTaskControl):
                 self.artifact_root = artifact_root
         self.set_state("starting")
         try:
+            # ── Diagnostic: log command details before starting ──────────────
+            cmd_str = subprocess.list2cmdline(active_command)
+            cmd_len = len(cmd_str)
+            cwd_str = str(self.download_dir)
+            self.logger.attempt_line(
+                self.id,
+                f"[DIAG] cmd_len={cmd_len} cwd_len={len(cwd_str)} "
+                f"cmd_args={len(active_command)} cwd='{cwd_str}'",
+            )
+            if cmd_len > 30000:
+                self.logger.attempt_line(
+                    self.id,
+                    f"[DIAG] Command length {cmd_len} approaching 32767 limit!"
+                    f" First 500: {cmd_str[:500]}",
+                )
+            if len(cwd_str) > 240:
+                self.logger.attempt_line(
+                    self.id,
+                    f"[DIAG] cwd path length {len(cwd_str)} near MAX_PATH (260)!",
+                )
+            # Check if any individual arg exceeds MAX_PATH
+            for idx, arg in enumerate(active_command):
+                if len(arg) > 200:
+                    self.logger.attempt_line(
+                        self.id,
+                        f"[DIAG] arg[{idx}] len={len(arg)} (possible MAX_PATH issue): {arg[:300]}",
+                    )
+
             process = subprocess.Popen(
                 active_command,
                 stdin=subprocess.DEVNULL,
@@ -104,11 +132,16 @@ class DownloadTask(DownloadTaskControl):
                 encoding="utf-8",
                 errors="replace",
                 bufsize=1,
-                cwd=str(self.download_dir),
+                cwd=cwd_str,
                 creationflags=creation_flags(),
             )
         except OSError as exc:
-            raise HostError(f"Could not start yt-dlp: {exc}") from exc
+            # Re-raise with diagnostics in the error message
+            diag = (
+                f"cmd_len={cmd_len} cwd='{cwd_str}' "
+                f"cmd_args={len(active_command)} "
+            )
+            raise HostError(f"Could not start yt-dlp: {exc} [{diag}]") from exc
 
         with self.lock:
             self.process = process

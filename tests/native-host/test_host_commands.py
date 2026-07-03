@@ -71,7 +71,7 @@ class HostCommandsTests(unittest.TestCase):
 
         self.assertEqual(
             output_template,
-            "%(title).180B/%(title).180B [%(id)s].%(ext)s",
+            "%(title).240B [%(id)s].%(ext)s",
         )
 
     def test_build_yt_dlp_command_keeps_fragment_temp_files_with_templated_output(self):
@@ -87,7 +87,7 @@ class HostCommandsTests(unittest.TestCase):
 
         self.assertIn(f"home:{download_dir}", path_values)
         self.assertNotIn(f"temp:{download_dir}", path_values)
-        self.assertEqual(output_template, "%(title).180B/%(title).180B [%(id)s].%(ext)s")
+        self.assertEqual(output_template, "%(title).240B [%(id)s].%(ext)s")
 
     def test_build_yt_dlp_command_supports_python_module_and_ffmpeg_location(self):
         command = host.build_yt_dlp_command(
@@ -302,27 +302,27 @@ class HostCommandsTests(unittest.TestCase):
         self.assertEqual(command[-2:], ["https://cdn.example.com/hls/master.m3u8", "best"])
 
     def test_resolve_n_m3u8dl_re_location_uses_local_portable_fallback(self):
-        with patch("host.shutil.which", return_value=None):
+        with patch("yt_dlp_dependencies.shutil.which", return_value=None):
             with tempfile.TemporaryDirectory() as temp:
                 local_tool = Path(temp) / "tools" / "n_m3u8dl-re" / "N_m3u8DL-RE.exe"
                 local_tool.parent.mkdir(parents=True)
                 local_tool.write_text("portable downloader", encoding="utf-8")
 
-                with patch.object(host, "LOCAL_N_M3U8DL_RE", local_tool), patch.dict(host.os.environ, {}, clear=True):
+                with patch.object(host, "LOCAL_N_M3U8DL_RE", local_tool), patch.dict("os.environ", {}, clear=True):
                     self.assertEqual(host.resolve_n_m3u8dl_re_location(), str(local_tool))
 
     def test_resolve_streamlink_command_falls_back_to_python_module(self):
         with (
-            patch("host.shutil.which", return_value=None),
-            patch("host.importlib.util.find_spec", return_value=object()),
+            patch("yt_dlp_dependencies.shutil.which", return_value=None),
+            patch("yt_dlp_dependencies.importlib.util.find_spec", return_value=object()),
         ):
             command = host.resolve_streamlink_command()
             self.assertEqual(command, [host.sys.executable, "-m", "streamlink"])
 
     def test_resolve_yt_dlp_command_falls_back_to_python_module(self):
         with (
-            patch("host.shutil.which", return_value=None),
-            patch("host.importlib.util.find_spec", return_value=object()),
+            patch("yt_dlp_dependencies.shutil.which", return_value=None),
+            patch("yt_dlp_dependencies.importlib.util.find_spec", return_value=object()),
         ):
             command = host.resolve_yt_dlp_command()
             self.assertEqual(command, [host.sys.executable, "-m", "yt_dlp"])
@@ -330,7 +330,7 @@ class HostCommandsTests(unittest.TestCase):
     def test_resolve_ffmpeg_location_uses_imageio_ffmpeg_fallback(self):
         with (
             patch("pathlib.Path.exists", return_value=True),
-            patch("host.shutil.which", return_value=None),
+            patch("yt_dlp_dependencies.shutil.which", return_value=None),
             patch("host.get_imageio_ffmpeg_exe", return_value=r"C:\Python\site-packages\ffmpeg.exe"),
         ):
             self.assertEqual(host.resolve_ffmpeg_location(), r"C:\Python\site-packages\ffmpeg.exe")
@@ -340,19 +340,19 @@ class HostCommandsTests(unittest.TestCase):
 
         with (
             patch("pathlib.Path.exists", return_value=True),
-            patch("host.shutil.which", return_value=None),
+            patch("yt_dlp_dependencies.shutil.which", return_value=None),
             patch.object(yt_dlp_adapter, "get_imageio_ffmpeg_exe", return_value=r"C:\Python\site-packages\ffmpeg.exe"),
         ):
             self.assertEqual(host.resolve_ffmpeg_location(), r"C:\Python\site-packages\ffmpeg.exe")
 
     def test_resolve_aria2c_location_uses_local_portable_fallback(self):
-        with patch("host.shutil.which", return_value=None):
+        with patch("yt_dlp_dependencies.shutil.which", return_value=None):
             with tempfile.TemporaryDirectory() as temp:
                 local_aria2c = Path(temp) / "tools" / "aria2" / "aria2c.exe"
                 local_aria2c.parent.mkdir(parents=True)
                 local_aria2c.write_text("portable aria2c")
 
-                with patch.object(host, "LOCAL_ARIA2C", local_aria2c), patch.dict(host.os.environ, {}, clear=True):
+                with patch.object(host, "LOCAL_ARIA2C", local_aria2c), patch.dict("os.environ", {}, clear=True):
                     self.assertEqual(host.resolve_aria2c_location(), str(local_aria2c))
 
 

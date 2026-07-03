@@ -12,7 +12,7 @@ build/
 .qwen/settings.json
 .gemini/settings.json
 .omo/
-logs/
+
 *.exe~
 nul
 .vibe/hooks.toml

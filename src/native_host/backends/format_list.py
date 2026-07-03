@@ -1,11 +1,26 @@
 import json
 import subprocess
+import tempfile
+import threading
 
+import curl_cffi_adapter as _curl_cffi_adapter
 from fallback_engines import list_formats_gallery_dl, list_formats_lux, list_formats_you_get
+from probe_runner import (
+    ProbeConfig,
+    probe_curl_cffi,
+    probe_n_m3u8dl_re,
+    probe_streamlink,
+    probe_yt_dlp,
+    run_parallel_probes,
+)
+from probe_types import ProbeResult
 from spotify_metadata import is_spotify_url
 from spotify_resolver import resolve_spotify_formats
+from stream_backends import is_stream_manifest_url
+from yt_dlp_command import is_youtube_url
 
 from browser_context import remove_temp_files, write_cookie_file_from_headers
+from download_logger import get_logger
 from native_paths import validate_download_url
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
@@ -15,7 +30,106 @@ from yt_dlp_command import (
     summarize_audio_formats,
     summarize_formats,
 )
-from yt_dlp_dependencies import resolve_ffmpeg_location, resolve_yt_dlp_command
+from yt_dlp_dependencies import (
+    resolve_ffmpeg_location,
+    resolve_n_m3u8dl_re_location,
+    resolve_streamlink_command,
+    resolve_yt_dlp_command,
+)
+
+
+def _build_probe_configs_for_formats(
+    url,
+    message,
+    request_headers,
+    cookies_file,
+    yt_dlp_command,
+    ffmpeg_location,
+    n_m3u8dl_re_location,
+    streamlink_command,
+):
+    """Build probe configs for parallel reachability checks during format enumeration.
+
+    Similar to download_manager._build_probe_configs but simplified for format-only
+    checks (no download commands needed, just backend detection).
+    """
+    probes = []
+    requested_backend = str(message.get("backend") or "auto").lower()
+    chrome_version = str(message.get("browserVersion") or "").strip()[:10] or None
+
+    # 1. yt-dlp — always participates
+    probes.append(
+        ProbeConfig(
+            backend="yt-dlp",
+            label="yt-dlp (format check)",
+            probe_fn=lambda u, ce: probe_yt_dlp(
+                url=u,
+                cancel_event=ce,
+                yt_dlp_command=yt_dlp_command,
+                ffmpeg_location=ffmpeg_location,
+            ),
+            command=None,  # No download command needed for format check
+        )
+    )
+
+    # 2. curl_cffi — only for direct media URLs
+    if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
+        impersonate_str = f"chrome{chrome_version}" if chrome_version else "chrome"
+        chrome_versions = ["131", "127", "124", "120"]
+        probes.append(
+            ProbeConfig(
+                backend="curl_cffi",
+                label="curl-cffi (HEAD)",
+                probe_fn=lambda u, ce, cv=chrome_version, cvs=chrome_versions: probe_curl_cffi(
+                    url=u,
+                    cancel_event=ce,
+                    headers=request_headers,
+                    chrome_version=cv,
+                    chrome_versions=cvs,
+                ),
+                command=None,
+            )
+        )
+
+    # 3. N_m3u8DL-RE — for stream manifest URLs
+    if (
+        requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"}
+        and n_m3u8dl_re_location
+        and is_stream_manifest_url(url, message.get("format"))
+    ):
+        probes.append(
+            ProbeConfig(
+                backend="n_m3u8dl_re",
+                label="N_m3u8DL-RE",
+                probe_fn=lambda u, ce: probe_n_m3u8dl_re(
+                    url=u,
+                    cancel_event=ce,
+                    n_m3u8dl_re_location=n_m3u8dl_re_location,
+                ),
+                command=None,
+            )
+        )
+
+    # 4. Streamlink — for stream manifest URLs
+    if (
+        requested_backend in {"auto", "streamlink"}
+        and streamlink_command
+        and is_stream_manifest_url(url, message.get("format"))
+    ):
+        probes.append(
+            ProbeConfig(
+                backend="streamlink",
+                label="Streamlink",
+                probe_fn=lambda u, ce: probe_streamlink(
+                    url=u,
+                    cancel_event=ce,
+                    streamlink_command=streamlink_command,
+                ),
+                command=None,
+            )
+        )
+
+    return probes
 
 
 def run_format_list(
@@ -32,6 +146,49 @@ def run_format_list(
     cookies_file = write_cookie_file_from_headers(url, request_headers)
     temp_files = [cookies_file] if cookies_file else []
 
+    # Use a temporary yt-dlp config file for headers to avoid Windows
+    # command-line length limits (WinError 206).
+    headers_config = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", newline="\n", suffix=".conf", delete=False, prefix="qwin-ytdlp-hdrs-"
+    )
+    headers_config_path = headers_config.name
+    headers_config.close()  # close so yt-dlp can read it; we remove it in finally
+    temp_files.append(headers_config_path)
+
+    # ---- Parallel probe phase for format enumeration --------------------------------
+    # Run parallel probes to detect compatible backends before format enumeration
+    # This allows us to skip slow yt-dlp format checks if a faster backend is available
+    yt_dlp_command = yt_dlp_command_resolver()
+    ffmpeg_location = ffmpeg_location_resolver()
+    n_m3u8dl_re_location = resolve_n_m3u8dl_re_location()
+    streamlink_command = resolve_streamlink_command()
+
+    cancel_event = threading.Event()
+    logger = get_logger()
+
+    probe_configs = _build_probe_configs_for_formats(
+        url=url,
+        message=message,
+        request_headers=request_headers,
+        cookies_file=cookies_file,
+        yt_dlp_command=yt_dlp_command,
+        ffmpeg_location=ffmpeg_location,
+        n_m3u8dl_re_location=n_m3u8dl_re_location,
+        streamlink_command=streamlink_command,
+    )
+
+    probe_result = run_parallel_probes(
+        url=url,
+        probes=probe_configs,
+        cancel_event=cancel_event,
+        send_message=lambda msg: send({**msg, "id": request_id}),
+        logger=logger,
+    )
+
+    # If a probe winner was found, we can use that information to optimize format enumeration
+    # For now, we still run yt-dlp for formats but the probe result gives us backend hints
+    # Future enhancement: skip yt-dlp if probe winner is curl_cffi for direct URLs
+
     def execute_yt_dlp(nocheckcertificate=False):
         command = build_formats_command(
             url=url,
@@ -39,9 +196,10 @@ def run_format_list(
             user_agent=message.get("userAgent"),
             request_headers=request_headers,
             cookies_file=cookies_file,
-            yt_dlp_command=yt_dlp_command_resolver(),
-            ffmpeg_location=ffmpeg_location_resolver(),
+            yt_dlp_command=yt_dlp_command,
+            ffmpeg_location=ffmpeg_location,
             nocheckcertificate=nocheckcertificate,
+            headers_config_path=headers_config_path,
         )
         return subprocess.run(
             command,
@@ -175,6 +333,15 @@ def run_playlist_enumeration(
     cookies_file = write_cookie_file_from_headers(url, request_headers)
     temp_files = [cookies_file] if cookies_file else []
 
+    # Use a temporary yt-dlp config file for headers to avoid Windows
+    # command-line length limits (WinError 206).
+    headers_config = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", newline="\n", suffix=".conf", delete=False, prefix="qwin-ytdlp-hdrs-"
+    )
+    headers_config_path = headers_config.name
+    headers_config.close()
+    temp_files.append(headers_config_path)
+
     def execute_yt_dlp(nocheckcertificate=False):
         command = build_flat_playlist_command(
             url=url,
@@ -185,6 +352,7 @@ def run_playlist_enumeration(
             yt_dlp_command=yt_dlp_command_resolver(),
             ffmpeg_location=ffmpeg_location_resolver(),
             nocheckcertificate=nocheckcertificate,
+            headers_config_path=headers_config_path,
         )
         return subprocess.run(
             command,

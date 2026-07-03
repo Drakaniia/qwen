@@ -28,6 +28,18 @@ const NATIVE_HEADER_NAMES = new Set([
 
 const MAX_CAPTURED_REQUEST_HEADERS = 250;
 
+/** Maximum length of the combined Cookie header value.
+ *
+ * Prevents HTTP 413 "Request Entity Too Large" errors from sites like
+ * YouTube/Google that enforce strict header size limits. When the browser
+ * has many cookies for a domain (common with Google services), the
+ * concatenated cookie string can exceed the server's limit.
+ *
+ * 4096 bytes keeps all common cookies (session, pref, SAPISID, etc.)
+ * while staying well under typical 8 KB server limits.
+ */
+const MAX_COOKIE_HEADER_LENGTH = 4096;
+
 // ── State ────────────────────────────────────────────────────────────────
 
 const requestHeadersByUrl = {};
@@ -143,11 +155,21 @@ async function cookieHeaderForUrl(url) {
   }
 
   const cookies = await browserApi.cookies.getAll({ url });
-  return cookies
+  let cookieStr = cookies
     .filter((cookie) => cookie && cookie.name)
     .sort((left, right) => String(right.path || "").length - String(left.path || "").length)
     .map((cookie) => `${cookie.name}=${cookie.value || ""}`)
     .join("; ");
+
+  // Truncate oversized cookie headers to prevent HTTP 413 errors.
+  // Cut at the last complete cookie boundary within the limit.
+  if (cookieStr.length > MAX_COOKIE_HEADER_LENGTH) {
+    const truncated = cookieStr.slice(0, MAX_COOKIE_HEADER_LENGTH);
+    const lastSep = truncated.lastIndexOf("; ");
+    cookieStr = lastSep > 0 ? truncated.slice(0, lastSep) : truncated;
+  }
+
+  return cookieStr;
 }
 
 async function nativeRequestHeadersForVideo(videoUrl, pageUrl) {
@@ -181,6 +203,7 @@ export {
   // Constants
   NATIVE_HEADER_NAMES,
   MAX_CAPTURED_REQUEST_HEADERS,
+  MAX_COOKIE_HEADER_LENGTH,
 
   // State accessor (for testing/inspection)
   getRequestHeadersForUrl,

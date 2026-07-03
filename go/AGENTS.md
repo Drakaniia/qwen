@@ -1,5 +1,7 @@
 # go/
 
+> ⚡ **PRIMARY BROWSER: Yandex** — CDP relay and CDM extraction are primarily debugged against Yandex Browser.
+
 Go companion binary (`qwin-capture`). Handles Widevine CDM initialization, license key extraction, AES-128 CTR decryption, ISO BMFF box parsing, and CDP relay. Communicates via native messaging protocol (4-byte LE length prefix + UTF-8 JSON over stdin/stdout).
 
 ## STRUCTURE

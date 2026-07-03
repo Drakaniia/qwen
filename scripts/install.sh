@@ -599,6 +599,10 @@ with open('$cdm_status_file', 'w', encoding='utf-8') as f:
 
   if is_windows; then
     local local_app_data="${LOCALAPPDATA:-$(cmd //c 'echo %LOCALAPPDATA%' 2>/dev/null | tr -d '\r')}"
+    # Convert Windows path to Unix path to avoid colon issues with drive letters (C:\...)
+    if check_cmd cygpath; then
+      local_app_data="$(cygpath -u "$local_app_data")"
+    fi
     local browser_candidates=(
       "$local_app_data/Google/Chrome/User Data/WidevineCdm:chrome"
       "$local_app_data/Google/Chrome Beta/User Data/WidevineCdm:chrome-beta"
@@ -618,8 +622,15 @@ with open('$cdm_status_file', 'w', encoding='utf-8') as f:
       ver_dir="$(find "$base" -maxdepth 1 -type d -name '[0-9]*' 2>/dev/null | sort -rV | head -1)" || continue
       [[ -z "$ver_dir" ]] && continue
 
-      local dll="$ver_dir/widevinecdm.dll"
-      if [[ -f "$dll" ]]; then
+      local dll=""
+      if [[ -f "$ver_dir/widevinecdm.dll" ]]; then
+        dll="$ver_dir/widevinecdm.dll"
+      elif [[ -f "$ver_dir/_platform_specific/win_x64/widevinecdm.dll" ]]; then
+        dll="$ver_dir/_platform_specific/win_x64/widevinecdm.dll"
+      elif [[ -f "$ver_dir/_platform_specific/win_arm64/widevinecdm.dll" ]]; then
+        dll="$ver_dir/_platform_specific/win_arm64/widevinecdm.dll"
+      fi
+      if [[ -n "$dll" ]]; then
         found_cdm_dll="$dll"
         found_cdm_ver="$(basename "$ver_dir")"
         found_cdm_source="$browser"

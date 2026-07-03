@@ -1,5 +1,7 @@
 # src/popup
 
+> ⚡ **PRIMARY BROWSER: Yandex** — Popup UI is tested against Yandex Browser (browser://extensions, not chrome://extensions).
+
 Extension popup UI — single-page HTML app rendered in a browser action popup. Entry point is `popup.html` which loads `popup.bundle.js` (esbuild bundle of all JS modules).
 
 ## WHERE TO LOOK

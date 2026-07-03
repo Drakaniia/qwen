@@ -1,5 +1,7 @@
 # src/native_host
 
+> ⚡ **PRIMARY BROWSER: Yandex** — Native host integration (registry, manifest, CDM sourcing) targets Yandex Browser first.
+
 Python 3.11+ native messaging host. Entry point is `host.py` which dispatches to specialized modules. Communicates with the extension via stdin/stdout using 4-byte LE length prefix + UTF-8 JSON.
 
 ## STRUCTURE

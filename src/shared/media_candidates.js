@@ -36,7 +36,7 @@ const AD_RE =
 // They use HLS/DASH streams loaded dynamically — the page URL itself is never
 // the actual download URL. Actual stream URLs from their CDNs still pass through.
 const STREAMING_PAGE_HOST_RE = /(?:^|[/.])vidfast\.pro(?:$|[/?#])/i;
-const EMBED_PLAYER_HOST_RE = /(?:^|[/.])player\.hanime\.tv(?:$|[/?#])/i;
+const EMBED_PLAYER_HOST_RE = /(?:^|[/.])(?:player\.hanime\.tv|vidsrc-embed\.ru|vsembed\.ru)(?:$|[/?#])/i;
 
 // SSR source types recognized by the detection pipeline.
 const SSR_SOURCE_RE = /^ssr-json:/i;
@@ -44,7 +44,7 @@ const SSR_SOURCE_RE = /^ssr-json:/i;
 // Video hosting sites whose page URLs are not real yt-dlp sources
 // Actual CDN stream URLs from these sites still pass through with video extensions.
 const VIDEO_HOSTING_SITES_RE =
-  /(?:^|[\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone|beeg|khanime)\.(?:pw|tv|to|net|pro|com|co)(?:$|[\/?#])/i;
+  /(?:^|[\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone|beeg|khanime|playmogo|doodstream|streamtape|mixdrop|lulustream|mp4upload|vidstream|filemoon|streama2z|supervideo|streamruby|streamwish|earnvids|goodstream|filegram|savefiles|netu|oneupload|sendvid|dropload|media|darkibox)\.(?:pw|tv|to|net|pro|com|co|ag|sx|cc|one|cm)(?:$|[\/?#])/i;
 
 // P2P streaming platforms (Chinese streaming — douyu, huya)
 const P2P_STREAMING_HOSTS_RE = /(?:^|[\/.])(?:douyu|huya)\.(?:com|cn)(?:$|[\/?#])/i;

@@ -136,9 +136,10 @@ def build_yt_dlp_command(
     extract_audio=False,
     audio_format="mp3",
     download_subtitles=True,
+    headers_config_path=None,
 ):
     download_root = str(Path(download_dir))
-    output_template = "%(title).180B/%(title).180B [%(id)s].%(ext)s"
+    output_template = "%(title).240B [%(id)s].%(ext)s"
     format_selector = format_selector_for_choice(selected_format, extract_audio=extract_audio)
     fragment_count = bounded_int(concurrent_fragments, DEFAULT_CONCURRENT_FRAGMENTS)
     command = [
@@ -150,7 +151,7 @@ def build_yt_dlp_command(
         "--windows-filenames",
         "--restrict-filenames",
         "--trim-filenames",
-        "180",
+        "240",
         "--paths",
         f"home:{download_root}",
         # Leave temp unset so HLS/DASH fragments are written beside the templated output.
@@ -236,6 +237,7 @@ def build_yt_dlp_command(
         user_agent=user_agent,
         request_headers=request_headers,
         cookies_file=cookies_file,
+        headers_config_path=headers_config_path,
     )
 
     command.append(url)
@@ -251,6 +253,7 @@ def build_flat_playlist_command(
     yt_dlp_command=None,
     ffmpeg_location=None,
     nocheckcertificate=False,
+    headers_config_path=None,
 ):
     """Build a yt-dlp command to enumerate playlist items via --flat-playlist.
 
@@ -284,6 +287,7 @@ def build_flat_playlist_command(
         user_agent=user_agent,
         request_headers=request_headers,
         cookies_file=cookies_file,
+        headers_config_path=headers_config_path,
     )
 
     command.append(url)
@@ -299,6 +303,7 @@ def build_formats_command(
     yt_dlp_command=None,
     ffmpeg_location=None,
     nocheckcertificate=False,
+    headers_config_path=None,
 ):
     command = [
         *(yt_dlp_command or ["yt-dlp"]),
@@ -323,6 +328,7 @@ def build_formats_command(
         user_agent=user_agent,
         request_headers=request_headers,
         cookies_file=cookies_file,
+        headers_config_path=headers_config_path,
     )
 
     command.append(url)

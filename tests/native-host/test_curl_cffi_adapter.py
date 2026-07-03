@@ -1,5 +1,7 @@
 """Tests for curl_cffi_adapter module."""
 
+import json
+import os
 import sys
 import tempfile
 import unittest
@@ -204,59 +206,109 @@ class TestDownloadWithCurlCffi(unittest.TestCase):
 class TestDownloadCurlCffiCommand(unittest.TestCase):
     """Test subprocess command builder."""
 
-    def test_download_curl_cffi_command_returns_list(self):
-        """Should return a list of strings suitable for subprocess."""
-        cmd = cca.download_curl_cffi_command(
+    def _cleanup(self, tmp_paths):
+        """Remove temp files created during a test."""
+        for p in tmp_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+    def test_download_curl_cffi_command_returns_tuple(self):
+        """Should return a (command, temp_files) tuple."""
+        cmd, tmp = cca.download_curl_cffi_command(
             url="https://example.com/video.mp4",
             output_path=r"C:\Downloads\video.mp4",
             headers={"Referer": "https://example.com/"},
         )
-        self.assertIsInstance(cmd, list)
-        self.assertGreater(len(cmd), 0)
-        self.assertIsInstance(cmd[0], str)
+        try:
+            self.assertIsInstance(cmd, list)
+            self.assertIsInstance(tmp, list)
+            self.assertGreater(len(cmd), 0)
+            self.assertIsInstance(cmd[0], str)
+            self.assertGreater(len(tmp), 0)
+            self.assertTrue(tmp[0].endswith(".json"))
+        finally:
+            self._cleanup(tmp)
 
     def test_download_curl_cffi_command_includes_python(self):
-        """Should start with sys.executable."""
-        cmd = cca.download_curl_cffi_command(
+        """Should start with sys.executable and point to this adapter."""
+        cmd, tmp = cca.download_curl_cffi_command(
             url="https://example.com/video.mp4",
             output_path=r"C:\Downloads\video.mp4",
             headers={},
         )
-        self.assertEqual(cmd[0], sys.executable)
-        self.assertEqual(cmd[1], "-c")
+        try:
+            self.assertEqual(cmd[0], sys.executable)
+            # cmd[1] should be the path to curl_cffi_adapter.py (not "-c")
+            self.assertTrue(
+                "curl_cffi_adapter" in cmd[1],
+                f"Expected adapter path, got {cmd[1]}",
+            )
+            # --header-file and --impersonate should appear in the args
+            self.assertIn("--header-file", cmd)
+            self.assertIn("--impersonate", cmd)
+        finally:
+            self._cleanup(tmp)
 
-    def test_download_curl_cffi_command_encodes_headers(self):
-        """Headers should be JSON-encoded in the command script."""
+    def test_download_curl_cffi_command_header_file_created(self):
+        """Headers should be written to a temporary JSON file."""
         headers = {"Referer": "https://example.com/", "User-Agent": "Test/1.0"}
-        cmd = cca.download_curl_cffi_command(
+        cmd, tmp = cca.download_curl_cffi_command(
             url="https://example.com/video.mp4",
             output_path=r"C:\Downloads\video.mp4",
             headers=headers,
         )
-        script = cmd[2]
-        # The headers JSON should appear somewhere in the script
-        # (it will be escaped in the f-string)
-        self.assertIn("Referer", script)
-        self.assertIn("Test/1.0", script)
-        # Verify the JSON is valid
-        # Extract the json.loads argument
-        import re
+        try:
+            # The header file exists and contains the headers
+            hdrs_path = tmp[0]
+            self.assertTrue(os.path.exists(hdrs_path), "Header temp file was not created")
+            with open(hdrs_path, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            self.assertEqual(saved.get("Referer"), "https://example.com/")
+            self.assertEqual(saved.get("User-Agent"), "Test/1.0")
+            # The --header-file arg in the command points to this file
+            hf_idx = cmd.index("--header-file")
+            self.assertEqual(cmd[hf_idx + 1], hdrs_path)
+        finally:
+            self._cleanup(tmp)
 
-        match = re.search(r'json\.loads\(["\'](.+?)["\']\)', script)
-        self.assertIsNotNone(match, "JSON loads call should be present in the script")
-
-    def test_download_curl_cffi_command_script_executable(self):
-        """The generated script should be syntactically valid Python."""
-        cmd = cca.download_curl_cffi_command(
+    def test_download_curl_cffi_command_impersonate_included(self):
+        """Impersonation string should be passed as --impersonate arg."""
+        cmd, tmp = cca.download_curl_cffi_command(
             url="https://example.com/video.mp4",
             output_path=r"C:\Downloads\video.mp4",
             headers={},
+            impersonate="chrome131",
         )
-        script = cmd[2]
         try:
-            compile(script, "<test>", "exec")
-        except SyntaxError as exc:
-            self.fail(f"Generated script has syntax error: {exc}")
+            imp_idx = cmd.index("--impersonate")
+            self.assertEqual(cmd[imp_idx + 1], "chrome131")
+        finally:
+            self._cleanup(tmp)
+
+    def test_download_curl_cffi_command_handles_large_headers(self):
+        """Even with many cookies, the command line should stay short."""
+        # Simulate 200 cookies
+        big_headers = {f"cookie_{i}": f"val_{i}" * 20 for i in range(200)}
+        cmd, tmp = cca.download_curl_cffi_command(
+            url="https://example.com/video.mp4",
+            output_path=r"C:\Downloads\video.mp4",
+            headers=big_headers,
+        )
+        try:
+            cmd_str = " ".join(cmd)
+            # Should be well under the 32767 limit
+            self.assertLess(len(cmd_str), 2000, f"Command too long: {len(cmd_str)} chars")
+            # Verify all headers ended up in the file, not the command
+            import json as _json
+
+            with open(tmp[0], "r", encoding="utf-8") as f:
+                saved = _json.load(f)
+            for k in big_headers:
+                self.assertIn(k, saved)
+        finally:
+            self._cleanup(tmp)
 
 
 class TestDirectMediaUrlHeuristic(unittest.TestCase):
