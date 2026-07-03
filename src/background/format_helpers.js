@@ -153,6 +153,12 @@ function notifyPopupQualityStatus(notifyPopupFn, text) {
   }
 }
 
+function notifyDownloadDebugLog(notifyPopupFn, level, message, details) {
+  if (notifyPopupFn) {
+    notifyPopupFn({ type: "downloadDebugLog", level, message, details: details || "" });
+  }
+}
+
 async function getNativeFormatsForVideo(
   tabId,
   video,
@@ -170,21 +176,39 @@ async function getNativeFormatsForVideo(
   let nativeError = "";
   let firstNativeError = "";
 
+  const log = (level, message, details) => {
+    notifyDownloadDebugLog(notifyPopupFn, level, message, details);
+  };
+
   const status = (text) => {
     notifyContentStatus(tabId, text);
     notifyPopupQualityStatus(notifyPopupFn, text);
   };
 
+  const sourceUrl = lookupVideo.url || video.url || "";
+
+  log("info", `Starting format enumeration for: ${sourceUrl.substring(0, 120)}`);
+
   await status("Checking link with yt-dlp...");
   try {
+    log("info", "Checking link with yt-dlp...");
     response = await requestNativeFormats(formatLookupVideo, nativeRequestFn);
+    if (response && response.formats) {
+      log("info", `yt-dlp succeeded: found ${response.formats.length} format(s)`);
+    } else if (response) {
+      log("warn", "yt-dlp returned response but no formats found");
+    } else {
+      log("warn", "yt-dlp returned empty response");
+    }
   } catch (error) {
     nativeError = error.message || String(error);
     firstNativeError = nativeError;
+    log("error", "yt-dlp format check failed", nativeError);
     const pageFallback = downloadHelpers.isRetryableSourceError(nativeError)
       ? await downloadHelpers.pageFallbackVideoForSource(lookupVideo, new Set([headerUtils.normalizeUrl(lookupVideo.url || "")]), buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn))
       : null;
     if (pageFallback) {
+      log("warn", "yt-dlp failed, trying page URL fallback", `Fallback URL: ${pageFallback.url ? pageFallback.url.substring(0, 120) : "N/A"}`);
       await status("Checking page fallback...");
       try {
         response = await requestNativeFormats(pageFallback, nativeRequestFn);
@@ -200,11 +224,14 @@ async function getNativeFormatsForVideo(
             downloadable: true,
           })) || pageFallback;
         nativeError = "";
+        log("info", "Page URL fallback succeeded", `Found ${response && response.formats ? response.formats.length : 0} format(s)`);
       } catch (pageError) {
         nativeError = pageError.message || String(pageError);
+        log("error", "Page URL fallback also failed", nativeError);
       }
     }
     if (!response && downloadHelpers.isRetryableSourceError(nativeError)) {
+      log("warn", "Trying resolved media candidates as fallback...");
       const resolvedCandidates = await downloadHelpers.resolveMediaCandidatesForSource(
         tabId,
         pageFallback || lookupVideo,
@@ -212,28 +239,37 @@ async function getNativeFormatsForVideo(
         buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn),
       );
       if (resolvedCandidates.length > 0) {
+        log("info", `Found ${resolvedCandidates.length} resolved source(s) to try`);
         await status(`Checking ${resolvedCandidates.length} resolved source(s)...`);
       }
       for (const candidate of resolvedCandidates) {
         try {
+          const idx = resolvedCandidates.indexOf(candidate) + 1;
+          log("info", `Trying resolved source ${idx}/${resolvedCandidates.length}`, candidate.url ? candidate.url.substring(0, 120) : "N/A");
           await status(
-            `Checking source ${resolvedCandidates.indexOf(candidate) + 1} of ${resolvedCandidates.length}...`,
+            `Checking source ${idx} of ${resolvedCandidates.length}...`,
           );
           response = await requestNativeFormats(candidate, nativeRequestFn);
           formatLookupVideo = candidate;
           nativeError = "";
+          log("info", `Resolved source ${idx} succeeded`, `Found ${response && response.formats ? response.formats.length : 0} format(s)`);
           break;
         } catch (candidateError) {
           nativeError = candidateError.message || String(candidateError);
+          log("error", `Resolved source ${resolvedCandidates.indexOf(candidate) + 1} failed`, nativeError);
         }
       }
     }
   }
 
   if (!response) {
+    log("warn", "No response from native host, waiting for size probe fallback...");
     await status("Waiting for video size information...");
   } else if (response && response.formats && response.formats.length) {
+    log("info", `Processing ${response.formats.length} available format(s) from native host`);
     await status("Processing available formats...");
+  } else if (response) {
+    log("warn", "Native host returned response but no formats found", JSON.stringify(response).substring(0, 300));
   }
 
   const nativeFormats =
@@ -282,11 +318,16 @@ async function getNativeFormatsForVideo(
 
   if (nativeError && !nativeFormats.length && !sourceFormats.length) {
     const friendlyError = downloadHelpers.userFriendlyDownloadError(nativeError);
-    throw new Error(friendlyError ? `${friendlyError}\n\nTechnical details: ${nativeError}` : nativeError);
+    const errorMsg = friendlyError ? `${friendlyError}\n\nTechnical details: ${nativeError}` : nativeError;
+    log("error", "Format enumeration failed - no formats found", nativeError);
+    throw new Error(errorMsg);
   }
   if (!nativeFormats.length && !sourceFormats.length) {
+    log("error", "No downloadable formats from yt-dlp or detected sources", `video URL: ${(video.url || "").substring(0, 120)}`);
     throw new Error("yt-dlp did not find any downloadable video formats for this link.");
   }
+
+  log("info", `Format enumeration complete: ${nativeFormats.length} native + ${sourceFormats.length} detected format(s)`);
 
   const formats = nativeFormats.length ? nativeFormats : sourceFormats;
   const pageTitle = refreshedVideo.title || lookupVideo.title || "Video";
@@ -352,5 +393,6 @@ export {
   requestNativeFormats,
   notifyContentStatus,
   notifyPopupQualityStatus,
+  notifyDownloadDebugLog,
   getNativeFormatsForVideo,
 };
