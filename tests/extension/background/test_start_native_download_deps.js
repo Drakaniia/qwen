@@ -63,7 +63,7 @@ if (!globalThis.navigator) {
 globalThis.URL = URL;
 
 // Dynamic import — ensures globals are set up before the module graph evaluates.
-const mod = await import("../../../src/background/download_orchestration.js");
+const mod = await import("../../../src/background/download/index.js");
 const { create } = mod;
 
 async function testRetryDownloadSeesPatchedStartNativeDownloadFromVideo() {

@@ -111,7 +111,7 @@ globalThis.chrome = {
 
 let cdpExtraction;
 try {
-  cdpExtraction = await import("../../../src/background/cdp_extraction.js");
+  cdpExtraction = await import("../../../src/background/cdp/index.js");
 } catch (err) {
   console.warn("Could not import cdp_extraction.js directly:", err.message);
   console.warn("Running structural interface tests only.");

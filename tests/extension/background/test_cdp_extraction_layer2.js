@@ -267,7 +267,7 @@ function buildFrameTree(frames) {
 
 let cdpExtraction;
 try {
-  cdpExtraction = await import("../../../src/background/cdp_extraction.js");
+  cdpExtraction = await import("../../../src/background/cdp/index.js");
 } catch (err) {
   console.warn("Could not import cdp_extraction.js directly:", err.message);
   console.warn("Running as module-structural tests.");
