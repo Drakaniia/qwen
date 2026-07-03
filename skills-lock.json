@@ -10,7 +10,7 @@
       "source": "Drakaniia/skills",
       "sourceType": "github",
       "skillPath": "skills/audit-codebase/SKILL.md",
-      "computedHash": "5ea10de9b38092013fdcc81c60bbae653d075cb423f3bbb97dec35c52b1ef66f"
+      "computedHash": "0a589c24df5ca5758dda2c687205864c8b457b983f97b9a4718c95c981220a7f"
     },
     "brainstorming": {
       "source": "Obra/superpowers",
@@ -23,11 +23,17 @@
       "sourceType": "autoskills-registry",
       "computedHash": "6c561d2efc102fa5b7447cc85285f95676ec12868e69eabafc7189b107a84b93"
     },
+    "code-design": {
+      "source": "Drakaniia/skills",
+      "sourceType": "github",
+      "skillPath": "skills/code-design/SKILL.md",
+      "computedHash": "89064b9e27500716e9216d07d6d052829e5231977135d909128177fbc334e636"
+    },
     "folder-architecture": {
       "source": "Drakaniia/skills",
       "sourceType": "github",
       "skillPath": "skills/folder-architecture/SKILL.md",
-      "computedHash": "2dfdcd0900b8c174b344fac287a2d319843ccceed84684ec91d682321cb9bdf9"
+      "computedHash": "fe623c13ed734883ab6566f13ec74c8ee4a0e45078e8bf340359959546fc8329"
     },
     "frontend-design": {
       "source": "anthropics/skills",
@@ -38,7 +44,7 @@
       "source": "Drakaniia/skills",
       "sourceType": "github",
       "skillPath": "skills/implement-folder-architecture/SKILL.md",
-      "computedHash": "683c42857db5e9656abe8441061e49c5d8d9c8c21cb1402f4d72cc36072144a7"
+      "computedHash": "04772ac635e9e10bbe11e477e7a83bba29b6dc363709e8902e046978cd01106a"
     },
     "improve-codebase-architecture": {
       "source": "mattpocock/skills",

@@ -80,7 +80,10 @@ block_cipher = None
 
 a = Analysis(
     [str(SRC_NATIVE_HOST / "host.py")],
-    pathex=[str(ROOT_DIR), str(SRC_NATIVE_HOST)],
+    # Add native_host and all subdirectories to pathex so imports work
+    # after Phase 3 structural refactoring moved files into subdirectories.
+    _subdirs = [str(d) for d in sorted(SRC_NATIVE_HOST.rglob("*")) if d.is_dir() and d.name != "__pycache__"]
+    pathex=[str(ROOT_DIR), str(SRC_NATIVE_HOST)] + _subdirs,
     binaries=[],
     datas=native_host_files,  # All .py files from native_host/ tree
     hiddenimports=hidden_imports,

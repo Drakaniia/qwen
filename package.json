@@ -27,7 +27,7 @@
     "lint:fix": "npx eslint --fix src/ tests/ && python -m ruff check --fix src/native_host/ tests/native-host/",
     "format": "npx prettier --write \"src/**/*.{js,css,json}\" \"tests/**/*.js\" \"*.{json,js}\" && python -m ruff format src/native_host/ tests/native-host/",
     "format:js": "npx prettier --write \"src/**/*.{js,css,json}\" \"tests/**/*.js\" \"*.{json,js}\"",
-    "format:py": "python -m ruff format src/native_host/ tests/native-host/"
+    "format:py": "python -m ruff check --fix src/native_host/ tests/native-host/ && python -m ruff format src/native_host/ tests/native-host/"
   },
   "devDependencies": {
     "esbuild": "^0.28.1",
