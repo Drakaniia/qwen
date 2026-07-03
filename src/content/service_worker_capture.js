@@ -291,6 +291,23 @@ function stopKeepalive() {
 // ─── Public API ─────────────────────────────────────────────────────────
 
 /**
+ * Check whether the page already has a controlling Service Worker.
+ * When an existing SW controls the page, the capture SW cannot be
+ * registered and the extension must fall back to CDP or fetch intercept.
+ *
+ * @param {object} [nav] - Optional navigator-like object (for testing).
+ *   Defaults to the global `navigator`.
+ * @returns {boolean} True if a Service Worker controller exists.
+ */
+function hasExistingServiceWorker(nav) {
+  const n = nav || (typeof navigator !== "undefined" ? navigator : null);
+  if (!n || !n.serviceWorker) {
+    return false;
+  }
+  return Boolean(n.serviceWorker.controller);
+}
+
+/**
  * Initialize the media capture Service Worker on the current page.
  * @returns {Promise<boolean>} True if SW was registered successfully.
  */
@@ -303,7 +320,7 @@ async function initMediaCaptureSW() {
   }
 
   // Don't override an existing controlling SW
-  if (navigator.serviceWorker.controller) {
+  if (hasExistingServiceWorker()) {
     console.warn("[qwin] Page already has a Service Worker — not registering capture SW");
     return false;
   }
@@ -451,4 +468,5 @@ export {
   bufferToBase64,
   isPageUrlSupportedForSWCapture,
   isCaptureServiceWorkerRegistrationSupported,
+  hasExistingServiceWorker,
 };

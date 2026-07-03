@@ -7,6 +7,7 @@ import * as emeIntercept from "./eme_intercept.js";
 import * as p2pDetection from "./p2p_detection.js";
 import * as fetchIntercept from "./fetch_intercept.js";
 import * as serviceWorkerCapture from "./service_worker_capture.js";
+import * as ssrDetectionModule from "./ssr_detection.js";
 import {
   initOverlay,
   updateQualityLoadingStatus,
@@ -206,6 +207,28 @@ function scanVisiblePlayerFrames() {
   return candidates;
 }
 
+/**
+ * Scan SSR (Server-Side Rendered) JSON globals for HLS manifest URLs.
+ * Detects __NEXT_DATA__, __NUXT__, __INITIAL_STATE__, and other SSR globals.
+ */
+function scanSsrSources() {
+  const candidates = [];
+  try {
+    const ssrResults = ssrDetectionModule.scanSSRGlobals(document, window);
+    for (const result of ssrResults) {
+      const absoluteUrl = pageDetection.toAbsoluteUrl(result.url);
+      if (!absoluteUrl) continue;
+      const candidate = pageDetection.buildCandidate(absoluteUrl, result.source);
+      if (candidate) {
+        candidates.push(candidate);
+      }
+    }
+  } catch (_e) {
+    // SSR scanning is best-effort
+  }
+  return candidates;
+}
+
 function scanMusicSources() {
   const candidates = [];
   const hostname = location.hostname.toLowerCase();
@@ -264,6 +287,7 @@ function publishScan() {
     ...scanInlinePlayerScripts(),
     ...scanVisiblePlayerFrames(),
     ...scanMusicSources(),
+    ...scanSsrSources(),
   ];
   lastDetectedVideos = videos;
   if (videos.length > 0) {
@@ -341,6 +365,19 @@ function start() {
 
   // Initialise P2P/WebRTC stream detection
   p2pDetection.init();
+
+  // Initialize SSR detection for server-rendered JSON manifests
+  ssrDetectionModule.init({
+    onCandidates: (ssrCandidates) => {
+      // Debounce: group rapid SSR scans into a single publish
+      if (ssrCandidates.length > 0) {
+        // Merge SSR candidates into the next publishScan cycle
+        // by triggering a fresh full scan
+        seenUrls.clear();
+        publishScan();
+      }
+    },
+  });
 
   // Initialize Service Worker media capture (best-effort)
   serviceWorkerCapture.initMediaCaptureSW().then((active) => {

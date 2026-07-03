@@ -1,7 +1,12 @@
 "use strict";
 
+import { TRANSFER_MODE_RE } from "../shared/media_protocols.js";
+
 const MEDIA_URL_TEXT_RE =
   /(?:(?:https?:)?\\?\/\\?\/|\/)[^"'`<>\s]+(?:\.(?:mp4|m4v|webm|m3u8|mpd)(?:[?#][^"'`<>\s]*)?|\.ism(?:\\?\/Manifest)?(?:[?#][^"'`<>\s]*)?)/gi;
+
+/** Match WebSocket streaming URLs (ws://, wss://). */
+const WEBSOCKET_URL_RE = /wss?:\/\/[^"'`<>\s]+/gi;
 
 const MUSIC_PLATFORM_SUFFIX_RE =
   /\s*[·•–—|]\s*(?:Spotify|Apple Music|YouTube Music|SoundCloud|Tidal|Deezer|Amazon Music|Pandora|Bandcamp)\s*$/i;
@@ -225,8 +230,9 @@ function create(options) {
       return null;
     }
 
+    const isWebSocketUrl = absoluteUrl.startsWith("ws://") || absoluteUrl.startsWith("wss://");
     const likelyVideo =
-      absoluteUrl.startsWith("blob:") || videoFilters.isLikelyVideoRequest(absoluteUrl, "media", mimeType);
+      absoluteUrl.startsWith("blob:") || isWebSocketUrl || videoFilters.isLikelyVideoRequest(absoluteUrl, "media", mimeType);
 
     if (!likelyVideo) {
       return null;
@@ -411,7 +417,48 @@ function create(options) {
       const candidateUrl = decodeUrlText(match[0]);
       addCandidate(candidates, candidateUrl, source);
     }
+
+    // Scan for WebSocket streaming URLs (ws://, wss://) used by
+    // platforms like Douyu, Huya, and custom players that deliver
+    // video frames over WebSocket connections instead of HTTP.
+    for (const match of sourceText.matchAll(WEBSOCKET_URL_RE)) {
+      const candidateUrl = decodeUrlText(match[0]);
+      addCandidate(candidates, candidateUrl, source);
+    }
+
     return candidates;
+  }
+
+  /**
+   * Scan text for streaming code patterns that indicate the page
+   * uses fetch/XHR with transferMode: 'stream' for video delivery.
+   *
+   * Custom video players often use streaming fetch responses to
+   * pipe video data incrementally. Detecting this pattern helps
+   * the extension flag the page as a potential streaming video source.
+   *
+   * @param {string} text - The text to scan (e.g., inline script content)
+   * @returns {Array<{type: string, match: string, index: number}>}
+   */
+  function scanForStreamingPatterns(text) {
+    const results = [];
+    const sourceText = String(text || "");
+    if (!sourceText) {
+      return results;
+    }
+
+    // Detect transferMode: 'stream' patterns in fetch/XHR code
+    let match;
+    const re = new RegExp(TRANSFER_MODE_RE.source, TRANSFER_MODE_RE.flags + "g");
+    while ((match = re.exec(sourceText)) !== null) {
+      results.push({
+        type: "transferMode-stream",
+        match: match[0],
+        index: match.index,
+      });
+    }
+
+    return results;
   }
 
   return {
@@ -428,6 +475,7 @@ function create(options) {
     isLikelyRealPlayer,
     pageFallbackCandidateForVideo,
     pageThumbnailUrl,
+    scanForStreamingPatterns,
     scanTextForMediaUrls,
     thumbnailForVideo,
     titleForVideo,
