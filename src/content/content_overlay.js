@@ -361,11 +361,11 @@ function hideAllOverlays() {
 }
 
 function setOverlayEnabled(enabled) {
-  if (enabled) {
-    positionAllOverlays();
-  } else {
+  if (!enabled) {
     hideAllOverlays();
+    return;
   }
+  positionAllOverlays();
 }
 
 export {
