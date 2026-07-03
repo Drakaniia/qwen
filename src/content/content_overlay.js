@@ -352,6 +352,22 @@ function updateOverlay(video, candidate, allowBestDetectedFallback = false) {
   positionOverlay(record);
 }
 
+// ─── Overlay toggle ──────────────────────────────────────────────────────
+
+function hideAllOverlays() {
+  for (const record of Array.from(overlayRecords)) {
+    removeOverlay(record.video);
+  }
+}
+
+function setOverlayEnabled(enabled) {
+  if (enabled) {
+    positionAllOverlays();
+  } else {
+    hideAllOverlays();
+  }
+}
+
 export {
   initOverlay,
   ensureOverlay,
@@ -364,4 +380,6 @@ export {
   positionAllOverlays,
   updateOverlay,
   removeOverlay,
+  hideAllOverlays,
+  setOverlayEnabled,
 };

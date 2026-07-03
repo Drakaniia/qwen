@@ -18,6 +18,7 @@ let settings = {
   downloadSyncEnabled: true,
   autoDownload: false,
   maxConcurrentDownloads: 3,
+  overlayEnabled: true,
 };
 let stateLoaded = false;
 let stateLoadPromise = null;

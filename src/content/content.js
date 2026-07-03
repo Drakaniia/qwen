@@ -13,6 +13,7 @@ import {
   updateQualityLoadingStatus,
   positionAllOverlays,
   updateOverlay,
+  setOverlayEnabled,
 } from "./content_overlay.js";
 
 const extensionApi = typeof browser !== "undefined" ? browser : chrome;
@@ -423,6 +424,8 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   } else if (message && message.type === "updateLoadingStatus") {
     updateQualityLoadingStatus(message.text);
+  } else if (message && message.type === "setOverlayEnabled") {
+    setOverlayEnabled(message.enabled !== false);
   } else if (message && message.type === "qwinCheckCloudflareChallenge") {
     // Check if the page is showing a Cloudflare challenge page.
     // The background script uses this to verify the challenge is solved.
