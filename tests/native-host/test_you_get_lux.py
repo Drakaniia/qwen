@@ -10,8 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
+from path_setup import *
 
 # These imports will fail until the functions are implemented — RED phase
 from fallback_engines import (

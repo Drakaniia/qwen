@@ -10,8 +10,7 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock, patch
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
+from path_setup import *
 
 
 # ═══════════════════════════════════════════════════════════════════════

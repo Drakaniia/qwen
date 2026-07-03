@@ -16,8 +16,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
+from path_setup import *
 
 from browser_context import (
     clean_request_headers,

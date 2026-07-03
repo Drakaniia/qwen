@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src" / "native_host"))
+from path_setup import *
 
 from cdm_capture import (
     _check_cmaf_from_files,

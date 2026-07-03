@@ -2,10 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-import sys
-
-sys.path.insert(0, str(ROOT_DIR / "src" / "native_host"))
+from path_setup import *
 
 import native_protocol
 from download_manager import build_aria2c_torrent_command, run_torrent_download

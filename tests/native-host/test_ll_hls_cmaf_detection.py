@@ -8,7 +8,7 @@ import os
 import sys
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src/native_host"))
+from path_setup import *
 
 from stream_backends import is_cmaf_url, is_ll_hls_url, is_low_latency_stream
 

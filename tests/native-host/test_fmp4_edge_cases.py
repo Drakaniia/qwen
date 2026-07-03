@@ -12,9 +12,9 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src" / "native_host"))
+from path_setup import *
 
-from fmp4_demuxer import (
+from codec.fmp4 import (
     demux_streams,
     detect_track_gaps,
     interleave_tracks,
