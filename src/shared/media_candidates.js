@@ -37,6 +37,9 @@ const AD_RE =
 const STREAMING_PAGE_HOST_RE = /(?:^|[/.])vidfast\.pro(?:$|[/?#])/i;
 const EMBED_PLAYER_HOST_RE = /(?:^|[/.])player\.hanime\.tv(?:$|[/?#])/i;
 
+// SSR source types recognized by the detection pipeline.
+const SSR_SOURCE_RE = /^ssr-json:/i;
+
 // Video hosting sites whose page URLs are not real yt-dlp sources
 // Actual CDN stream URLs from these sites still pass through with video extensions.
 const VIDEO_HOSTING_SITES_RE = /(?:^|[\/.])(?:flashx|thevideo|hdvid|vidoza|powvideo|vidtech|streamplay|fileone|beeg|khanime)\.(?:pw|tv|to|net|pro|com|co)(?:$|[\/?#])/i;
@@ -63,7 +66,13 @@ function lower(value) {
 function isHttpUrl(url) {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "blob:";
+    return (
+      parsed.protocol === "http:" ||
+      parsed.protocol === "https:" ||
+      parsed.protocol === "blob:" ||
+      parsed.protocol === "ws:" ||
+      parsed.protocol === "wss:"
+    );
   } catch (_error) {
     return false;
   }
@@ -371,4 +380,5 @@ export {
   ANTIBLOCK_RE,
   CHINESE_STREAMING_CDN_RE,
   CHINESE_STREAMING_P2P_RE,
+  SSR_SOURCE_RE,
 };

@@ -217,6 +217,12 @@ function isLikelyFullLengthVideoCandidate(details) {
     return true;
   }
 
+  // SSR-detected URLs are trusted candidates — they come from manifest
+  // configs in server-rendered JSON, not from DOM video elements.
+  if (typeof details.source === "string" && details.source.startsWith("ssr-json:")) {
+    return true;
+  }
+
   const youtubePage = isYouTubeVideoPageUrl(details.url || "");
   const isDomSource =
     details.source === "dom-video" ||
