@@ -311,6 +311,10 @@ export async function refresh(options = {}) {
   if (elements.syncHistoryToggle) {
     elements.syncHistoryToggle.checked = syncEnabled;
   }
+  if (elements.overlayToggle) {
+    const overlayEnabled = response.settings && response.settings.overlayEnabled !== false;
+    elements.overlayToggle.checked = overlayEnabled;
+  }
   PopupApi.getDownloadSyncHistory().then(function (syncResponse) {
     if (syncResponse && syncResponse.ok) {
       PopupState.update({

@@ -23,6 +23,34 @@ import {
 
 // ─── Settings events ────────────────────────────────────────────────────────
 
+elements.overlayToggle.addEventListener("change", async () => {
+  const enabled = elements.overlayToggle.checked;
+  const response = await PopupApi.saveSettings({ overlayEnabled: enabled });
+  if (!response || !response.ok) {
+    setSettingsStatus("Could not save overlay setting.", true);
+  } else {
+    setSettingsStatus(enabled ? "Overlay enabled." : "Overlay disabled.");
+  }
+
+  // Send to the active tab's content script immediately
+  await updateActiveTabContext();
+  const tabId = PopupState.get("activeTabId");
+  if (tabId) {
+    const api = typeof browser !== "undefined" ? browser : chrome;
+    if (typeof api.tabs !== "undefined" && api.tabs) {
+      try {
+        if (typeof browser !== "undefined") {
+          await api.tabs.sendMessage(tabId, { type: "setOverlayEnabled", enabled });
+        } else {
+          api.tabs.sendMessage(tabId, { type: "setOverlayEnabled", enabled });
+        }
+      } catch (_err) {
+        // Content script might not be loaded yet
+      }
+    }
+  }
+});
+
 elements.recordingMode.addEventListener("change", async () => {
   const response = await PopupApi.saveSettings({
     recordingMode: elements.recordingMode.value,
