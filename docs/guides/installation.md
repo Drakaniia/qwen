@@ -35,40 +35,6 @@ The installer:
   - `HKCU\Software\Chromium\NativeMessagingHosts\com.qwin.video_downloader`
   - `HKCU\Software\Mozilla\NativeMessagingHosts\com.qwin.video_downloader`
 
-## Install The CDM (Optional)
-
-For Widevine DRM content decryption, install the Widevine CDM:
-
-```bat
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-cdm.ps1
-```
-
-The CDM installer:
-1. Searches for Chrome's bundled Widevine CDM in Chrome, Edge, Brave, and Yandex browser user data directories.
-2. Copies it to `tools\cdm\` if the version is compatible.
-3. Falls back to downloading a known-compatible standalone CDM.
-4. Writes `tools\cdm\status.json` for the native host to read at startup.
-
-## Install The Capture Binary (Optional)
-
-For CDP relay, screen recording, and CDM pipeline support, install the `qwin-capture` Go companion binary:
-
-```bat
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-capture.ps1
-```
-
-The capture installer:
-1. Downloads the latest `qwin-capture.exe` release from GitHub.
-2. Places it at `tools\capture\qwin-capture.exe`.
-3. The native host spawns it automatically when needed.
-
-To build from source:
-
-```bat
-cd go
-go build -o qwin-capture.exe .
-```
-
 ## Load In Chrome
 
 1. Open `chrome://extensions`.
