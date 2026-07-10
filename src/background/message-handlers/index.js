@@ -9,20 +9,12 @@
 
 import { registerTabHandlers } from "./tab.js";
 import { registerDownloadHandlers } from "./download.js";
-import { registerCdpHandlers } from "./cdp.js";
-import { registerCdmHandlers } from "./cdm.js";
 import { registerSettingsHandlers } from "./settings.js";
-import { registerCaptureHandlers } from "./capture.js";
-import { registerBatchHandlers } from "./batch.js";
 
 export {
   registerTabHandlers,
   registerDownloadHandlers,
-  registerCdpHandlers,
-  registerCdmHandlers,
   registerSettingsHandlers,
-  registerCaptureHandlers,
-  registerBatchHandlers,
 };
 
 /**
@@ -33,9 +25,5 @@ export {
 export function registerAllHandlers(messageRouter, ctx) {
   registerTabHandlers(messageRouter, ctx);
   registerDownloadHandlers(messageRouter, ctx);
-  registerCdpHandlers(messageRouter, ctx);
-  registerCdmHandlers(messageRouter, ctx);
   registerSettingsHandlers(messageRouter, ctx);
-  registerCaptureHandlers(messageRouter, ctx);
-  registerBatchHandlers(messageRouter, ctx);
 }

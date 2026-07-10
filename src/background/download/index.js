@@ -1,10 +1,7 @@
 "use strict";
 
 import { createOperations } from "../download_operations.js";
-import { isCloudflareBlockError } from "./helpers.js";
 import { startNativeDownloadFromVideo } from "./native.js";
-
-export { isCloudflareBlockError };
 
 /**
  * Create a download orchestrator with all download-related functions.

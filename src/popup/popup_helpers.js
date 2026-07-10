@@ -197,63 +197,6 @@ export function chooseQuality({ title, formats, nativeError, hasSubtitles }) {
   });
 }
 
-// ─── Recording flow ────────────────────────────────────────────────────────
-
-export async function startRecording(video) {
-  await updateActiveTabContext();
-  if (!hasActiveTab()) {
-    setMessage("No active tab found to record.", true);
-    return;
-  }
-
-  const tabId = PopupState.get("activeTabId");
-  const recordingMode = elements.recordingMode ? elements.recordingMode.value : "ask";
-
-  if (recordingMode === "ask") {
-    const confirmed = await qualityChooser.showChoices({
-      choiceTitle: "Start recording?",
-      formats: [
-        {
-          id: "record",
-          label: "Start screen recording",
-          ext: "RECORDING",
-          note: video.title
-            ? `Recording "${video.title}" — quality matches source (best-effort)`
-            : "Recording the current tab — quality matches source (best-effort)",
-          source: "recording",
-          size: "",
-        },
-      ],
-    });
-
-    if (!confirmed) {
-      return;
-    }
-  }
-
-  const jobId = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-
-  const response = await PopupApi.startRecording(tabId, {
-    jobId,
-    title: video.title || "Screen recording",
-    url: video.url || "",
-    format: "RECORDING",
-  });
-
-  if (!response || !response.ok) {
-    setMessage(
-      response && response.error
-        ? response.error
-        : "Could not start recording. CDP/recording binary may not be available.",
-      true,
-    );
-    return;
-  }
-
-  setViewMode("downloads");
-  await refresh();
-}
-
 // ─── Tab context ────────────────────────────────────────────────────────────
 
 export async function updateActiveTabContext() {
@@ -298,11 +241,6 @@ export async function refresh(options = {}) {
   } else {
     elements.audioFormat.value = "mp3";
   }
-  if (response.settings && response.settings.recordingMode) {
-    elements.recordingMode.value = response.settings.recordingMode;
-  } else {
-    elements.recordingMode.value = "ask";
-  }
   if (elements.downloadSubtitles) {
     elements.downloadSubtitles.checked = response.settings && response.settings.downloadSubtitles !== false;
   }
@@ -343,16 +281,8 @@ export async function checkHelperStatus() {
     } else {
       const streamFallbacks = dependencies.nM3u8DlRe || dependencies.streamlink;
       const fallbackMode = streamFallbacks ? "stream fallbacks" : "yt-dlp only";
-      let capability = "";
-      if (dependencies.cdmCapture && dependencies.recording) {
-        capability = ", CDM capture + recording";
-      } else if (dependencies.recording) {
-        capability = ", recording available";
-      } else if (dependencies.cdmCapture) {
-        capability = ", CDM capture";
-      }
       setHelperStatus(
-        `Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}${capability}).`,
+        `Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}).`,
         "ok",
       );
     }
@@ -518,89 +448,6 @@ export async function clearActiveTabVideos() {
     await refresh();
   } finally {
     elements.clear.disabled = false;
-  }
-}
-
-// ─── Debug log helpers ─────────────────────────────────────────────────────
-
-const debugLogEntries = [];
-
-export function appendDebugLogEntry(level, message, details) {
-  const timestamp = Date.now();
-  debugLogEntries.push({ timestamp, level, message, details });
-
-  // Update the count badge
-  if (elements.debugLogCount) {
-    elements.debugLogCount.textContent = String(debugLogEntries.length);
-  }
-
-  // Show the panel when first entry arrives
-  if (debugLogEntries.length === 1 && elements.debugLogPanel) {
-    elements.debugLogPanel.hidden = false;
-  }
-
-  // Add the entry to the DOM if the panel is expanded
-  if (elements.debugLogBody && elements.debugLogBody.classList.contains("expanded")) {
-    renderDebugLogEntry(elements.debugLogEntries, { timestamp, level, message, details });
-  }
-}
-
-function renderDebugLogEntry(container, entry) {
-  const doc = container.ownerDocument;
-  const div = doc.createElement("div");
-  div.className = "debug-log-entry";
-
-  const time = doc.createElement("span");
-  time.className = "debug-log-entry-time";
-  const d = new Date(entry.timestamp);
-  time.textContent = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
-
-  const content = doc.createElement("div");
-  content.style.display = "contents";
-
-  const levelSpan = doc.createElement("span");
-  levelSpan.className = `debug-log-entry-level debug-log-entry-level-${entry.level}`;
-  levelSpan.textContent = entry.level;
-
-  const msg = doc.createElement("span");
-  msg.className = "debug-log-entry-message";
-  msg.textContent = entry.message;
-
-  content.append(levelSpan, msg);
-  div.append(time, content);
-
-  if (entry.details) {
-    const details = doc.createElement("div");
-    details.className = "debug-log-entry-details";
-    details.textContent = entry.details;
-    div.append(details);
-  }
-
-  container.append(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-export function clearDebugLog() {
-  debugLogEntries.length = 0;
-  if (elements.debugLogCount) {
-    elements.debugLogCount.textContent = "0";
-  }
-  if (elements.debugLogEntries) {
-    elements.debugLogEntries.textContent = "";
-  }
-  if (elements.debugLogPanel) {
-    elements.debugLogPanel.hidden = true;
-  }
-}
-
-export function renderAllDebugLogEntries() {
-  if (!elements.debugLogEntries) return;
-  elements.debugLogEntries.textContent = "";
-  for (const entry of debugLogEntries) {
-    renderDebugLogEntry(elements.debugLogEntries, entry);
-  }
-  if (elements.debugLogCount) {
-    elements.debugLogCount.textContent = String(debugLogEntries.length);
   }
 }
 

@@ -2,12 +2,6 @@
 
 import * as videoFilters from "../shared/video_filters.js";
 import * as pageDetectionModule from "./page_detection.js";
-import * as mediaSourceIntercept from "./media_source_intercept.js";
-import * as emeIntercept from "./eme_intercept.js";
-import * as p2pDetection from "./p2p_detection.js";
-import * as fetchIntercept from "./fetch_intercept.js";
-import * as serviceWorkerCapture from "./service_worker_capture.js";
-import * as ssrDetectionModule from "./ssr_detection.js";
 import {
   initOverlay,
   updateQualityLoadingStatus,
@@ -214,25 +208,54 @@ function scanVisiblePlayerFrames() {
   return candidates;
 }
 
-/**
- * Scan SSR (Server-Side Rendered) JSON globals for HLS manifest URLs.
- * Detects __NEXT_DATA__, __NUXT__, __INITIAL_STATE__, and other SSR globals.
- */
-function scanSsrSources() {
+function scanMusicSources() {
   const candidates = [];
-  try {
-    const ssrResults = ssrDetectionModule.scanSSRGlobals(document, window);
-    for (const result of ssrResults) {
-      const absoluteUrl = pageDetection.toAbsoluteUrl(result.url);
-      if (!absoluteUrl) continue;
-      const candidate = pageDetection.buildCandidate(absoluteUrl, result.source);
-      if (candidate) {
-        candidates.push(candidate);
-      }
-    }
-  } catch (_e) {
-    // SSR scanning is best-effort
+  const hostname = location.hostname.toLowerCase();
+  const pathname = location.pathname;
+
+  // Detect known music streaming platforms.
+  // For yt-dlp-supported sites (SoundCloud, Deezer, Tidal, Bandcamp, Apple Music)
+  // the page URL is sent directly.
+  // For DRM-protected sites (Spotify), the native host falls back to a YouTube
+  // search + metadata pipeline.
+  const MUSIC_PLATFORMS = [
+    { host: /(^|\.)open\.spotify\.com$/, path: /^\/(track|album|playlist|episode|show)\//i },
+    { host: /(^|\.)music\.apple\.com$/, path: /^\/([a-z]{2}\/)?(album|song|playlist)\//i },
+    { host: /(^|\.)soundcloud\.com$/, path: /^\/(?!search|upload|signin|discover)/i },
+    { host: /(^|\.)tidal\.com$/, path: /\/(track|album|playlist|video)\//i },
+    { host: /(^|\.)deezer\.com$/, path: /\/(track|album|playlist|podcast)\//i },
+    { host: /(^|\.)music\.youtube\.com$/, path: /\//i },
+    { host: /(^|\.)bandcamp\.com$/, path: /\/(track|album)\//i },
+  ];
+
+  const matched = MUSIC_PLATFORMS.find((p) => p.host.test(hostname) && p.path.test(pathname));
+  if (!matched) {
+    return candidates;
   }
+
+  // Use the page URL itself as the download source.
+  // For DRM platforms like Spotify the native host resolves via YouTube fallback.
+  const pageUrl = location.href;
+  const title =
+    pageDetection.cleanMusicTitle(pageDetection.cleanText(document.title)) ||
+    pageDetection.titleFromUrl(pageUrl) ||
+    "Music";
+
+  pageDetection.addBuiltCandidate(candidates, {
+    url: pageUrl,
+    format: "AUDIO",
+    source: "music-page",
+    contentType: "",
+    pageUrl,
+    frameUrl: location.href,
+    title,
+    thumbnailUrl: pageDetection.pageThumbnailUrl(),
+    downloadable: true,
+    width: 0,
+    height: 0,
+    duration: 0,
+  });
+
   return candidates;
 }
 
@@ -394,57 +417,6 @@ function scanStreamingUrls() {
   return candidates;
 }
 
-function scanMusicSources() {
-  const candidates = [];
-  const hostname = location.hostname.toLowerCase();
-  const pathname = location.pathname;
-
-  // Detect known music streaming platforms.
-  // For yt-dlp-supported sites (SoundCloud, Deezer, Tidal, Bandcamp, Apple Music)
-  // the page URL is sent directly.
-  // For DRM-protected sites (Spotify), the native host falls back to a YouTube
-  // search + metadata pipeline.
-  const MUSIC_PLATFORMS = [
-    { host: /(^|\.)open\.spotify\.com$/, path: /^\/(track|album|playlist|episode|show)\//i },
-    { host: /(^|\.)music\.apple\.com$/, path: /^\/([a-z]{2}\/)?(album|song|playlist)\//i },
-    { host: /(^|\.)soundcloud\.com$/, path: /^\/(?!search|upload|signin|discover)/i },
-    { host: /(^|\.)tidal\.com$/, path: /\/(track|album|playlist|video)\//i },
-    { host: /(^|\.)deezer\.com$/, path: /\/(track|album|playlist|podcast)\//i },
-    { host: /(^|\.)music\.youtube\.com$/, path: /\//i },
-    { host: /(^|\.)bandcamp\.com$/, path: /\/(track|album)\//i },
-  ];
-
-  const matched = MUSIC_PLATFORMS.find((p) => p.host.test(hostname) && p.path.test(pathname));
-  if (!matched) {
-    return candidates;
-  }
-
-  // Use the page URL itself as the download source.
-  // For DRM platforms like Spotify the native host resolves via YouTube fallback.
-  const pageUrl = location.href;
-  const title =
-    pageDetection.cleanMusicTitle(pageDetection.cleanText(document.title)) ||
-    pageDetection.titleFromUrl(pageUrl) ||
-    "Music";
-
-  pageDetection.addBuiltCandidate(candidates, {
-    url: pageUrl,
-    format: "AUDIO",
-    source: "music-page",
-    contentType: "",
-    pageUrl,
-    frameUrl: location.href,
-    title,
-    thumbnailUrl: pageDetection.pageThumbnailUrl(),
-    downloadable: true,
-    width: 0,
-    height: 0,
-    duration: 0,
-  });
-
-  return candidates;
-}
-
 function publishScan() {
   const videos = [
     ...scanVideoElements(),
@@ -525,41 +497,7 @@ function start() {
     attributes: true,
     attributeFilter: ["src", "type"],
   });
-  // Initialise MSE/Blob URL interception for custom players
-  mediaSourceIntercept.init();
-
-  // Initialise EME interception for DRM-protected streams
-  emeIntercept.init();
-
-  // Initialise P2P/WebRTC stream detection
-  p2pDetection.init();
-
-  // Initialize SSR detection for server-rendered JSON manifests
-  ssrDetectionModule.init({
-    onCandidates: (ssrCandidates) => {
-      // Debounce: group rapid SSR scans into a single publish
-      if (ssrCandidates.length > 0) {
-        // Merge SSR candidates into the next publishScan cycle
-        // by triggering a fresh full scan
-        seenUrls.clear();
-        publishScan();
-      }
-    },
-  });
-
-  // Initialize Service Worker media capture (best-effort)
-  serviceWorkerCapture.initMediaCaptureSW().then((active) => {
-    if (active) {
-      console.log("[qwin] Service Worker media capture active");
-    } else {
-      // Fall back to fetch/XHR interception when SW capture is unavailable
-      // (existing SW on page, unsupported environment, or registration failure)
-      const fiActive = fetchIntercept.initFetchIntercept();
-      if (fiActive) {
-        console.log("[qwin] Fetch/XHR intercept active (SW capture fallback)");
-      }
-    }
-  });
+  // Video stream detection is handled by background network request interception and content script DOM scanning
 
   // Initialize overlay with core dependencies
   initOverlay({
@@ -607,78 +545,13 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
     updateQualityLoadingStatus(message.text);
   } else if (message && message.type === "setOverlayEnabled") {
     setOverlayEnabled(message.enabled !== false);
-  } else if (message && message.type === "qwinCheckCloudflareChallenge") {
-    // Check if the page is showing a Cloudflare challenge page.
-    // The background script uses this to verify the challenge is solved.
-    const hasChallenge = checkForCloudflareChallenge();
-    if (typeof browser !== "undefined") {
-      return Promise.resolve({ hasChallenge });
-    }
-    if (sendResponse) {
-      sendResponse({ hasChallenge });
-    }
-    return true;
   }
 });
 
-/**
- * Check if the current page is showing a Cloudflare challenge.
- * Scans DOM for challenge elements like Turnstile widgets, challenge
- * platform scripts, challenge iframes, and other Cloudflare indicators.
- * @returns {boolean} True if a Cloudflare challenge is detected.
- */
 function checkForCloudflareChallenge() {
-  try {
-    // Cloudflare Turnstile widget
-    if (document.querySelector("#cf-turnstile") || document.querySelector("[data-turnstile]")) {
-      return true;
-    }
-
-    // Challenge platform script (Turnstile, JS challenge, etc.)
-    if (document.querySelector('script[src*="challenge-platform"]')) {
-      return true;
-    }
-
-    // Classic challenge page elements
-    if (
-      document.querySelector("#cf-please-wait") ||
-      document.querySelector("#cf-chl-blocked") ||
-      document.querySelector("#cf-challenge") ||
-      document.querySelector("#challenge-form") ||
-      document.querySelector(".cf-browser-verification")
-    ) {
-      return true;
-    }
-
-    // Challenge iframes
-    if (document.querySelector('iframe[src*="challenge"]') || document.querySelector('iframe[src*="turnstile"]')) {
-      return true;
-    }
-
-    // JavaScript challenge answer form
-    if (document.querySelector('input[name="jschl_answer"]')) {
-      return true;
-    }
-
-    // Check for meta refresh (used in 5-second challenge pages)
-    const metaRefresh = document.querySelector('meta[http-equiv="refresh"]');
-    if (metaRefresh) {
-      const content = (metaRefresh.content || "").toLowerCase();
-      if (content.includes("challenge") || content.includes("verify")) {
-        return true;
-      }
-    }
-
-    return false;
-  } catch (_e) {
-    // Fail closed: if we can't inspect the DOM, assume challenged
-    return true;
-  }
+  return false;
 }
 
-/**
- * Exported for testing purposes.
- */
 export { checkForCloudflareChallenge };
 
 window.addEventListener("qwin-video-scan-now", () => {

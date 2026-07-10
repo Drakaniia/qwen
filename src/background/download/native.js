@@ -1,48 +1,8 @@
 "use strict";
 
-import { isCloudflareBlockError, dlDebug } from "./helpers.js";
 import { browserDownload } from "./browser.js";
 import { isBrowserDownloadableFormat } from "../browser_download.js";
-import { extractCookies, cookiesToCookieString } from "../cookie_extraction.js";
-import { detectAndSolveCloudflare } from "../cloudflare_solver.js";
 import { formatBytes } from "../download_helpers.js";
-
-/**
- * Try to download the video through the CDP browser tunnel.
- * This is a last-resort fallback when all native host sources fail,
- * attempted before the browser download fallback.
- */
-export async function tryCdpTunnelFallback(deps, tabId, url, format, requestHeaders, jobId) {
-  deps.updateDownload(jobId, {
-    status: "connecting",
-    message: "Trying browser tunnel as last resort...",
-  });
-
-  try {
-    const { tryCdpTunnelDownload } = await import("../cdp_tunnel_integration.js");
-    const result = await tryCdpTunnelDownload(tabId, url, {
-      requestHeaders,
-      timeout: 120000,
-      format: format || "",
-    });
-
-    if (!result.ok) {
-      return { ok: false, error: result.error || "CDP tunnel download failed" };
-    }
-
-    // For segment data, send to native host to write to disk
-    // For manifest data, return it for further processing
-    return {
-      ok: true,
-      data: result.data,
-      byteLength: result.byteLength,
-      contentType: result.contentType,
-      method: result.method,
-    };
-  } catch (err) {
-    return { ok: false, error: `CDP tunnel fallback error: ${err.message || err}` };
-  }
-}
 
 /**
  * Core native download flow: connects to native messaging host,
@@ -55,9 +15,6 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
   const existingJob = deps.getDownloadsById()[jobId] || {};
   const pageUrl = video.pageUrl || activeTab.url || "";
 
-  dlDebug(deps, "info", `Initiating download for: ${(video.title || video.url || "").substring(0, 100)}`);
-  dlDebug(deps, "info", `Video URL: ${(video.url || "").substring(0, 150)}`);
-  dlDebug(deps, "info", `Backend: ${options.backend || video.backend || "auto"}, Format: ${formatId || "best"}`);
   const requestHeaders =
     (Array.isArray(video.requestHeaders) && video.requestHeaders.length ? video.requestHeaders : null) ||
     (Array.isArray(existingJob.requestHeaders) && existingJob.requestHeaders.length
@@ -156,12 +113,9 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
   });
 
   try {
-    dlDebug(deps, "info", "Connecting to native messaging helper...");
     port = deps.api.runtime.connectNative(deps.hostName);
-    dlDebug(deps, "info", "Native messaging helper connected");
   } catch (error) {
     const errMsg = `Native messaging is not connected: ${error.message || error}`;
-    dlDebug(deps, "error", "Failed to connect to native helper", errMsg);
     deps.updateDownload(jobId, {
       status: "error",
       error: errMsg,
@@ -176,7 +130,6 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
     }
 
     if (message.type === "started") {
-      dlDebug(deps, "info", "Native helper started processing the download");
       deps.updateDownload(jobId, { status: "running", message: "" });
       return;
     }
@@ -239,7 +192,6 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
     }
 
     if (message.type === "done") {
-      dlDebug(deps, "info", "Download completed successfully", message.filepath || "");
       finished = true;
       delete deps.downloadPortsById[jobId];
       deps.updateDownload(jobId, {
@@ -261,7 +213,6 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
 
     if (message.type === "error") {
       const errorText = message.error || "yt-dlp failed.";
-      dlDebug(deps, "error", "Native host reported error", errorText.substring(0, 500));
       finished = true;
       delete deps.downloadPortsById[jobId];
       const artifactPatch = deps.artifactPatchFromMessage(message);
@@ -269,90 +220,19 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
         port.disconnect();
       } catch (_error) {}
 
-      // ── Cloudflare detection: try to solve challenge and retry ────
-      if (isCloudflareBlockError(errorText)) {
-        dlDebug(deps, "warn", "Cloudflare block detected, attempting to solve challenge...");
-        void (async () => {
-          deps.updateDownload(jobId, {
-            status: "connecting",
-            error: "",
-            message: "Download blocked by Cloudflare. Navigating to solve challenge...",
-            ...artifactPatch,
-          });
-
-          const solverResult = await detectAndSolveCloudflare(tabId, pageUrl || video.url, { timeout: 120000 });
-
-          if (solverResult.solved) {
-            dlDebug(deps, "info", "Cloudflare challenge solved, retrying download");
-            deps.updateDownload(jobId, {
-              status: "connecting",
-              message: "Challenge solved! Retrying download with Cloudflare clearance...",
-            });
-            // Retry the download — cf_clearance cookie is now in the tab's cookies
-            await startNativeDownloadFromVideo(deps, tabId, video, formatId, {
-              jobId,
-              attemptedUrls: Array.from(attemptedUrls),
-              backend,
-            });
-            return;
-          }
-
-          // Could not solve the challenge; fall through to normal retryable error handling
-          deps.updateDownload(jobId, {
-            status: "connecting",
-            message: "Cloudflare challenge not solved. Trying other sources...",
-            ...artifactPatch,
-          });
-        })()
-          .then(() => {
-            handleErrorWithFallbacks();
-          })
-          .catch(() => {
-            handleErrorWithFallbacks();
-          });
-        return;
-      }
-
       function handleErrorWithFallbacks() {
         if (deps.isRetryableSourceError(errorText)) {
-          dlDebug(deps, "warn", "Error is retryable, looking for fallback sources...");
           void (async () => {
             if (deps.isHardAccessError(errorText)) {
-              dlDebug(deps, "warn", "Hard access error, marking URL as unavailable", errorText.substring(0, 300));
               await deps.markVideoUrlUnavailable(tabId, video.url, errorText);
             }
             const fallbackVideo = await deps.fallbackVideoForDownload(tabId, video, attemptedUrls);
             if (!fallbackVideo) {
-              // All native-host sources exhausted; try CDP browser tunnel
-              dlDebug(deps, "warn", "No fallback video found, trying CDP browser tunnel...");
-              const tunnelResult = await tryCdpTunnelFallback(
-                deps,
-                tabId,
-                video.url,
-                video.format,
-                requestHeaders,
-                jobId,
-              );
-              if (tunnelResult.ok && tunnelResult.method !== "manifest") {
-                dlDebug(deps, "info", "CDP tunnel download succeeded");
-                deps.updateDownload(jobId, {
-                  status: "done",
-                  percent: 100,
-                  rawPercent: 100,
-                  speed: "",
-                  eta: "",
-                  stage: "done",
-                  message: "Download complete (CDP tunnel).",
-                });
-                return;
-              }
-
               if (isBrowserDownloadableFormat(video.format)) {
-                dlDebug(deps, "warn", "CDP tunnel failed, trying browser download fallback...");
                 deps.updateDownload(jobId, {
                   status: "connecting",
                   error: "",
-                  message: "Tunnel failed; trying browser download...",
+                  message: "Trying browser download...",
                   ...artifactPatch,
                 });
                 await browserDownload(deps, tabId, video, "best", {
@@ -364,12 +244,6 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
                 });
                 return;
               }
-              dlDebug(
-                deps,
-                "error",
-                "All download methods exhausted",
-                deps.exhaustedSourcesError(errorText, attemptedUrls),
-              );
               deps.updateDownload(jobId, {
                 status: "error",
                 error: deps.exhaustedSourcesError(errorText, attemptedUrls),
@@ -378,7 +252,6 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
               return;
             }
 
-            dlDebug(deps, "info", `Retrying with fallback source: ${(fallbackVideo.url || "").substring(0, 120)}`);
             deps.updateDownload(jobId, {
               status: "connecting",
               error: "",
@@ -395,7 +268,6 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
         }
 
         const friendlyError = deps.userFriendlyDownloadError(errorText);
-        dlDebug(deps, "error", "Download failed (non-retryable)", (friendlyError || errorText).substring(0, 500));
         deps.updateDownload(jobId, {
           status: "error",
           stage: "",
@@ -404,7 +276,6 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
           ...artifactPatch,
         });
       }
-      // Call handleErrorWithFallbacks for non-Cloudflare errors
       handleErrorWithFallbacks();
     }
   });
@@ -414,24 +285,12 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
     delete deps.downloadPortsById[jobId];
     if (!finished) {
       const errMsg = runtimeError || "Native messaging helper disconnected";
-      dlDebug(deps, "error", "Native helper disconnected unexpectedly", errMsg);
       deps.updateDownload(jobId, {
         status: "error",
         error: errMsg + ". Run scripts/install.sh, restart the browser, and try again.",
       });
     }
   });
-
-  // Extract cookies from browser session for authenticated downloads
-  let cookieHeader = "";
-  if (tabId) {
-    try {
-      const cookies = await extractCookies(tabId);
-      cookieHeader = cookiesToCookieString(cookies);
-    } catch (_e) {
-      // Cookie extraction is best-effort
-    }
-  }
 
   port.postMessage({
     type: "download",
@@ -441,7 +300,6 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
     pageUrl,
     userAgent: deps.userAgent(),
     requestHeaders,
-    cookieHeader,
     downloadFolder: deps.getSettings().downloadFolder || "",
     formatId: formatId || "best",
     backend,
@@ -449,11 +307,6 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
     audioFormat: deps.getSettings().audioFormat || "mp3",
     downloadSubtitles: deps.getSettings().downloadSubtitles !== false,
   });
-
-  dlDebug(deps, "info", `Download request sent to native helper (backend: ${backend})`);
-  if (video.url) {
-    dlDebug(deps, "debug", "Download URL", video.url.substring(0, 200));
-  }
 
   deps.updateDownload(jobId, {
     status: "queued",

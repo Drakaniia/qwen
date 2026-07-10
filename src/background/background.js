@@ -1,16 +1,12 @@
 "use strict";
 
+"use strict";
+
 import { browserApi } from "../shared/browser_api.js";
 import * as videoFilters from "../shared/video_filters.js";
 import * as tabState from "./tab_state.js";
 import * as nativeRequestsMod from "./native_requests.js";
-import * as cdpRelay from "./cdp_relay.js";
-import * as cdpExtraction from "./cdp/index.js";
-import * as cdmNetworkIntercept from "./cdm_network_intercept.js";
-import * as segmentCapture from "./segment_capture.js";
-import * as batchOrchestration from "./batch_orchestration.js";
 import * as downloadSync from "../shared/download_sync.js";
-import * as downloadQueue from "./download_queue.js";
 import { create as createMessageRouter } from "./message_router.js";
 import { create as createDownloadOrchestration } from "./download/index.js";
 
@@ -22,15 +18,12 @@ import * as filterIntegration from "./filter_integration.js";
 import * as sizeProbe from "./size_probe.js";
 import * as downloadHelpers from "./download_helpers.js";
 import * as formatHelpers from "./format_helpers.js";
-import * as recording from "./recording.js";
 
 // ── Newly extracted modules ──────────────────────────────────────────────
 
 import { initWebRequestHandlers, isExtensionPageSender } from "./background_webrequest.js";
 import { registerAllHandlers } from "./message-handlers/index.js";
 import { runInit } from "./background_init.js";
-import * as swRelay from "./sw_relay.js";
-import * as debugLogger from "./debug_logger.js";
 
 // ── Re-exports for message handlers ──────────────────────────────────────
 
@@ -83,9 +76,6 @@ const nativeRequests = { nativeRequest: nativeRequestsMod.nativeRequest };
 
 const HOST_NAME = downloadHelpers.HOST_NAME;
 
-// Initialize file-based debug logger with a nativeRequest wrapper
-debugLogger.init((payload) => nativeRequestsMod.nativeRequest(api, HOST_NAME, payload, 30000));
-
 // ── State ────────────────────────────────────────────────────────────────
 
 const pageTitlesByTab = {};
@@ -100,11 +90,6 @@ headerUtils.setBlockedUrlCheck(isBlockedUrlWithFilters);
 
 function notifyPopup(message) {
   browserApi.runtime.sendMessage(message).catch(() => {});
-
-  // Also buffer debug log entries for file output via native host
-  if (message && message.type === "downloadDebugLog") {
-    debugLogger.log(message);
-  }
 }
 
 // ── Visible video helpers ────────────────────────────────────────────────
@@ -377,6 +362,8 @@ import {
   pingNativeHost,
 } from "./background_helper_ping.js";
 
+
+
 // ── CORS proxy: content script fetch requests ──────────────────────────
 //
 // Coc Coc's approach: when content scripts encounter CORS-blocked media
@@ -422,6 +409,7 @@ messageRouter.handle("proxyFetch", async (message) => {
   }
 });
 
+
 // ── Wire webRequest handlers ─────────────────────────────────────────────
 
 initWebRequestHandlers({
@@ -466,13 +454,6 @@ registerAllHandlers(messageRouter, {
   downloadOrchestrationDeps,
 
   // Imported modules
-  downloadQueue,
-  batchOrchestration,
-  cdpRelay,
-  cdpExtraction,
-  cdmNetworkIntercept,
-  segmentCapture,
-  recording,
   downloadSync,
   tabState,
   browserApi,

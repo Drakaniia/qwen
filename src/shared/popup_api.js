@@ -148,102 +148,6 @@ function getHelperStatus() {
   return runtimeMessage({ type: "getHelperStatus" });
 }
 
-/** @param {string} magnetUrl @param {string} [downloadFolder] */
-function downloadMagnet(magnetUrl, downloadFolder) {
-  return runtimeMessage({ type: "downloadMagnet", url: magnetUrl, downloadFolder: downloadFolder || "" });
-}
-
-/** Open a native file picker to select a .torrent file. */
-function chooseTorrentFile() {
-  return runtimeMessage({ type: "chooseTorrentFile" });
-}
-
-/** @param {string} torrentPath @param {string} [downloadFolder] */
-function downloadTorrent(torrentPath, downloadFolder) {
-  return runtimeMessage({ type: "downloadTorrent", path: torrentPath, downloadFolder: downloadFolder || "" });
-}
-
-// ─── Recording ────────────────────────────────────────────────────────────
-
-/** @param {number} tabId @param {Object} options */
-function startRecording(tabId, options) {
-  return runtimeMessage({ type: "startRecording", tabId, options });
-}
-
-function getRecordingStatus() {
-  return runtimeMessage({ type: "getRecordingStatus" });
-}
-
-function stopRecording(jobId) {
-  return runtimeMessage({ type: "stopRecording", jobId });
-}
-
-// ─── Segment Capture ──────────────────────────────────────────────────────
-
-/** @param {number} tabId @param {Object} [options] */
-function startSegmentCapture(tabId, options) {
-  return runtimeMessage({ type: "startSegmentCapture", tabId, ...(options || {}) });
-}
-
-/** @param {number} tabId */
-function stopSegmentCapture(tabId) {
-  return runtimeMessage({ type: "stopSegmentCapture", tabId });
-}
-
-/** @param {number} tabId */
-function getSegmentCaptureStatus(tabId) {
-  return runtimeMessage({ type: "getSegmentCaptureStatus", tabId });
-}
-
-// ─── Batch/Playlist downloads ───────────────────────────────────────────
-
-/**
- * Enumerate items in a playlist URL via the native host.
- * @param {string} url - Playlist URL to enumerate
- * @param {number} tabId - Current tab ID
- */
-function enumeratePlaylist(url, tabId) {
-  return runtimeMessage({ type: "enumeratePlaylist", url, tabId, pageUrl: url });
-}
-
-/**
- * Start batch downloading a list of videos.
- * @param {number} tabId - Active tab ID
- * @param {Array} videos - Array of video objects to download
- */
-function startBatchDownload(tabId, videos) {
-  return runtimeMessage({ type: "batchDownload", tabId, videos });
-}
-
-/**
- * Download a selected set of videos by ID.
- * @param {number} tabId - Active tab ID
- * @param {Array<string>} videoIds - Array of video IDs to download
- */
-function batchDownloadSelected(tabId, videoIds) {
-  return runtimeMessage({ type: "batchDownloadSelected", tabId, videoIds });
-}
-
-/** Get current batch status. */
-function batchStatus() {
-  return runtimeMessage({ type: "batchStatus" });
-}
-
-/** Pause the current batch download. */
-function batchPause() {
-  return runtimeMessage({ type: "batchPause" });
-}
-
-/** Resume the paused batch download. */
-function batchResume() {
-  return runtimeMessage({ type: "batchResume" });
-}
-
-/** Cancel the current batch download. */
-function batchCancel() {
-  return runtimeMessage({ type: "batchCancel" });
-}
-
 // ─── Download History Sync ────────────────────────────────────────────────
 
 /**
@@ -271,28 +175,6 @@ function clearDownloadSyncHistory() {
   return runtimeMessage({ type: "clearDownloadSyncHistory" });
 }
 
-// ─── CDM Key Extraction ───────────────────────────────────────────────────
-
-/** @param {string} cdmPath */
-function cdmInit(cdmPath) {
-  return runtimeMessage({ type: "cdmInit", cdmPath });
-}
-
-/** @param {Object} exchange */
-function extractCdmKeys(exchange) {
-  return runtimeMessage({ type: "extractCdmKeys", exchange });
-}
-
-/** @param {Object} params */
-function decryptCdmSegments(params) {
-  return runtimeMessage({ type: "decryptCdmSegments", ...params });
-}
-
-/** @param {Object} params */
-function assembleDecryptedSegments(params) {
-  return runtimeMessage({ type: "assembleDecryptedSegments", ...params });
-}
-
 export {
   runtimeMessage,
   tabsQuery,
@@ -314,28 +196,6 @@ export {
   chooseDownloadFolder,
   pingNativeHost,
   getHelperStatus,
-  downloadMagnet,
-  chooseTorrentFile,
-  downloadTorrent,
-  startRecording,
-  getRecordingStatus,
-  stopRecording,
-  startSegmentCapture,
-  stopSegmentCapture,
-  getSegmentCaptureStatus,
-  // Batch/playlist
-  enumeratePlaylist,
-  startBatchDownload,
-  batchDownloadSelected,
-  batchStatus,
-  batchPause,
-  batchResume,
-  batchCancel,
-  // CDM
-  cdmInit,
-  extractCdmKeys,
-  decryptCdmSegments,
-  assembleDecryptedSegments,
   // Download History Sync
   getDownloadSyncHistory,
   setDownloadSyncEnabled,

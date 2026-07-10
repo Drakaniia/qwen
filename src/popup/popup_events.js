@@ -171,9 +171,7 @@ elements.downloadList.addEventListener("click", async (event) => {
     case "remove":
       response = await PopupApi.removeDownload(tabId, jobId);
       break;
-    case "stopRecording":
-      response = await PopupApi.stopRecording(jobId);
-      break;
+
   }
 
   if (!response || !response.ok) {
@@ -234,12 +232,4 @@ elements.clear.addEventListener("click", async () => {
 
 elements.downloadAllBtn.addEventListener("click", async () => {
   await downloadAllPlaylist();
-});
-
-elements.batchCancelBtn.addEventListener("click", async () => {
-  const response = await PopupApi.batchCancel();
-  if (response && response.ok) {
-    PopupState.update({ batchInfo: response.batchInfo });
-    await refresh();
-  }
 });

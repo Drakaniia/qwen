@@ -8,8 +8,6 @@ from pathlib import Path
 
 from download_logger import get_logger
 from download_task_control import DownloadTaskControl
-from fix_mp4_codec import fix_mp4_codec_metadata, needs_codec_fix
-
 from browser_context import remove_temp_files
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
@@ -282,25 +280,6 @@ class DownloadTask(DownloadTaskControl):
                         self.final_path = final_path
                     if artifact_root and not self.artifact_root:
                         self.artifact_root = artifact_root
-
-                    # ── Post-processing: fix mp4v→avc1 codec metadata ──────
-                    if self.final_path and self.final_path.lower().endswith((".mp4", ".m4v")):
-                        try:
-                            if needs_codec_fix(self.final_path):
-                                self.logger.attempt_line(self.id, f"Fixing mp4v→avc1 codec metadata: {self.final_path}")
-                                result = fix_mp4_codec_metadata(self.final_path, backup=False)
-                                if result.get("fixed"):
-                                    sps = result.get("spsCount", 0)
-                                    pps = result.get("ppsCount", 0)
-                                    self.logger.attempt_line(
-                                        self.id,
-                                        f"Codec fix applied (SPS={sps}, PPS={pps})",
-                                    )
-                                elif result.get("warning"):
-                                    self.logger.attempt_line(self.id, f"Codec fix warning: {result['warning']}")
-                        except Exception as exc:
-                            # Never fail the download because of a post-processing issue
-                            self.logger.attempt_line(self.id, f"Codec fix error (non-fatal): {exc}")
 
                     # ── Validate downloaded content (detect Cloudflare blocks) ──────
                     cloudflare_detected = False

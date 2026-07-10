@@ -79,17 +79,6 @@
       <button id="downloadManualUrl" class="primary settings-button" type="button">Download link</button>
       <p class="hint">Uses yt-dlp and stream fallbacks for video page URLs.</p>
 
-      <label for="magnetUrl">Download from magnet link</label>
-      <input
-        id="magnetUrl"
-        type="text"
-        spellcheck="false"
-        placeholder="Paste magnet:?xt=urn:btih:..."
-      />
-      <button id="downloadMagnet" class="settings-button magnet-button" type="button">Download magnet</button>
-      <button id="downloadTorrentFile" class="settings-button magnet-button" type="button">Download .torrent file</button>
-      <p class="hint">Downloads BitTorrent content via aria2c (magnet link or a local .torrent file).</p>
-
       <hr class="settings-divider" />
       <label for="backend">Download method</label>
       <select id="backend">
@@ -101,17 +90,6 @@
         <strong>Auto</strong> lets the helper choose the best backend.
         <strong>Browser</strong> downloads directly via the browser for
         simple MP4/WebM URLs without stream processing.
-      </p>
-
-      <label for="recordingMode">Recording mode</label>
-      <select id="recordingMode">
-        <option value="ask">Ask first (recommended)</option>
-        <option value="manual">Manual — show Record button</option>
-        <option value="auto">Automatic — record without asking</option>
-      </select>
-      <p class="hint">
-        When no downloadable URL is found, Qwin can record the tab's video output.
-        Recording produces best-effort quality and may use significant disk space.
       </p>
 
       <label for="audioFormat">Audio format (when Music mode is on)</label>
@@ -186,20 +164,6 @@
       </div>
     </section>
 
-    <!-- Batch download bar -->
-    <div id="batchBar" class="batch-bar" hidden>
-      <div class="batch-info">
-        <span id="batchLabel" class="batch-label"></span>
-        <div id="batchProgress" class="batch-progress-bar">
-          <span id="batchProgressFill" class="batch-progress-fill"></span>
-        </div>
-        <span id="batchStatus" class="batch-status-text"></span>
-      </div>
-      <div class="batch-actions">
-        <button id="batchCancelBtn" type="button" class="batch-cancel-button">Cancel</button>
-      </div>
-    </div>
-
     <!-- Playlist download prompt -->
     <div id="playlistPrompt" class="playlist-prompt" hidden>
       <div class="playlist-info">
@@ -237,19 +201,7 @@
       <div id="videoList" class="video-list"></div>
       <div id="downloadList" class="download-list"></div>
 
-      <!-- ─── Collapsible debug log panel ──────────────────────────── -->
-      <div id="debugLogPanel" class="debug-log-panel" hidden>
-        <button id="debugLogToggle" class="debug-log-toggle" type="button" aria-expanded="false">
-          <span class="debug-log-icon">📋</span>
-          <span id="debugLogTitle" class="debug-log-title">Download debug log</span>
-          <span class="debug-log-count" id="debugLogCount">0</span>
-          <span class="debug-log-chevron">▶</span>
-        </button>
-        <div id="debugLogBody" class="debug-log-body">
-          <div id="debugLogEntries" class="debug-log-entries"></div>
-          <button id="debugLogClear" class="debug-log-clear-btn" type="button">Clear log</button>
-        </div>
-      </div>
+
     </main>
 
     <section id="qualityDialog" class="quality-dialog" hidden>

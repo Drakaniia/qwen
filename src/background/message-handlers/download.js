@@ -196,78 +196,7 @@ export function registerDownloadHandlers(messageRouter, ctx) {
   messageRouter.handle("selectDownloadFolder", chooseFolderHandler);
   messageRouter.handle("browseDownloadFolder", chooseFolderHandler);
 
-  // ── Magnet download ─────────────────────────────────────────────────────
 
-  messageRouter.handle("downloadMagnet", async (message) => {
-    return ctx.recording.downloadMagnet(message, notifyPopup, nativeRequest, () => {
-      return browserApi.runtime.connectNative(HOST_NAME);
-    });
-  });
-
-  // ── Torrent handlers ───────────────────────────────────────────────────
-
-  messageRouter.handle("chooseTorrentFile", async () => {
-    const requestId = `torrentfile_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const response = await nativeRequest(
-      {
-        type: "chooseTorrentFile",
-        id: requestId,
-        initialFolder: tabState.getSettings().downloadFolder || "",
-      },
-      600000,
-    );
-
-    const selectedPath = String(response.path || "").trim();
-    if (response.canceled || !selectedPath) {
-      return { ok: true, canceled: true };
-    }
-    return { ok: true, path: selectedPath };
-  });
-
-  messageRouter.handle("downloadTorrent", async (message) => {
-    return ctx.recording.downloadTorrent(message, () => {
-      return browserApi.runtime.connectNative(HOST_NAME);
-    });
-  });
-
-  // ── Download queue handlers ────────────────────────────────────────────
-
-  messageRouter.handle("getQueueStatus", async () => {
-    return { ok: true, status: ctx.downloadQueue.getStatus() };
-  });
-
-  messageRouter.handle("setAutoDownload", async (message) => {
-    ctx.downloadQueue.setAutoDownload(Boolean(message.enabled));
-    await tabState.updateSettings({ autoDownload: Boolean(message.enabled) });
-    return { ok: true, autoDownload: ctx.downloadQueue.getAutoDownload() };
-  });
-
-  messageRouter.handle("setMaxConcurrentDownloads", async (message) => {
-    const limit = Number(message.limit) || 3;
-    ctx.downloadQueue.setMaxConcurrent(limit);
-    await tabState.updateSettings({ maxConcurrentDownloads: limit });
-    return { ok: true, maxConcurrent: ctx.downloadQueue.getMaxConcurrent() };
-  });
-
-  messageRouter.handle("downloadAllVideos", async (message, sender) => {
-    const tabId = message.tabId || (sender.tab && sender.tab.id);
-    if (!tabId) {
-      return { ok: false, error: "No tab ID provided." };
-    }
-    const videos = await getTabVideos(tabId);
-    const downloadable = videos.filter((v) => v.downloadable);
-    if (!downloadable.length) {
-      return { ok: false, error: "No downloadable videos found." };
-    }
-    for (const video of downloadable) {
-      ctx.downloadQueue.enqueue(tabId, video.id, {
-        formatId: "best",
-        variantId: "",
-        backend: "auto",
-      });
-    }
-    return { ok: true, queued: downloadable.length };
-  });
 
   // ── Download history sync ──────────────────────────────────────────────
 
