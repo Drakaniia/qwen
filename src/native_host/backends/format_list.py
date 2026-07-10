@@ -3,11 +3,8 @@ import subprocess
 import tempfile
 import threading
 
-import curl_cffi_adapter as _curl_cffi_adapter
-from fallback_engines import list_formats_gallery_dl, list_formats_lux, list_formats_you_get
 from probe_runner import (
     ProbeConfig,
-    probe_curl_cffi,
     probe_n_m3u8dl_re,
     probe_streamlink,
     probe_yt_dlp,
@@ -17,7 +14,6 @@ from probe_types import ProbeResult
 from spotify_metadata import is_spotify_url
 from spotify_resolver import resolve_spotify_formats
 from stream_backends import is_stream_manifest_url
-from yt_dlp_command import is_youtube_url
 
 from browser_context import remove_temp_files, write_cookie_file_from_headers
 from download_logger import get_logger
@@ -55,7 +51,6 @@ def _build_probe_configs_for_formats(
     """
     probes = []
     requested_backend = str(message.get("backend") or "auto").lower()
-    chrome_version = str(message.get("browserVersion") or "").strip()[:10] or None
 
     # 1. yt-dlp — always participates
     probes.append(
@@ -72,26 +67,7 @@ def _build_probe_configs_for_formats(
         )
     )
 
-    # 2. curl_cffi — only for direct media URLs
-    if not is_stream_manifest_url(url, message.get("format")) and not is_youtube_url(url):
-        impersonate_str = f"chrome{chrome_version}" if chrome_version else "chrome"
-        chrome_versions = ["131", "127", "124", "120"]
-        probes.append(
-            ProbeConfig(
-                backend="curl_cffi",
-                label="curl-cffi (HEAD)",
-                probe_fn=lambda u, ce, cv=chrome_version, cvs=chrome_versions: probe_curl_cffi(
-                    url=u,
-                    cancel_event=ce,
-                    headers=request_headers,
-                    chrome_version=cv,
-                    chrome_versions=cvs,
-                ),
-                command=None,
-            )
-        )
-
-    # 3. N_m3u8DL-RE — for stream manifest URLs
+    # 2. N_m3u8DL-RE — for stream manifest URLs
     if (
         requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"}
         and n_m3u8dl_re_location
@@ -110,7 +86,7 @@ def _build_probe_configs_for_formats(
             )
         )
 
-    # 4. Streamlink — for stream manifest URLs
+    # 3. Streamlink — for stream manifest URLs
     if (
         requested_backend in {"auto", "streamlink"}
         and streamlink_command
@@ -187,7 +163,6 @@ def run_format_list(
 
     # If a probe winner was found, we can use that information to optimize format enumeration
     # For now, we still run yt-dlp for formats but the probe result gives us backend hints
-    # Future enhancement: skip yt-dlp if probe winner is curl_cffi for direct URLs
 
     def execute_yt_dlp(nocheckcertificate=False):
         command = build_formats_command(
@@ -247,54 +222,6 @@ def run_format_list(
                 # supported") instead of the raw yt-dlp DRM error — it is more
                 # actionable for the user.
                 raise
-
-        # -- gallery-dl fallback ----------------------------------------------------
-        # For image/gallery sites that yt-dlp doesn't handle, try gallery-dl
-        gallery_formats = list_formats_gallery_dl(url)
-        if gallery_formats:
-            send(
-                {
-                    "type": "formats",
-                    "id": request_id,
-                    "title": "Media",
-                    "webpageUrl": url,
-                    "formats": gallery_formats,
-                }
-            )
-            return
-
-        # -- you-get fallback ---------------------------------------------------------
-        # For Asian media platforms (Bilibili, Douyin, Weibo, AcFun, Niconico)
-        # that yt-dlp may not support well, try you-get
-        you_get_formats = list_formats_you_get(url)
-        if you_get_formats:
-            send(
-                {
-                    "type": "formats",
-                    "id": request_id,
-                    "title": "Media",
-                    "webpageUrl": url,
-                    "formats": you_get_formats,
-                }
-            )
-            return
-
-        # -- lux fallback -------------------------------------------------------------
-        # For sites that lux handles better (Bilibili, Douyin, etc.),
-        # try lux as another alternative
-        lux_formats = list_formats_lux(url)
-        if lux_formats:
-            send(
-                {
-                    "type": "formats",
-                    "id": request_id,
-                    "title": "Media",
-                    "webpageUrl": url,
-                    "formats": lux_formats,
-                }
-            )
-            return
-
         raise HostError(details or f"yt-dlp exited with status {completed.returncode}.")
 
     try:

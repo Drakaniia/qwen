@@ -8,7 +8,6 @@ This module resolves the Spotify URL through a multi-stage pipeline:
        and tags it with Spotify metadata.
 """
 
-from bittorrent_downloads import ACTIVE_DOWNLOADS, _active_downloads_lock
 from spotify_metadata import fetch_spotify_track_metadata, parse_spotify_url
 from spotify_youtube import build_youtube_download_command, search_youtube
 
@@ -118,6 +117,8 @@ def run_spotify_fallback_download(
     )
     with _active_downloads_lock():
         ACTIVE_DOWNLOADS[request_id] = task
+
+    from download_manager import ACTIVE_DOWNLOADS, _active_downloads_lock
 
     # Notify the popup that we're using YouTube fallback
     task.send_message(

@@ -152,21 +152,6 @@ def parse_yt_dlp_line(line):
     if line.startswith("[hls") or line.startswith("[dash") or line.startswith("[generic]"):
         return {"stage": "extract", "line": line}
 
-    # Try Gopeed CLI parser as fallback for BitTorrent/magnet downloads
-    try:
-        from gopeed_adapter import parse_gopeed_line as _gopeed_parse
-
-        gopeed_result = _gopeed_parse(line)
-        if gopeed_result["stage"] != "log":
-            # Preserve the original line for logging
-            if "line" not in gopeed_result:
-                gopeed_result["line"] = line
-            return gopeed_result
-    except ImportError:
-        pass
-    except Exception:
-        pass
-
     return {"stage": "log", "line": line}
 
 
