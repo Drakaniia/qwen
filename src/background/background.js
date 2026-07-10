@@ -377,17 +377,50 @@ import {
   pingNativeHost,
 } from "./background_helper_ping.js";
 
-// ── CDP relay init ───────────────────────────────────────────────────────
+// ── CORS proxy: content script fetch requests ──────────────────────────
+//
+// Coc Coc's approach: when content scripts encounter CORS-blocked media
+// URLs, they proxy the request through the background service worker.
+// The background worker has no CORs restrictions and can fetch any URL.
+//
+// Message format:
+//   { type: "proxyFetch", url: string, method?: string, headers?: object }
+// Response:
+//   { ok: true, body: string, contentType: string }
+//   { ok: false, error: string }
 
-cdpRelay.init();
+messageRouter.handle("proxyFetch", async (message) => {
+  const method = message.method || "GET";
+  const url = message.url;
+  if (!url) {
+    return { ok: false, error: "Missing URL" };
+  }
 
-// ── SW capture relay init ────────────────────────────────────────────────
+  try {
+    const fetchHeaders = { "Accept": "*/*" };
+    if (message.headers && typeof message.headers === "object") {
+      Object.assign(fetchHeaders, message.headers);
+    }
 
-swRelay.init();
+    const response = await fetch(url, {
+      method,
+      headers: fetchHeaders,
+      credentials: message.includeCredentials ? "include" : "omit",
+    });
 
-// ── Recording progress updates ───────────────────────────────────────────
+    const contentType = response.headers.get("Content-Type") || "";
+    const body = await response.text();
 
-recording.startRecordingProgressUpdates(recording.getActiveRecordingsRef());
+    return {
+      ok: true,
+      body,
+      contentType,
+      status: response.status,
+    };
+  } catch (error) {
+    return { ok: false, error: error.message || String(error) };
+  }
+});
 
 // ── Wire webRequest handlers ─────────────────────────────────────────────
 

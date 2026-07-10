@@ -15,6 +15,12 @@ import {
   updateOverlay,
   setOverlayEnabled,
 } from "./content_overlay.js";
+import {
+  isStreamingUrl,
+  isLikelyStreamingUrl,
+  extractStreamingUrlsFromText,
+  needsBackgroundProxy,
+} from "../shared/streaming_patterns.js";
 
 const extensionApi = typeof browser !== "undefined" ? browser : chrome;
 const seenUrls = new Map();
@@ -230,6 +236,164 @@ function scanSsrSources() {
   return candidates;
 }
 
+/**
+ * Fetch a URL through the background service worker to bypass CORS.
+ *
+ * Coc Coc's approach: content scripts cannot fetch media URLs from CDNs
+ * (googlevideo, akamai, cloudfront) due to CORS restrictions. By proxying
+ * through the background worker, we bypass browser CORS checks and can
+ * verify Content-Type headers.
+ *
+ * @param {string} url - The URL to fetch
+ * @param {object} [options]
+ * @param {string} [options.method="GET"] - HTTP method
+ * @param {object} [options.headers] - Additional headers
+ * @param {boolean} [options.includeCredentials=false] - Include cookies
+ * @returns {Promise<{ok: boolean, body?: string, contentType?: string, status?: number, error?: string}>}
+ */
+async function fetchWithBackgroundProxy(url, options = {}) {
+  return sendMessageWithResponse({
+    type: "proxyFetch",
+    url,
+    method: options.method || "GET",
+    headers: options.headers || null,
+    includeCredentials: options.includeCredentials || false,
+  });
+}
+
+/**
+ * For candidate URLs that match CORS-restricted CDNs, issue a background
+ * proxy HEAD request to verify they actually serve media content. If
+ * verified, re-trigger the scan pipeline so the verified candidate is
+ * included in the next publishScan() cycle.
+ *
+ * This mirrors Coc Coc's background-request-proxy strategy: CDN-hosted
+ * streaming URLs cannot be fetched by content scripts, so we route the
+ * verification through the extension background worker.
+ */
+function verifyStreamingUrlsViaProxy() {
+  const mediaContentTypes = [
+    "video/",
+    "audio/",
+    "application/vnd.apple.mpegurl",
+    "application/x-mpegurl",
+    "application/dash+xml",
+    "application/xml",
+    "text/xml",
+    "application/json",
+  ];
+
+  // Collect existing candidates that need proxy verification
+  const toVerify = [];
+  for (const vid of lastDetectedVideos) {
+    if (vid.url && needsBackgroundProxy(vid.url) && vid.source !== "proxy-verified") {
+      toVerify.push(vid);
+    }
+  }
+  if (toVerify.length === 0) return;
+
+  // Fire HEAD requests through background proxy
+  for (const vid of toVerify) {
+    fetchWithBackgroundProxy(vid.url, { method: "HEAD" })
+      .then((result) => {
+        if (!result.ok) return;
+        const ct = (result.contentType || "").toLowerCase();
+        const isMedia = mediaContentTypes.some((mct) => ct.includes(mct));
+        if (isMedia) {
+          // Mark existing candidate as proxy-verified
+          const existing = lastDetectedVideos.find((v) => v.url === vid.url);
+          if (existing) {
+            existing.source = "proxy-verified";
+            existing.proxyContentType = ct;
+          }
+          // Re-publish with updated source info
+          sendMessage({ type: "contentDetectedVideos", videos: lastDetectedVideos });
+        }
+      })
+      .catch(() => {
+        // Proxy fetch failure is non-critical; candidate already listed
+      });
+  }
+}
+
+/**
+ * Scan page content for streaming URLs embedded in scripts, configs,
+ * and data attributes using Coc Coc's pattern-based approach.
+ *
+ * Many websites embed video URLs in:
+ *   - Inline <script> blocks with player config objects
+ *   - JSON-LD structured data
+ *   - data-* attributes on HTML elements
+ *   - Server-rendered window.__INITIAL_STATE__ or similar globals
+ *   - noscript fallback URLs
+ *
+ * Unlike scanInlinePlayerScripts() which only looks for standard video
+ * extensions, this uses the streaming_patterns library to detect URLs
+ * from known CDNs, signed URLs, and platform-specific patterns.
+ *
+ * @returns {Array<object>} Detected video candidates
+ */
+function scanStreamingUrls() {
+  const candidates = [];
+
+  // 1. Scan all inline scripts for embedded streaming URLs
+  for (const script of Array.from(document.scripts || [])) {
+    if (script.src) continue; // External script — skip (already scanned by webRequest)
+    const urls = extractStreamingUrlsFromText(script.textContent || "");
+    for (const { url, confidence } of urls) {
+      pageDetection.addCandidate(candidates, url, "ssr-json:" + confidence);
+    }
+  }
+
+  // 2. Scan JSON-LD structured data
+  for (const jsonld of Array.from(document.querySelectorAll('script[type="application/ld+json"]'))) {
+    try {
+      const data = JSON.parse(jsonld.textContent || "{}");
+      const jsonStr = JSON.stringify(data);
+      const urls = extractStreamingUrlsFromText(jsonStr);
+      for (const { url, confidence } of urls) {
+        pageDetection.addCandidate(candidates, url, "ssr-json:" + confidence);
+      }
+    } catch (_e) {
+      // Skip malformed JSON-LD
+    }
+  }
+
+  // 3. Scan data-* attributes on video-related elements
+  const videoElements = document.querySelectorAll(
+    "video, source, [data-video], [data-src], [data-url], [data-file], [data-hls], [data-m3u8], [data-mpd]",
+  );
+  for (const el of Array.from(videoElements)) {
+    for (const attr of el.attributes || []) {
+      if (attr.name.startsWith("data-") && attr.value) {
+        const attrUrl = pageDetection.toAbsoluteUrl(attr.value);
+        if (attrUrl && (isStreamingUrl(attrUrl) || isLikelyStreamingUrl(attrUrl))) {
+          pageDetection.addCandidate(candidates, attrUrl, "data-attr");
+        }
+      }
+    }
+  }
+
+  // 4. Scan noscript tags for fallback video URLs
+  for (const noscript of Array.from(document.querySelectorAll("noscript"))) {
+    const text = noscript.textContent || noscript.innerHTML || "";
+    if (text.includes("<video") || text.includes("<source")) {
+      const urlMatch = text.match(/src=["']([^"']+)["']/gi);
+      if (urlMatch) {
+        for (const match of urlMatch) {
+          const url = match.replace(/src=["']/i, "").replace(/["']/g, "");
+          const absoluteUrl = pageDetection.toAbsoluteUrl(url);
+          if (absoluteUrl) {
+            pageDetection.addCandidate(candidates, absoluteUrl, "noscript");
+          }
+        }
+      }
+    }
+  }
+
+  return candidates;
+}
+
 function scanMusicSources() {
   const candidates = [];
   const hostname = location.hostname.toLowerCase();
@@ -288,12 +452,15 @@ function publishScan() {
     ...scanInlinePlayerScripts(),
     ...scanVisiblePlayerFrames(),
     ...scanMusicSources(),
-    ...scanSsrSources(),
+    ...scanStreamingUrls(),
   ];
   lastDetectedVideos = videos;
   if (videos.length > 0) {
     sendMessage({ type: "contentDetectedVideos", videos });
   }
+  // Async: try to verify CORS-blocked CDN URLs via background proxy
+  // (Coc Coc approach — non-blocking, re-emits if new verification found)
+  verifyStreamingUrlsViaProxy();
   return videos;
 }
 
