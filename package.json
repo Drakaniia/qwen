@@ -25,10 +25,10 @@
     "format:py": "python -m ruff check --fix src/native_host/ tests/native-host/ && python -m ruff format src/native_host/ tests/native-host/"
   },
   "devDependencies": {
-    "esbuild": "^0.28.1",
-    "eslint": "^10.5.0",
-    "globals": "^17.6.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.8.1",
+    "globals": "^17.11.0",
     "jsdom": "^29.1.1",
-    "prettier": "^3.8.4"
+    "prettier": "^3.9.6"
   }
 }
