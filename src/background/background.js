@@ -71,8 +71,6 @@ const {
 
 const api = browserApi.raw;
 const messageRouter = createMessageRouter();
-const downloadOrchestrationModule = { create: createDownloadOrchestration };
-const nativeRequests = { nativeRequest: nativeRequestsMod.nativeRequest };
 
 const HOST_NAME = downloadHelpers.HOST_NAME;
 
@@ -241,7 +239,7 @@ function senderTabId(message, sender) {
 // ── Native request wrapper ───────────────────────────────────────────────
 
 function nativeRequest(payload, timeoutMs = 60000) {
-  return nativeRequests.nativeRequest(api, HOST_NAME, payload, timeoutMs);
+  return nativeRequestsMod.nativeRequest(api, HOST_NAME, payload, timeoutMs);
 }
 
 // ── Download orchestration wiring ────────────────────────────────────────
@@ -300,7 +298,7 @@ function downloadOrchestrationDeps() {
 let downloadOrchestration = null;
 function getDownloadOrchestration() {
   if (!downloadOrchestration) {
-    downloadOrchestration = downloadOrchestrationModule.create(downloadOrchestrationDeps());
+    downloadOrchestration = createDownloadOrchestration(downloadOrchestrationDeps());
   }
   return downloadOrchestration;
 }
@@ -362,8 +360,6 @@ import {
   pingNativeHost,
 } from "./background_helper_ping.js";
 
-
-
 // ── CORS proxy: content script fetch requests ──────────────────────────
 //
 // Coc Coc's approach: when content scripts encounter CORS-blocked media
@@ -384,7 +380,7 @@ messageRouter.handle("proxyFetch", async (message) => {
   }
 
   try {
-    const fetchHeaders = { "Accept": "*/*" };
+    const fetchHeaders = { Accept: "*/*" };
     if (message.headers && typeof message.headers === "object") {
       Object.assign(fetchHeaders, message.headers);
     }
@@ -408,7 +404,6 @@ messageRouter.handle("proxyFetch", async (message) => {
     return { ok: false, error: error.message || String(error) };
   }
 });
-
 
 // ── Wire webRequest handlers ─────────────────────────────────────────────
 

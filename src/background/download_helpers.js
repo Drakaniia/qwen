@@ -5,10 +5,9 @@ import * as downloadFallbacks from "./download_fallbacks.js";
 import * as downloadState from "./download_state.js";
 import * as videoUtils from "./video_utils.js";
 import * as headerUtils from "./header_utils.js";
+import { ACTIVE_DOWNLOAD_STATUSES as BLOCKING_DOWNLOAD_STATUSES } from "../popup/popup_state.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
-
-const BLOCKING_DOWNLOAD_STATUSES = new Set(["queued", "connecting", "running", "paused", "pausing", "canceling"]);
 
 // ── Formatting helpers ────────────────────────────────────────────────────
 

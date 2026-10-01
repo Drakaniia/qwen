@@ -13,8 +13,6 @@ export function registerDownloadHandlers(messageRouter, ctx) {
     chooseDownloadFolder,
     tabState,
     nativeRequest,
-    browserApi,
-    HOST_NAME,
     notifyPopup,
   } = ctx;
   const { variantsForVideo, findGroupedVideoForVariant } = ctx.downloadHelpers;
@@ -189,14 +187,9 @@ export function registerDownloadHandlers(messageRouter, ctx) {
     };
   });
 
-  // ── Folder picker (multiple aliases) ──────────────────────────────────
+  // ── Folder picker ──────────────────────────────────────────────────────
 
   messageRouter.handle("chooseDownloadFolder", chooseFolderHandler);
-  messageRouter.handle("chooseFolder", chooseFolderHandler);
-  messageRouter.handle("selectDownloadFolder", chooseFolderHandler);
-  messageRouter.handle("browseDownloadFolder", chooseFolderHandler);
-
-
 
   // ── Download history sync ──────────────────────────────────────────────
 

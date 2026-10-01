@@ -11,11 +11,7 @@ import { registerTabHandlers } from "./tab.js";
 import { registerDownloadHandlers } from "./download.js";
 import { registerSettingsHandlers } from "./settings.js";
 
-export {
-  registerTabHandlers,
-  registerDownloadHandlers,
-  registerSettingsHandlers,
-};
+export { registerTabHandlers, registerDownloadHandlers, registerSettingsHandlers };
 
 /**
  * Register ALL message handlers into the given router.

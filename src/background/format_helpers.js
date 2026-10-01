@@ -159,9 +159,7 @@ function notifyPopupQualityStatus(notifyPopupFn, text) {
 }
 
 function notifyDownloadDebugLog(notifyPopupFn, level, message, details) {
-  if (notifyPopupFn) {
-    notifyPopupFn({ type: "downloadDebugLog", level, message, details: details || "" });
-  }
+  console.debug(`[qwin:${level}] ${message}`, details || "");
 }
 
 async function getNativeFormatsForVideo(
@@ -174,6 +172,7 @@ async function getNativeFormatsForVideo(
 ) {
   await tabState.load();
 
+  const fallbackDeps = buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn);
   const sizeProbePromise = ensureComparisonSizes(tabId, video, getVisibleVideosFn, notifyPopupFn);
   const lookupVideo = downloadHelpers.preferredNativeVideo(video);
   let formatLookupVideo = lookupVideo;
@@ -213,7 +212,7 @@ async function getNativeFormatsForVideo(
       ? await downloadHelpers.pageFallbackVideoForSource(
           lookupVideo,
           new Set([headerUtils.normalizeUrl(lookupVideo.url || "")]),
-          buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn),
+          fallbackDeps,
         )
       : null;
     if (pageFallback) {
@@ -253,7 +252,7 @@ async function getNativeFormatsForVideo(
         tabId,
         pageFallback || lookupVideo,
         new Set([headerUtils.normalizeUrl(lookupVideo.url || "")]),
-        buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn),
+        fallbackDeps,
       );
       if (resolvedCandidates.length > 0) {
         log("info", `Found ${resolvedCandidates.length} resolved source(s) to try`);
@@ -350,17 +349,9 @@ async function getNativeFormatsForVideo(
     ? []
     : downloadHelpers.isExtractorPageVideo(refreshedVideo)
       ? []
-      : downloadHelpers
-          .downloadableVariants(
-            refreshedVideo,
-            excludedUrls,
-            buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn),
-          )
-          .map(detectedVariantOption);
+      : downloadHelpers.downloadableVariants(refreshedVideo, excludedUrls, fallbackDeps).map(detectedVariantOption);
 
   if (nativeError && !nativeFormats.length && !sourceFormats.length) {
-    const friendlyError = downloadHelpers.userFriendlyDownloadError(nativeError);
-    const errorMsg = friendlyError ? `${friendlyError}\n\nTechnical details: ${nativeError}` : nativeError;
     log("warn", "Format enumeration found no formats, using fallback", nativeError);
   }
   if (!nativeFormats.length && !sourceFormats.length) {

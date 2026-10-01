@@ -195,33 +195,14 @@ async function nativeRequestHeadersForVideo(videoUrl, pageUrl) {
   return Array.from(headerMap.values());
 }
 
-function getRequestHeadersForUrl(url) {
-  return requestHeadersByUrl[normalizeUrl(url)] || null;
-}
-
 export {
-  // Constants
-  NATIVE_HEADER_NAMES,
-  MAX_CAPTURED_REQUEST_HEADERS,
-  MAX_COOKIE_HEADER_LENGTH,
-
-  // State accessor (for testing/inspection)
-  getRequestHeadersForUrl,
-
   // DI: allows background.js to inject the filter-block check
   setBlockedUrlCheck,
 
   // Core utilities
   normalizeUrl,
-  normalizeHeaderName,
-  canonicalHeaderName,
-  cleanHeaderValue,
-  addNativeHeader,
-  capturedNativeHeaders,
-  pageOrigin,
 
   // Stateful operations
   rememberRequestHeaders,
-  cookieHeaderForUrl,
   nativeRequestHeadersForVideo,
 };

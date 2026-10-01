@@ -92,13 +92,12 @@ function create(deps) {
     return startNativeDownload(tabId, video.id, formatId, variantId);
   }
 
-  // Patch both ops (public API) and opsDeps (internal closures in createOperations)
-  // so that resumeDownload/retryDownload see the real function.
+  // Patch opsDeps (internal closures in createOperations) so that
+  // resumeDownload/retryDownload see the real function.
   const wrappedStartNativeDownloadFromVideo = (tabId, video, formatId, options) =>
     startNativeDownloadFromVideo(deps, tabId, video, formatId, options);
 
   opsDeps.startNativeDownloadFromVideo = wrappedStartNativeDownloadFromVideo;
-  ops.startNativeDownloadFromVideo = wrappedStartNativeDownloadFromVideo;
 
   return {
     ...ops,
