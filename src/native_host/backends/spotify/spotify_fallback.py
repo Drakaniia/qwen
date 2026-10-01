@@ -115,10 +115,10 @@ def run_spotify_fallback_download(
         download_dir=download_dir,
         temp_files=temp_files,
     )
+    from download_manager import ACTIVE_DOWNLOADS, _active_downloads_lock
+
     with _active_downloads_lock():
         ACTIVE_DOWNLOADS[request_id] = task
-
-    from download_manager import ACTIVE_DOWNLOADS, _active_downloads_lock
 
     # Notify the popup that we're using YouTube fallback
     task.send_message(

@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import threading
 
+from download_logger import get_logger
 from probe_runner import (
     ProbeConfig,
     probe_n_m3u8dl_re,
@@ -10,16 +11,14 @@ from probe_runner import (
     probe_yt_dlp,
     run_parallel_probes,
 )
-from probe_types import ProbeResult
 from spotify_metadata import is_spotify_url
 from spotify_resolver import resolve_spotify_formats
-from stream_backends import is_stream_manifest_url
 
 from browser_context import remove_temp_files, write_cookie_file_from_headers
-from download_logger import get_logger
 from native_paths import validate_download_url
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
+from stream_backends import is_stream_manifest_url
 from yt_dlp_command import (
     build_flat_playlist_command,
     build_formats_command,
@@ -153,7 +152,7 @@ def run_format_list(
         streamlink_command=streamlink_command,
     )
 
-    probe_result = run_parallel_probes(
+    run_parallel_probes(
         url=url,
         probes=probe_configs,
         cancel_event=cancel_event,

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from download_logger import get_logger
 from download_task_control import DownloadTaskControl
+
 from browser_context import remove_temp_files
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
@@ -99,14 +100,12 @@ class DownloadTask(DownloadTaskControl):
             cwd_str = str(self.download_dir)
             self.logger.attempt_line(
                 self.id,
-                f"[DIAG] cmd_len={cmd_len} cwd_len={len(cwd_str)} "
-                f"cmd_args={len(active_command)} cwd='{cwd_str}'",
+                f"[DIAG] cmd_len={cmd_len} cwd_len={len(cwd_str)} cmd_args={len(active_command)} cwd='{cwd_str}'",
             )
             if cmd_len > 30000:
                 self.logger.attempt_line(
                     self.id,
-                    f"[DIAG] Command length {cmd_len} approaching 32767 limit!"
-                    f" First 500: {cmd_str[:500]}",
+                    f"[DIAG] Command length {cmd_len} approaching 32767 limit! First 500: {cmd_str[:500]}",
                 )
             if len(cwd_str) > 240:
                 self.logger.attempt_line(
@@ -135,10 +134,7 @@ class DownloadTask(DownloadTaskControl):
             )
         except OSError as exc:
             # Re-raise with diagnostics in the error message
-            diag = (
-                f"cmd_len={cmd_len} cwd='{cwd_str}' "
-                f"cmd_args={len(active_command)} "
-            )
+            diag = f"cmd_len={cmd_len} cwd='{cwd_str}' cmd_args={len(active_command)} "
             raise HostError(f"Could not start yt-dlp: {exc} [{diag}]") from exc
 
         with self.lock:

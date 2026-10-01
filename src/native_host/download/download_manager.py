@@ -4,12 +4,6 @@ import tempfile
 import threading
 
 from download_logger import get_logger
-from spotify_fallback import run_spotify_fallback_download
-
-from browser_context import write_cookie_file_from_headers, write_cookie_file_from_string
-from download_task import DownloadTask
-from native_paths import resolve_download_dir, validate_download_url
-from native_protocol import send_native_message
 from probe_runner import (
     ProbeConfig,
     probe_n_m3u8dl_re,
@@ -17,6 +11,12 @@ from probe_runner import (
     probe_yt_dlp,
     run_parallel_probes,
 )
+from spotify_fallback import run_spotify_fallback_download
+
+from browser_context import write_cookie_file_from_headers, write_cookie_file_from_string
+from download_task import DownloadTask
+from native_paths import resolve_download_dir, validate_download_url
+from native_protocol import send_native_message
 from stream_backends import (
     build_ffmpeg_direct_command,
     build_n_m3u8dl_re_command,
@@ -24,7 +24,7 @@ from stream_backends import (
     is_stream_manifest_url,
     stream_output_path,
 )
-from yt_dlp_command import build_yt_dlp_command, build_yt_dlp_fallback_variants, is_youtube_url
+from yt_dlp_command import build_yt_dlp_command, build_yt_dlp_fallback_variants
 from yt_dlp_dependencies import (
     require_aria2c_location,
     resolve_ffmpeg_location,
