@@ -55,13 +55,6 @@ def is_safe_resolved_path(resolved_path, allowed_bases=None):
     return False
 
 
-def is_magnet_url(url):
-    """Check if the given URL is a magnet link."""
-    if not isinstance(url, str) or not url.strip():
-        return False
-    return url.strip().startswith("magnet:?xt=urn:")
-
-
 def validate_magnet_url(url):
     """Validate that the URL is a legitimate magnet link."""
     if not isinstance(url, str) or not url.strip():

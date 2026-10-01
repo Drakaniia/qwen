@@ -41,15 +41,6 @@ def folder_response(message, selected_path):
     return response
 
 
-def file_response(message, selected_path):
-    response = {"type": "file", "id": request_id(message)}
-    if selected_path:
-        response["path"] = str(selected_path)
-    else:
-        response["canceled"] = True
-    return response
-
-
 def error_response(request_id_value, error):
     return {"type": "error", "id": str(request_id_value or ""), "error": str(error)}
 
