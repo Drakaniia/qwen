@@ -19,8 +19,6 @@ const AD_STATIC_ASSET_RE =
 // Ad SDK path patterns: block player SDK files from ad SDK paths.
 const AD_SDK_RE = /(?:\/vast\.js|\/ad-plugin\/|ad-manager|admanager)\/[^/]+\.js/i;
 
-// Anti-adblock scripts (info-level, not used for blocking).
-const ANTIBLOCK_RE = /(?:fuckadblock|blockadblock|wp-adblock)/i;
 const MUSIC_CDN_RE = /(?:spotifycdn|audio-ak|audio-fa|audio-[\w-]+\.spotify|cadenas\.|audio-pa\.spotifycdn)/i;
 const AUDIO_ONLY_HOST_RE = /(?:audio[-.])/i;
 const GIF_VIDEO_RE =
@@ -37,9 +35,6 @@ const AD_RE =
 // the actual download URL. Actual stream URLs from their CDNs still pass through.
 const STREAMING_PAGE_HOST_RE = /(?:^|[/.])vidfast\.pro(?:$|[/?#])/i;
 const EMBED_PLAYER_HOST_RE = /(?:^|[/.])(?:player\.hanime\.tv|vidsrc-embed\.ru|vsembed\.ru)(?:$|[/?#])/i;
-
-// SSR source types recognized by the detection pipeline.
-const SSR_SOURCE_RE = /^ssr-json:/i;
 
 // Video hosting sites whose page URLs are not real yt-dlp sources
 // Actual CDN stream URLs from these sites still pass through with video extensions.
@@ -361,26 +356,16 @@ export {
   isBlockedMediaUrl,
   isBlockedMediaUrlWithExceptions,
   isDownloadableMediaUrl,
-  isEphemeralMediaUrl,
-  isHttpUrl,
   isLikelyAudioUrl,
   isLikelyVideoRequest,
   isPlaylistLike,
   isYouTubeVideoPageUrl,
   normalizeYouTubeVideoPageUrl,
-  youtubeVideoIdFromPageUrl,
-  // Exported regex constants for use by other modules (background.js, tests)
+  // Regex constants re-exported for background/video_utils.js
   // to avoid duplicating pattern definitions.
   VIDEO_EXTENSION_RE,
   HLS_RE,
   DASH_RE,
   CDN_HINT_RE,
-  SEGMENT_EXTENSION_RE,
   DIRECT_VIDEO_EXTENSION_RE,
-  AD_SDK_RE,
-  AD_STATIC_ASSET_RE,
-  ANTIBLOCK_RE,
-  CHINESE_STREAMING_CDN_RE,
-  CHINESE_STREAMING_P2P_RE,
-  SSR_SOURCE_RE,
 };

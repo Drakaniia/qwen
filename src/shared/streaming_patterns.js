@@ -48,8 +48,7 @@ const FRAGMENT_PATTERN_RE =
   /(?:^|[\/?#._-])(?:seg(?:ment)?|frag(?:ment)?|chunk|part|init)[._-]?\d*(?:\.(?:ts|m4s|m4v|m4a|cmfv|cmfa|mp4))?(?:[?#]|$)/i;
 
 /** Sequential numeric patterns in paths — HLS/DASH segment indicator. */
-const SEQUENTIAL_SEGMENT_RE =
-  /\/(?:\d{3,}|[a-f0-9]{12,})(?:\.(?:ts|m4s|mp4|m4v|webm)|(?:\?|$))/i;
+const SEQUENTIAL_SEGMENT_RE = /\/(?:\d{3,}|[a-f0-9]{12,})(?:\.(?:ts|m4s|mp4|m4v|webm)|(?:\?|$))/i;
 
 /** Vietnamese streaming CDN patterns (from Coc Coc's isSpecialUrls). */
 const VN_STREAMING_CDN_RE =
@@ -60,108 +59,82 @@ const VN_STREAMING_URL_RE =
   /(?:https?:)?\/\/hls\.(?:mediacdn|tuoitre)\.vn\/.+\/\S+\.mp4\.json|vdrm\.vtvgiaitri\.vn\/stream/i;
 
 /** SoundCloud API media endpoint pattern. */
-const SOUNDCLOUD_MEDIA_RE =
-  /api(?:-v[0-9]+)?\.soundcloud\.com\/media\/soundcloud:tracks:[0-9]+/i;
+const SOUNDCLOUD_MEDIA_RE = /api(?:-v[0-9]+)?\.soundcloud\.com\/media\/soundcloud:tracks:[0-9]+/i;
 
 /** ZingMP3 API endpoint pattern. */
-const ZINGMP3_API_RE =
-  /zingmp3\.vn\/api\/v2\/.+\?id=/i;
+const ZINGMP3_API_RE = /zingmp3\.vn\/api\/v2\/.+\?id=/i;
 
 /** StreamSB playlist pattern. */
-const STREAMSB_PLAYLIST_RE =
-  /streamsb\.biz\/playlist\/json\/[a-z0-9]+\/[a-z0-9]+/i;
+const STREAMSB_PLAYLIST_RE = /streamsb\.biz\/playlist\/json\/[a-z0-9]+\/[a-z0-9]+/i;
 
 /** SSPlay streaming pattern. */
-const SSPLAY_STREAM_RE =
-  /ssplay\.net\/[a-z0-9]{2,4}\/(?:\d+\/\d+\/[a-z0-9]+\/[a-z0-9]+|[a-z\d]+\/[a-z\d]+)/i;
+const SSPLAY_STREAM_RE = /ssplay\.net\/[a-z0-9]{2,4}\/(?:\d+\/\d+\/[a-z0-9]+\/[a-z0-9]+|[a-z\d]+\/[a-z\d]+)/i;
 
 /** Discord attachment video URLs. */
-const DISCORD_VIDEO_RE =
-  /discord(?:app)?\.com\/attachments\/\d+\/\d+\/[a-z0-9_\- ]+\.(?:mp4|webm|mov|m4v)/i;
+const DISCORD_VIDEO_RE = /discord(?:app)?\.com\/attachments\/\d+\/\d+\/[a-z0-9_\- ]+\.(?:mp4|webm|mov|m4v)/i;
 
 /** MyCDN (Vietnamese video hosting) pattern. */
-const MYCDN_VIDEO_RE =
-  /vkvd\d*\.mycdn\.me/i;
+const MYCDN_VIDEO_RE = /vkvd\d*\.mycdn\.me/i;
 
 /** Douyu (Chinese streaming) API pattern. */
-const DOUYU_STREAM_RE =
-  /v\.douyu\.com\/api\/stream\/getStreamUrl/i;
+const DOUYU_STREAM_RE = /v\.douyu\.com\/api\/stream\/getStreamUrl/i;
 
 /** Cuoiia (Vietnamese streaming) HLS pattern. */
-const CUOIIA_HLS_RE =
-  /cam-hls.*\.cuoiia\.top\/cdn/i;
+const CUOIIA_HLS_RE = /cam-hls.*\.cuoiia\.top\/cdn/i;
 
 /** Bongngo / Manga123 / StreamAsia playlist patterns. */
-const STREAMASIA_PLAYLIST_RE =
-  /(?:streamasia|bongngo|manga123)\.(?:net|com|xyz)[\s\S]*\/playlist\//i;
+const STREAMASIA_PLAYLIST_RE = /(?:streamasia|bongngo|manga123)\.(?:net|com|xyz)[\s\S]*\/playlist\//i;
 
 /** IamPlayer manifest pattern. */
-const IAMPLAYER_MANIFEST_RE =
-  /iamplayer\.xyz\/stream.*\/Manifest/i;
+const IAMPLAYER_MANIFEST_RE = /iamplayer\.xyz\/stream.*\/Manifest/i;
 
 /** Khophim18 m3u8 pattern. */
-const KHOPHIM_M3U8_RE =
-  /khophim18\.net\/m3u8/i;
+const KHOPHIM_M3U8_RE = /khophim18\.net\/m3u8/i;
 
 /** Apix Googlevideo player (YouTube fallback). */
-const APIX_GOOGLEVIDEO_RE =
-  /apix\.gooqlevideo\.com\/player/i;
+const APIX_GOOGLEVIDEO_RE = /apix\.gooqlevideo\.com\/player/i;
 
 /** Nimblesessionid pattern (HLS with mp4+ts segments). */
-const NIMBLESESSIONID_RE =
-  /\.mp4.+?\.ts\?nimblesessionid=/i;
+const NIMBLESESSIONID_RE = /\.mp4.+?\.ts\?nimblesessionid=/i;
 
 /** Meo.saku player pattern. */
-const MEO_SAKU_RE =
-  /meo\.saku\.net\/player/i;
+const MEO_SAKU_RE = /meo\.saku\.net\/player/i;
 
 /** Sequence-based HLS patterns (/sequence/play/...). */
-const SEQUENCE_PLAYLIST_RE =
-  /^\/sequence\/(?:play|full)\/[a-z0-9]+/i;
+const SEQUENCE_PLAYLIST_RE = /^\/sequence\/(?:play|full)\/[a-z0-9]+/i;
 
 /** Generic key-based encryption pattern in URLs. */
-const KEY_ENCRYPTION_RE =
-  /key[0-9]=[0-9a-f]{32}/i;
+const KEY_ENCRYPTION_RE = /key[0-9]=[0-9a-f]{32}/i;
 
 /** Play sex3x API iframe pattern. */
-const PLAYSEX3X_API_RE =
-  /api-iframe-post\.playsex3x\.xyz\/api\/playiframe/i;
+const PLAYSEX3X_API_RE = /api-iframe-post\.playsex3x\.xyz\/api\/playiframe/i;
 
 /** Facebook video/tahoe endpoint patterns. */
-const FACEBOOK_VIDEO_RE =
-  /www\.facebook\.com\/(?:video\/tahoe\/async|api\/graphql)/i;
+const FACEBOOK_VIDEO_RE = /www\.facebook\.com\/(?:video\/tahoe\/async|api\/graphql)/i;
 
 /** Instagram media API pattern. */
-const INSTAGRAM_MEDIA_RE =
-  /i\.instagram\.com\/api\/v1\/media/i;
+const INSTAGRAM_MEDIA_RE = /i\.instagram\.com\/api\/v1\/media/i;
 
 /** NhacCuaTui flash XML pattern. */
-const NHACCUATUI_XML_RE =
-  /www\.nhaccuatui\.com\/flash\/xml\?key3/i;
+const NHACCUATUI_XML_RE = /www\.nhaccuatui\.com\/flash\/xml\?key3/i;
 
 /** Uplynk content pattern. */
-const UPLYNK_STREAM_RE =
-  /content-aapm1\.uplynk\.com/i;
+const UPLYNK_STREAM_RE = /content-aapm1\.uplynk\.com/i;
 
 /** PlayerX HLS master pattern. */
-const PLAYERX_STREAM_RE =
-  /master2?-eu\.playerx\.stream/i;
+const PLAYERX_STREAM_RE = /master2?-eu\.playerx\.stream/i;
 
 /** IMACDN pattern. */
-const IMACDN_RE =
-  /s\d+\.imacdn\.com/i;
+const IMACDN_RE = /s\d+\.imacdn\.com/i;
 
 /** Hydra streaming pattern. */
-const HYDRA_STREAM_RE =
-  /hydra/i;
+const HYDRA_STREAM_RE = /hydra/i;
 
 /** Googlevideo (YouTube) direct stream pattern. */
-const GOOGLEVIDEO_STREAM_RE =
-  /get\.gooqlevideo\.com\/player/i;
+const GOOGLEVIDEO_STREAM_RE = /get\.gooqlevideo\.com\/player/i;
 
 /** VTVCab streaming pattern (Vietnamese TV). */
-const VTVCAB_STREAM_RE =
-  /vtvgiaitri\.vn/i;
+const VTVCAB_STREAM_RE = /vtvgiaitri\.vn/i;
 
 // ─── Combined URL check: true if URL matches any streaming CDN pattern ──
 
@@ -276,11 +249,7 @@ function classifyStreamingUrl(url, contentType = "") {
   const lowerType = contentType.toLowerCase().trim();
 
   // Content-Type based detection (Coc Coc's primary method)
-  if (
-    lowerType.includes("mpegurl") ||
-    lowerType.includes("x-mpegurl") ||
-    lowerType.includes("appl.mpegurl")
-  ) {
+  if (lowerType.includes("mpegurl") || lowerType.includes("x-mpegurl") || lowerType.includes("appl.mpegurl")) {
     result.type = "manifest";
     result.format = "M3U8";
     return result;
@@ -320,7 +289,7 @@ function classifyStreamingUrl(url, contentType = "") {
   // Coc Coc's key innovation: pattern-based streaming URL detection
   if (isStreamingUrl(url)) {
     result.type = "streaming";
-    result.format = "M3U8";   // Treat as HLS — yt-dlp figures out the rest
+    result.format = "M3U8"; // Treat as HLS — yt-dlp figures out the rest
     result.isStreaming = true;
     return result;
   }
@@ -383,8 +352,7 @@ function extractStreamingUrlsFromText(text) {
   }
 
   // Pattern 2: URLs containing streaming CDN hostnames
-  const cdnUrlRe =
-    /(?:(?:https?:)?\/\/)[^"'`<>\s)]+?(?:\.(?:m3u8|mpd|ts|m4s)(?:[?#][^"'`<>\s)]*)?)/gi;
+  const cdnUrlRe = /(?:(?:https?:)?\/\/)[^"'`<>\s)]+?(?:\.(?:m3u8|mpd|ts|m4s)(?:[?#][^"'`<>\s)]*)?)/gi;
   for (const match of text.matchAll(cdnUrlRe)) {
     // Avoid duplicates with pattern 1
     const url = match[0];
@@ -404,8 +372,7 @@ function extractStreamingUrlsFromText(text) {
   }
 
   // Pattern 4: Player config objects with 'file', 'src', 'url' containing video URLs
-  const configUrlRe =
-    /(?:file|src|url|video|source)\s*[:=]\s*["']((?:https?:)?\/\/[^"']+?)["']/gi;
+  const configUrlRe = /(?:file|src|url|video|source)\s*[:=]\s*["']((?:https?:)?\/\/[^"']+?)["']/gi;
   for (const match of text.matchAll(configUrlRe)) {
     const url = match[1];
     // Only include if it looks like a media URL
@@ -480,17 +447,4 @@ export {
 
   // Text extraction
   extractStreamingUrlsFromText,
-
-  // Individual pattern exports (for testing/customization)
-  STREAMING_HOST_RE,
-  VIDEO_CONFIG_API_RE,
-  SIGNED_STREAM_RE,
-  VN_STREAMING_CDN_RE,
-  SOUNDCLOUD_MEDIA_RE,
-  GOOGLEVIDEO_STREAM_RE,
-  FACEBOOK_VIDEO_RE,
-  DISCORD_VIDEO_RE,
-
-  // All patterns combined
-  ALL_STREAMING_PATTERNS,
 };

@@ -2,43 +2,11 @@
 
 import * as mediaCandidates from "./media_candidates.js";
 
-// ── Re-exports from sub-modules (backward compatibility) ────────────────
+// ── Re-exports from sub-modules ────────────────────────────────────────
 
-export {
-  normalizeComparableUrl,
-  normalizeIdentityText,
-  normalizeTitleKey,
-  normalizeVideoStem,
-  normalizePageKey,
-  isGenericStem,
-  isGenericTitle,
-  videoIdentityParts,
-  isSameFullVideo,
-  inferResolutionFromText,
-  inferBitrateFromText,
-  enrichVideoVariant,
-  QUALITY_WORD_RE,
-  FORMAT_WORD_RE,
-  RESOLUTION_RE,
-  DIMENSION_RE,
-  MBPS_RE,
-  KBPS_RE,
-  GENERIC_WORDS,
-  GENERIC_STEM_RE,
-  GENERIC_TITLE_RE,
-} from "./video_identity.js";
+export { isGenericTitle } from "./video_identity.js";
 
-export {
-  formatPriority,
-  fullVideoPriority,
-  variantSortKey,
-  compareVariants,
-  mergeVariant,
-  groupedVideoSortKey,
-  compareGroupedVideos,
-  buildGroupedVideo,
-  groupUniqueFullVideos,
-} from "./video_sorting.js";
+export { groupUniqueFullVideos } from "./video_sorting.js";
 
 // ── Regex constants ─────────────────────────────────────────────────────
 
@@ -46,17 +14,6 @@ const SHORT_OR_PREVIEW_RE =
   /(?:^|[/?#._\s-])(?:shorts?|clips?|previews?|teasers?|trailers?|highlights?|snippets?|promos?|thumbs?|thumbnails?|stories|reels|loop-preview)(?:[/?#._\s-]|$)/i;
 const INCOMPLETE_RE =
   /(?:^|[/?#._\s-])(?:partial|incomplete|fragment|fragments|segment|segments|chunk|chunks|part|parts)(?:[/?#._\s-]|\d|$)/i;
-
-// ── Video player SDK patterns (from uBO unbreak lists, Phase A.5) ──
-
-// Google IMA SDK paths — video ad framework needed for playback.
-const VIDEO_PLAYER_SDK_RE = /\/js\/sdkloader\/(?:ima3|ima3_dai|ima3_debug)\.js/i;
-
-// Video-specific analytics (not generic tracking).
-const VIDEO_ANALYTICS_RE = /(?:comscore\.streaming|mux\.js|mux\.min\.js)/i;
-
-// Video player frameworks.
-const VIDEO_FRAMEWORK_RE = /(?:akamaihtml5|ooyala|jwplayer|brightcove|kaltura|shaka)/i;
 
 // ── Constants ───────────────────────────────────────────────────────────
 
@@ -287,13 +244,6 @@ function isLikelyRealVideoElement(details) {
   return isLikelyRealVideoBox(details);
 }
 
-function isVideoPlayerSdkUrl(url) {
-  if (!url) {
-    return false;
-  }
-  return VIDEO_PLAYER_SDK_RE.test(url) || VIDEO_ANALYTICS_RE.test(url) || VIDEO_FRAMEWORK_RE.test(url);
-}
-
 function sourceLabel(video) {
   if (video && video.source === "manual-url") {
     return "manual link";
@@ -308,24 +258,14 @@ function sourceLabel(video) {
 }
 
 export {
-  // Regex constants
-  SHORT_OR_PREVIEW_RE,
-  INCOMPLETE_RE,
-  VIDEO_PLAYER_SDK_RE,
-  VIDEO_ANALYTICS_RE,
-  VIDEO_FRAMEWORK_RE,
-
   // Basic utilities
   lower,
   finiteNumber,
   textForVideoSignals,
-  hasShortOrIncompleteSignal,
 
   // Classification
-  isPlaylistLike,
   isBlockedVideoUrl,
   classifyVideoUrl,
-  isYouTubeVideoPageUrl,
   normalizeYouTubeVideoPageUrl,
   isDownloadableUrl,
   isLikelyVideoRequest,
@@ -340,9 +280,6 @@ export {
   isLikelyFullLengthVideoCandidate,
   isLikelyRealVideoBox,
   isLikelyRealVideoElement,
-
-  // SDK detection
-  isVideoPlayerSdkUrl,
 
   // Source label
   sourceLabel,

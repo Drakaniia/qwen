@@ -245,36 +245,13 @@ function enrichVideoVariant(video) {
 }
 
 export {
-  // URL normalization
+  // URL normalization (consumed by video_sorting.js)
   normalizeComparableUrl,
-  normalizeIdentityText,
-  normalizeTitleKey,
-  normalizeVideoStem,
-  normalizePageKey,
 
-  // Generic title detection
-  isGenericStem,
+  // Generic title detection (consumed via video_filters.js re-export)
   isGenericTitle,
 
-  // Video identity
-  videoIdentityParts,
+  // Video identity (consumed by video_sorting.js)
   isSameFullVideo,
-
-  // Resolution / bitrate
-  inferResolutionFromText,
-  inferBitrateFromText,
-
-  // Variant enrichment
   enrichVideoVariant,
-
-  // Regex constants (re-exported for external consumers)
-  QUALITY_WORD_RE,
-  FORMAT_WORD_RE,
-  RESOLUTION_RE,
-  DIMENSION_RE,
-  MBPS_RE,
-  KBPS_RE,
-  GENERIC_WORDS,
-  GENERIC_STEM_RE,
-  GENERIC_TITLE_RE,
 };

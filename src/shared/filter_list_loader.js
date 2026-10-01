@@ -20,7 +20,7 @@
  *   6. getActivePatterns / refreshAllLists — Orchestration entry points
  */
 
-import { RULE_BLOCK, RULE_EXCEPTION, RULE_REGEX, FILTER_LISTS, getConfiguredLists } from "./filter_list_config.js";
+import { RULE_BLOCK, RULE_EXCEPTION, FILTER_LISTS } from "./filter_list_config.js";
 
 import { parseFilterList, extractVideoRelevantRules } from "./filter_list_parser.js";
 
@@ -30,7 +30,6 @@ import {
   deserializeRules,
   loadCompiledPatterns,
   saveCompiledPatterns,
-  isCacheExpired,
 } from "./filter_list_cache.js";
 
 // ── fetchFilterList ────────────────────────────────────────────────────────
@@ -230,34 +229,8 @@ async function getActivePatterns() {
   return compileActivePatterns();
 }
 
-// ── Exports ────────────────────────────────────────────────────────────────
-//
-// Re-export everything from child modules so existing consumers
-// (filter_integration.js, test_filter_list_loader.js) are unaffected.
-
-// ── Exports ────────────────────────────────────────────────────────────────
-//
-// Preserves the exact same public API as the original monolithic file.
-// Private helpers (parseOptions, serializeRules, deserializeRules, domain
-// check functions) are intentionally NOT re-exported — they remain internal.
-
 export {
-  // Re-exported from sub-modules (same API as original file)
-  parseFilterList,
-  extractVideoRelevantRules,
-  getConfiguredLists,
-  loadFromCache,
-  saveToCache,
-  loadCompiledPatterns,
-  saveCompiledPatterns,
-  isCacheExpired,
-  // Constants (for tests)
-  RULE_BLOCK,
-  RULE_EXCEPTION,
-  RULE_REGEX,
-  // Own exports (orchestrator functions)
-  fetchFilterList,
-  compileActivePatterns,
+  // Orchestrator API — the only surface filter_integration.js consumes.
   refreshAllLists,
   getActivePatterns,
 };
