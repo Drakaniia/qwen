@@ -2,14 +2,8 @@
 
 import { browserApi } from "../shared/browser_api.js";
 import * as headerUtils from "./header_utils.js";
-import {
-  hasMediaContentType,
-} from "../shared/media_protocols.js";
-import {
-  isStreamingUrl,
-  isLikelyStreamingUrl,
-  classifyStreamingUrl,
-} from "../shared/streaming_patterns.js";
+import { hasMediaContentType } from "../shared/media_protocols.js";
+import { isStreamingUrl, isLikelyStreamingUrl, classifyStreamingUrl } from "../shared/streaming_patterns.js";
 
 /**
  * Pattern to detect Service Worker script URLs used as request initiators.
@@ -68,7 +62,7 @@ const VIDEO_REQUEST_PATTERNS = [
  * rather than a web page content script.
  *
  * Blocks compromised content scripts while allowing extension UI pages to
- * invoke sensitive operations (CDM, debugger, recording).
+ * invoke sensitive operations (debugger, recording).
  */
 function isExtensionPageSender(sender) {
   if (!sender || !sender.url) {
@@ -197,7 +191,6 @@ export function initWebRequestHandlers(deps) {
       return;
     }
 
-    const initiator = details.initiator || details.documentUrl || "";
     const source = streamingResult.isStreaming ? "streaming-pattern" : "headers-broad";
 
     addDetectedVideo(details.tabId, {
@@ -234,11 +227,9 @@ export function initWebRequestHandlers(deps) {
       return;
     }
 
-    const initiator = details.initiator || details.documentUrl || "";
-
     addDetectedVideo(details.tabId, {
       url: details.url,
-      format: "M3U8",  // Best guess — yt-dlp handles the actual format detection
+      format: "M3U8", // Best guess — yt-dlp handles the actual format detection
       source: "streaming-pattern",
       pageUrl: details.documentUrl || details.initiator || "",
     });

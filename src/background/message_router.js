@@ -27,13 +27,6 @@ function create() {
   }
 
   /**
-   * Remove a registered handler.
-   */
-  function unhandle(messageType) {
-    delete handlers[messageType];
-  }
-
-  /**
    * Get the current extension's runtime ID in a cross-browser way.
    * @returns {string}
    */
@@ -61,7 +54,7 @@ function create() {
     // CRITICAL: Validate sender origin.
     // Only allow messages from the extension's own runtime context.
     // This prevents external extensions or compromised contexts from
-    // invoking any message handler (download, CDM, recording, etc.).
+    // invoking any message handler (download, recording, etc.).
     if (!sender || sender.id !== getExtensionId()) {
       if (sendResponse) {
         sendResponse({ ok: false, error: "Unauthorized sender." });
@@ -99,7 +92,6 @@ function create() {
 
   return {
     handle: handle,
-    unhandle: unhandle,
     dispatch: dispatch,
   };
 }

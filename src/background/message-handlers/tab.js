@@ -18,30 +18,6 @@ export function registerTabHandlers(messageRouter, ctx) {
     browserApi,
   } = ctx;
 
-  // ── MSE captured segments ───────────────────────────────────────────────
-
-  messageRouter.handle("mseCapturedSegments", async (message, sender) => {
-    const { recording, segmentCapture } = ctx;
-    const result = recording.handleMseCapturedSegments(message, sender, senderTabId);
-    if (result) {
-      notifyPopup({
-        type: "mseCaptureComplete",
-        tabId: result.tabId,
-        totalSegments: result.totalSegments,
-        streams: result.streams,
-      });
-    }
-
-    const tabId = senderTabId(message, sender);
-    if (tabId && Array.isArray(message.segments) && message.segments.length > 0) {
-      const captureStatus = segmentCapture.getStatus(tabId);
-      if (captureStatus.active) {
-        segmentCapture.addSegments(tabId, message.segments);
-      }
-    }
-    return { ok: true };
-  });
-
   // ── Content detected videos ────────────────────────────────────────────
 
   messageRouter.handle("contentDetectedVideos", async (message, sender) => {

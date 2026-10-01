@@ -14,7 +14,6 @@ let settings = {
   downloadFolder: "",
   musicMode: false,
   audioFormat: "mp3",
-  recordingMode: "ask",
   downloadSyncEnabled: true,
   autoDownload: false,
   maxConcurrentDownloads: 3,
