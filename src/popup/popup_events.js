@@ -171,7 +171,6 @@ elements.downloadList.addEventListener("click", async (event) => {
     case "remove":
       response = await PopupApi.removeDownload(tabId, jobId);
       break;
-
   }
 
   if (!response || !response.ok) {

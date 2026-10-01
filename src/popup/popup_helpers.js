@@ -281,10 +281,7 @@ export async function checkHelperStatus() {
     } else {
       const streamFallbacks = dependencies.nM3u8DlRe || dependencies.streamlink;
       const fallbackMode = streamFallbacks ? "stream fallbacks" : "yt-dlp only";
-      setHelperStatus(
-        `Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}).`,
-        "ok",
-      );
+      setHelperStatus(`Helper ready (${response.version || "installed"}, fast mode, ${fallbackMode}).`, "ok");
     }
   } else {
     setHelperStatus("Helper not connected.", "error");
