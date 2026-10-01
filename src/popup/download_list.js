@@ -4,27 +4,6 @@ const ACTIVE_STATUSES = new Set(["queued", "connecting", "running", "paused", "p
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function formatDuration(seconds) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
-function formatFileSize(bytes) {
-  if (!bytes || bytes <= 0) return "";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex++;
-  }
-  return `${value.toFixed(1)} ${units[unitIndex]}`;
-}
-
 function hasDownloadPercent(job) {
   return typeof job?.percent === "number" && Number.isFinite(job.percent);
 }
@@ -316,33 +295,20 @@ function renderDownloads(container, downloads, options = {}) {
   const shortenUrl = typeof options.shortenUrl === "function" ? options.shortenUrl : String;
 
   for (const job of recent) {
-    const isRecording = job.isRecording || String(job.format || "").toUpperCase() === "RECORDING";
-
     const item = doc.createElement("section");
-    item.className = `download-item ${isRecording ? "recording-item" : ""}`.trim();
+    item.className = "download-item";
 
     const header = doc.createElement("div");
     header.className = "download-header";
 
-    // Recording icon for recording jobs
-    if (isRecording) {
-      const recIcon = doc.createElement("span");
-      recIcon.className = "recording-icon";
-      recIcon.textContent = "⏺";
-      recIcon.setAttribute("aria-label", "Recording");
-      recIcon.title = job.status === "running" ? "Recording in progress" : "Recording";
-      header.append(recIcon);
-    }
-
     const badge = doc.createElement("span");
-    badge.className = `badge ${job.status === "error" ? "warning" : isRecording ? "recording-badge" : ""}`.trim();
-    badge.textContent = isRecording && job.status === "running" ? "REC" : (job.status || "queued").toUpperCase();
+    badge.className = `badge ${job.status === "error" ? "warning" : ""}`.trim();
+    badge.textContent = (job.status || "queued").toUpperCase();
 
     const title = doc.createElement("div");
     title.className = "download-title";
     const isAudio = String(job.format || "").toUpperCase() === "AUDIO" || String(job.title || "").includes(" - ");
-    title.textContent =
-      job.title || shortenUrl(job.url) || (isAudio ? "Music" : isRecording ? "Screen recording" : "Video");
+    title.textContent = job.title || shortenUrl(job.url) || (isAudio ? "Music" : "Video");
 
     const messageText = downloadMessageText(job);
     const message = doc.createElement("div");
@@ -352,42 +318,7 @@ function renderDownloads(container, downloads, options = {}) {
     header.append(badge, title);
     item.append(header);
 
-    // Recording progress: show duration and file size
-    if (isRecording && job.status === "running") {
-      const recProgress = doc.createElement("div");
-      recProgress.className = "recording-progress";
-
-      const durationLabel = doc.createElement("span");
-      durationLabel.className = "recording-duration";
-      const durationSec = job.recordingDuration || 0;
-      durationLabel.textContent = `Recording: ${formatDuration(durationSec)}`;
-      recProgress.append(durationLabel);
-
-      if (job.recordingSizeBytes > 0) {
-        const sizeLabel = doc.createElement("span");
-        sizeLabel.className = "recording-size";
-        sizeLabel.textContent = `Size: ${formatFileSize(job.recordingSizeBytes)}`;
-        recProgress.append(sizeLabel);
-      }
-
-      if (job.recordingFps > 0) {
-        const fpsLabel = doc.createElement("span");
-        fpsLabel.className = "recording-fps";
-        fpsLabel.textContent = `${job.recordingFps} fps`;
-        recProgress.append(fpsLabel);
-      }
-
-      if (job.recordingDroppedFrames > 5) {
-        const dropLabel = doc.createElement("span");
-        dropLabel.className = "recording-dropped";
-        dropLabel.textContent = `⚠ ${job.recordingDroppedFrames} dropped`;
-        recProgress.append(dropLabel);
-      }
-
-      item.append(recProgress);
-    } else {
-      appendDownloadProgress(item, job);
-    }
+    appendDownloadProgress(item, job);
 
     if (messageText) {
       item.append(message);
@@ -401,10 +332,7 @@ function renderDownloads(container, downloads, options = {}) {
     const processing = isProcessingStage(job);
     const active = ["queued", "connecting", "running", "pausing", "canceling"].includes(status);
 
-    if (isRecording && status === "running") {
-      // Recording-specific actions
-      appendDownloadAction(actions, "Stop recording", "stopRecording", job.id, true);
-    } else if (processing) {
+    if (processing) {
       const btnText = job.stage === "postprocess" ? "Converting..." : "Finalizing...";
       appendDownloadAction(actions, btnText, "none", job.id);
       const btn = actions.lastElementChild;
@@ -415,7 +343,7 @@ function renderDownloads(container, downloads, options = {}) {
     if (status === "paused") {
       appendDownloadAction(actions, "Resume", "resume", job.id, true);
     }
-    if ((active || status === "paused") && !isRecording) {
+    if (active || status === "paused") {
       appendDownloadAction(actions, "Cancel", "cancel", job.id);
     }
     if (["done", "error", "canceled"].includes(status)) {

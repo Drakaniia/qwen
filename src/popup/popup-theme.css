@@ -43,18 +43,6 @@
   }
 }
 
-@keyframes recording-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.4);
-  }
-  50% {
-    opacity: 0.8;
-    box-shadow: 0 0 0 6px rgba(185, 28, 28, 0);
-  }
-}
-
 /* ─── Animation utility classes ──────────────────────────────────────────── */
 
 .content-fade-in {
@@ -104,9 +92,5 @@
   .dep-banner-cta {
     opacity: 1;
     transition: none;
-  }
-
-  .recording-icon {
-    animation: none;
   }
 }

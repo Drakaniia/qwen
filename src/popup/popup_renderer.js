@@ -10,7 +10,6 @@ import {
   sourceLabel,
   videoSizeLabel,
   videoThumbnailUrl,
-  startRecording,
 } from "./popup_helpers.js";
 
 // ─── Video rendering ────────────────────────────────────────────────────────
@@ -58,15 +57,6 @@ export function renderVideos(videos, downloads) {
 
   if (!videos.length) {
     setMessage("No downloadable video or music detected yet.");
-    const recordPageBtn = document.createElement("button");
-    recordPageBtn.type = "button";
-    recordPageBtn.className = "record-page-button primary";
-    recordPageBtn.textContent = "Record this page";
-    recordPageBtn.title = "No video URL detected. Record the tab's video output instead.";
-    recordPageBtn.addEventListener("click", () => {
-      startRecording({ title: "Page recording", format: "RECORDING" });
-    });
-    elements.videoList.append(recordPageBtn);
     return;
   }
 
@@ -119,22 +109,6 @@ export function renderVideos(videos, downloads) {
     }
 
     main.append(details, button);
-
-    if (!video.downloadable && !runningJob) {
-      const recordBtn = document.createElement("button");
-      recordBtn.type = "button";
-      recordBtn.className = "record-button";
-      recordBtn.textContent = "Record";
-      recordBtn.title = "No downloadable URL found. Record the tab's video output.";
-      recordBtn.dataset.videoId = video.id;
-      recordBtn.dataset.action = "record";
-      recordBtn.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        startRecording(video);
-      });
-      main.append(recordBtn);
-    }
 
     const meta = document.createElement("div");
     meta.className = "meta";

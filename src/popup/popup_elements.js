@@ -4,13 +4,10 @@
 import * as qualityFormat from "../shared/quality_format.js";
 import * as videoFilters from "../shared/video_filters.js";
 import * as qualityDialog from "../shared/quality_dialog.js";
-import * as PopupStateHelpers from "./popup_state.js";
-
-// ─── Re-export for convenience ──────────────────────────────────────────────
-export { PopupStateHelpers };
+import { ACTIVE_DOWNLOAD_STATUSES } from "./popup_state.js";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-export const { ACTIVE_DOWNLOAD_STATUSES } = PopupStateHelpers;
+export { ACTIVE_DOWNLOAD_STATUSES };
 export const RESCAN_IDLE_LABEL = "Rescan";
 export const RESCAN_BUSY_LABEL = "Refreshing";
 export const AUDIO_FORMAT = "AUDIO";
@@ -54,9 +51,6 @@ export const elements = {
   showDownloads: document.getElementById("showDownloads"),
   manualUrl: document.getElementById("manualUrl"),
   downloadManualUrl: document.getElementById("downloadManualUrl"),
-  magnetUrl: document.getElementById("magnetUrl"),
-  downloadMagnet: document.getElementById("downloadMagnet"),
-  downloadTorrentFile: document.getElementById("downloadTorrentFile"),
   downloadFolder: document.getElementById("downloadFolder"),
   chooseDownloadFolder: document.getElementById("chooseDownloadFolder"),
   saveSettings: document.getElementById("saveSettings"),
@@ -76,7 +70,6 @@ export const elements = {
   musicLinkUrl: document.getElementById("musicLinkUrl"),
   downloadMusicLink: document.getElementById("downloadMusicLink"),
   audioFormat: document.getElementById("audioFormat"),
-  recordingMode: document.getElementById("recordingMode"),
   backend: document.getElementById("backend"),
   downloadSubtitles: document.getElementById("downloadSubtitles"),
   // Sync elements
@@ -101,13 +94,6 @@ export const elements = {
   depBannerCopyBtn: document.getElementById("depBannerCopyBtn"),
   // Overlay toggle
   overlayToggle: document.getElementById("overlayToggle"),
-  // Debug log panel elements
-  debugLogPanel: document.getElementById("debugLogPanel"),
-  debugLogToggle: document.getElementById("debugLogToggle"),
-  debugLogBody: document.getElementById("debugLogBody"),
-  debugLogEntries: document.getElementById("debugLogEntries"),
-  debugLogCount: document.getElementById("debugLogCount"),
-  debugLogClear: document.getElementById("debugLogClear"),
 };
 
 // ─── Quality chooser ────────────────────────────────────────────────────────

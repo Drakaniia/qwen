@@ -25,17 +25,6 @@
 
 /* ─── Special buttons ─────────────────────────────────────────────────── */
 
-.magnet-button {
-  margin-top: 4px;
-  border-color: #7c3aed;
-  background: #7c3aed;
-  color: #fff;
-}
-
-.magnet-button:hover {
-  background: #6d28d9;
-}
-
 .settings-button {
   width: 100%;
   margin-top: 8px;
@@ -71,38 +60,6 @@
 
 .batch-cancel-button:hover {
   background: #fef2f2;
-}
-
-/* ─── Recording buttons ────────────────────────────────────────────────── */
-
-.record-button {
-  border-color: #b91c1c;
-  background: #b91c1c;
-  color: #fff;
-  font-size: 12px;
-  min-height: 28px;
-  padding: 3px 8px;
-}
-
-.record-button:hover {
-  background: #991b1b;
-  border-color: #991b1b;
-}
-
-.record-page-button {
-  width: 100%;
-  margin-top: 8px;
-  padding: 10px 14px;
-  border-color: #b91c1c;
-  background: #b91c1c;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.record-page-button:hover {
-  background: #991b1b;
-  border-color: #991b1b;
 }
 
 /* ─── Dep banner button ───────────────────────────────────────────────── */

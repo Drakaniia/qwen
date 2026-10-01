@@ -3,7 +3,7 @@
 // ─── Module references ──────────────────────────────────────────────────────
 import * as PopupApi from "../shared/popup_api.js";
 import * as PopupState from "../shared/popup_state.js";
-import { elements, qualityChooser } from "./popup_elements.js";
+import { elements } from "./popup_elements.js";
 import {
   setMessage,
   setSettingsStatus,
@@ -51,17 +51,6 @@ elements.overlayToggle.addEventListener("change", async () => {
   }
 });
 
-elements.recordingMode.addEventListener("change", async () => {
-  const response = await PopupApi.saveSettings({
-    recordingMode: elements.recordingMode.value,
-  });
-  if (!response || !response.ok) {
-    setSettingsStatus("Could not save recording mode.", true);
-  } else {
-    setSettingsStatus("Recording mode saved.");
-  }
-});
-
 if (elements.backend) {
   elements.backend.addEventListener("change", async () => {
     const response = await PopupApi.saveSettings({
@@ -83,7 +72,6 @@ elements.saveSettings.addEventListener("click", async () => {
   const response = await PopupApi.saveSettings({
     downloadFolder: elements.downloadFolder.value.trim(),
     audioFormat: elements.audioFormat.value,
-    recordingMode: elements.recordingMode.value,
     backend: elements.backend ? elements.backend.value : "auto",
     downloadSubtitles: elements.downloadSubtitles ? elements.downloadSubtitles.checked : true,
     downloadSyncEnabled: syncEnabled,
@@ -193,103 +181,6 @@ elements.downloadManualUrl.addEventListener("click", async () => {
 
   elements.downloadManualUrl.disabled = false;
   elements.downloadManualUrl.textContent = "Download link";
-  await refresh();
-});
-
-// ─── Magnet download ────────────────────────────────────────────────────────
-
-elements.downloadMagnet.addEventListener("click", async () => {
-  const magnetUrl = String(elements.magnetUrl.value || "").trim();
-  if (!magnetUrl.startsWith("magnet:?")) {
-    setSettingsStatus("Enter a valid magnet link starting with 'magnet:?xt=urn:btih:'.", true);
-    return;
-  }
-
-  const requestToken = showQualityLoading("Preparing magnet download...");
-  const confirmed = await qualityChooser.showChoices({
-    choiceTitle: "Download from magnet link",
-    formats: [
-      {
-        id: "magnet",
-        label: "Start BitTorrent download",
-        ext: "TORRENT",
-        note: "Downloads via aria2c",
-        source: "magnet",
-        size: "",
-      },
-    ],
-  });
-
-  if (!isCurrentQualityRequest(requestToken)) {
-    return;
-  }
-
-  if (!confirmed) {
-    elements.magnetUrl.focus();
-    return;
-  }
-
-  elements.downloadMagnet.disabled = true;
-  elements.downloadMagnet.textContent = "Queued";
-
-  const downloadFolder = elements.downloadFolder.value.trim();
-  const response = await PopupApi.downloadMagnet(magnetUrl, downloadFolder);
-
-  if (!response || !response.ok) {
-    setSettingsStatus(response && response.error ? response.error : "Failed to start magnet download.", true);
-  } else {
-    setViewMode("downloads");
-    elements.magnetUrl.value = "";
-  }
-
-  elements.downloadMagnet.disabled = false;
-  elements.downloadMagnet.textContent = "Download magnet";
-  await refresh();
-});
-
-// ─── Torrent file download ──────────────────────────────────────────────────
-
-elements.downloadTorrentFile.addEventListener("click", async () => {
-  setSettingsStatus("");
-  elements.downloadTorrentFile.disabled = true;
-  elements.downloadTorrentFile.textContent = "Opening...";
-
-  const pickResponse = await PopupApi.chooseTorrentFile();
-
-  if (!pickResponse || !pickResponse.ok) {
-    if (isUnknownMessageTypeError(pickResponse)) {
-      setSettingsStatus("Reload Qwin from the browser extensions page, then open settings and try again.", true);
-    } else {
-      setSettingsStatus(
-        pickResponse && pickResponse.error ? pickResponse.error : "Could not open the file picker.",
-        true,
-      );
-    }
-    elements.downloadTorrentFile.disabled = false;
-    elements.downloadTorrentFile.textContent = "Download .torrent file";
-    return;
-  }
-
-  if (pickResponse.canceled || !pickResponse.path) {
-    setSettingsStatus("Torrent file selection canceled.");
-    elements.downloadTorrentFile.disabled = false;
-    elements.downloadTorrentFile.textContent = "Download .torrent file";
-    return;
-  }
-
-  elements.downloadTorrentFile.textContent = "Queued";
-  const downloadFolder = elements.downloadFolder.value.trim();
-  const response = await PopupApi.downloadTorrent(pickResponse.path, downloadFolder);
-
-  if (!response || !response.ok) {
-    setSettingsStatus(response && response.error ? response.error : "Failed to start .torrent download.", true);
-  } else {
-    setViewMode("downloads");
-    setSettingsOpen(false);
-  }
-
-  elements.downloadTorrentFile.disabled = false;
-  elements.downloadTorrentFile.textContent = "Download .torrent file";
   await refresh();
 });
 
