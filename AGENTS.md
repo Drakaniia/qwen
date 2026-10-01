@@ -16,7 +16,6 @@ Qwin Video Downloader — multi-browser extension (Chrome/Firefox/Yandex) + Pyth
 ```
 qwin/
 ├── AGENTS.md              # This file
-├── manifest.json           # Root manifest (npm project)
 ├── package.json            # npm scripts + dev dependencies
 ├── eslint.config.js        # ESLint flat config
 ├── ruff.toml               # Ruff Python linter config
@@ -28,7 +27,6 @@ qwin/
 ├── src/shared/             # Shared JS contracts across extension components
 ├── config/                 # Extension manifests per browser + native host configs
 ├── docs/                   # Guides and reference docs
-├── tests/                  # Extension JS tests + native-host Python tests
 ├── scripts/                # Build, install scripts
 └── .agents/                # AI agent skills and configurations
 ```
@@ -40,14 +38,12 @@ qwin/
 | **Download orchestration** | `src/background/download/` | Coordinates native host, fallbacks, browser download |
 | **Network interception** | `src/background/background_webrequest.js` | Detects video URLs via webRequest |
 | **Content detection** | `src/content/content.js`, `page_detection.js` | Scans DOM for video elements |
-| **Native host dispatch** | `src/native_host/host.py` + `host_dispatch.py` | Entry point + command routing |
-| **yt-dlp integration** | `src/native_host/yt_dlp_adapter.py` | yt-dlp wrapper with large file handling |
+| **Native host dispatch** | `src/native_host/host.py` | Entry point + command routing |
+| **yt-dlp integration** | `src/native_host/backends/yt_dlp/` | Command building + binary resolution |
 | **Popup UI** | `src/popup/popup.html` + `src/popup/popup.js` | Single-file HTML entry, modular JS |
 | **Shared contracts** | `src/shared/media_candidates.js`, `video_filters.js` | Both sides must stay in sync |
 | **Filter lists** | `src/shared/filter_list_*.js` | Video source block/allow patterns |
 | **Build/packaging** | `scripts/build-extension.ps1` | Creates dist/ targets |
-| **Extension tests** | `tests/extension/background/` | Run after build |
-| **Native host tests** | `tests/native-host/` | Python unittest, no build needed |
 
 ## CONVENTIONS (DEVIATIONS FROM STANDARD)
 
@@ -76,9 +72,6 @@ qwin/
 ```powershell
 npm run setup          # Install deps, native host, build
 npm run build          # Build chromium, firefox, yandex targets under dist/
-npm test               # native-host unittest + extension checks + build checks
-npm run test:native    # Python unittest only (no build required)
-npm run test:extension # JS extension checks only (requires prior build)
 npm run lint           # ESLint (JS) + Ruff check (Python)
 npm run format         # Prettier (JS/CSS/JSON) + Ruff format (Python)
 ```

@@ -139,7 +139,7 @@ Trying: curl-cffi (direct download)
 | TLS fingerprint checks (JA3/JA4) | JavaScript challenges (turnstile, captcha) |
 | HTTP/2 fingerprint checks | Behavioral detection |
 | SSL/TLS-level bot detection | Login / session-based access |
-| Some Cloudflare generic challenges | DRM (Widevine, PlayReady) |
+| Some Cloudflare generic challenges | DRM (PlayReady) |
 | Akamai fingerprint blocking | Region blocking (needs proxy/VPN) |
 | Simple CDN/WAF referrer checks | Short-lived token security |
 
@@ -172,60 +172,6 @@ In these cases, the download still falls through to other backends (N_m3u8DL-RE,
 - Site-specific extraction that is not available from the detected URL alone.
 - Headers or cookies that were not captured by the extension.
 
-## CDM Not Available
-
-If the popup shows `CDM not available`, the Widevine CDM could not be initialized. To fix it:
-
-1. Run the CDM installer:
-
-   ```bat
-   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-cdm.ps1
-   ```
-
-2. Check that `tools\cdm\widevinecdm.dll` exists.
-3. Check `tools\cdm\status.json` for the error message.
-4. Reload the extension and restart the browser.
-
-The CDM is required for decrypting Widevine-protected content. Without it, the pipeline can only fall through to screen recording for DRM content.
-
-### Compatible CDM Versions
-
-Only specific Widevine CDM versions are compatible with the key extraction pipeline:
-
-- `4.10.2710.0`
-- `4.10.2830.0`
-- `4.10.2557.0`
-
-The installer (`install-cdm.ps1`) detects Chrome's bundled CDM and checks compatibility. If Chrome's version is incompatible, it tries to download a known-compatible standalone CDM.
-
-### L1-Only Content
-
-If the CDM reports `l1Only=true`, the content uses hardware-backed Widevine L1 keys that cannot be extracted in software. The pipeline will fall through to screen recording as a best-effort alternative.
-
-## Capture Binary Not Found
-
-If features like CDP relay, CDM pipelines, or screen recording are unavailable:
-
-1. Run the capture installer:
-
-   ```bat
-   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-capture.ps1
-   ```
-
-2. Check that `tools\capture\qwin-capture.exe` exists.
-3. Verify the binary works:
-
-   ```bat
-   tools\capture\qwin-capture.exe --version
-   ```
-
-4. Or build from source:
-
-   ```bat
-   cd go
-   go build -o qwin-capture.exe .
-   ```
-
 ## Filter List Refresh Failed
 
 The extension downloads uBlock Origin filter lists every 5 days. If the lists fail to download (network error, timeout, GitHub unavailable):
@@ -234,15 +180,6 @@ The extension downloads uBlock Origin filter lists every 5 days. If the lists fa
 - Patterns from the first successful download persist across service worker restarts.
 - The next refresh attempt happens 5 days later.
 - This is non-critical — the built-in `AD_RE` and `CDN_HINT_RE` patterns still apply.
-
-## Screen Recording Issues
-
-If screen recording does not start or shows no progress:
-
-1. Check that the capture binary is installed (`tools\capture\qwin-capture.exe`).
-2. Reload the extension and the page.
-3. Make sure the tab is not in Incognito or Guest mode (screen capture is restricted there).
-4. Check the browser console for `chrome.debugger` errors (the extension needs the `debugger` permission).
 
 ## Slow Downloads
 
