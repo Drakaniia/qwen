@@ -27,23 +27,4 @@ export default [
       "prefer-const": "error",
     },
   },
-  {
-    files: ["tests/**/*.js"],
-    languageOptions: {
-      ecmaVersion: "latest",
-      sourceType: "module",
-      globals: {
-        ...globals.node,
-      },
-    },
-    rules: {
-      "no-unused-vars": [
-        "error",
-        {
-          argsIgnorePattern: "^_",
-          caughtErrorsIgnorePattern: "^_",
-        },
-      ],
-    },
-  },
 ];

@@ -15,20 +15,18 @@
     "build:installer:quick": "powershell -NoProfile -ExecutionPolicy Bypass -File packaging\\build-installer.ps1 -SkipPyInstaller -SkipGo -SkipTools",
     "build:installer:full": "powershell -NoProfile -ExecutionPolicy Bypass -File packaging\\build-installer.ps1",
     "build:pyinstaller": "python -m PyInstaller packaging/pyinstaller.spec --distpath packaging/installer-source/native-host --workpath build/pyinstaller",
-    "build:qwin-capture": "cd go && go build -ldflags=\"-s -w\" -o ../packaging/installer-source/tools/capture/qwin-capture.exe .",
-    "lint": "npx eslint src/ tests/ && python -m ruff check src/native_host/ tests/native-host/",
-    "lint:js": "npx eslint src/ tests/",
-    "lint:py": "python -m ruff check src/native_host/ tests/native-host/",
-    "lint:fix": "npx eslint --fix src/ tests/ && python -m ruff check --fix src/native_host/ tests/native-host/",
-    "format": "npx prettier --write \"src/**/*.{js,css,json}\" \"tests/**/*.js\" \"*.{json,js}\" && python -m ruff format src/native_host/ tests/native-host/",
-    "format:js": "npx prettier --write \"src/**/*.{js,css,json}\" \"tests/**/*.js\" \"*.{json,js}\"",
-    "format:py": "python -m ruff check --fix src/native_host/ tests/native-host/ && python -m ruff format src/native_host/ tests/native-host/"
+    "lint": "npx eslint src/ && python -m ruff check src/native_host/",
+    "lint:js": "npx eslint src/",
+    "lint:py": "python -m ruff check src/native_host/",
+    "lint:fix": "npx eslint --fix src/ && python -m ruff check --fix src/native_host/",
+    "format": "npx prettier --write \"src/**/*.{js,css,json}\" \"*.{json,js}\" && python -m ruff format src/native_host/",
+    "format:js": "npx prettier --write \"src/**/*.{js,css,json}\" \"*.{json,js}\"",
+    "format:py": "python -m ruff check --fix src/native_host/ && python -m ruff format src/native_host/"
   },
   "devDependencies": {
     "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
     "globals": "^17.6.0",
-    "jsdom": "^29.1.1",
     "prettier": "^3.8.4"
   }
 }

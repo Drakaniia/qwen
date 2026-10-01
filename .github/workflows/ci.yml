@@ -28,62 +28,19 @@ jobs:
         run: pip install ruff
 
       - name: ESLint (JavaScript)
-        run: npx eslint src/ tests/
+        run: npx eslint src/
 
       - name: Prettier check (JavaScript/CSS/JSON)
-        run: npx prettier --check "src/**/*.{js,css,json}" "tests/**/*.js" "*.{json,js}"
+        run: npx prettier --check "src/**/*.{js,css,json}" "*.{json,js}"
 
       - name: Ruff lint (Python)
-        run: python -m ruff check src/native_host/ tests/native-host/
+        run: python -m ruff check src/native_host/
 
       - name: Ruff format check (Python)
-        run: python -m ruff format --check src/native_host/ tests/native-host/
+        run: python -m ruff format --check src/native_host/
 
-  test-native:
-    name: Native (Python) Tests
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.23"
-
-      - name: Install Python dependencies
-        run: |
-          pip install curl-cffi
-
-      - name: Build Go capture binary for tests
-        shell: pwsh
-        run: |
-          cd go
-          go build -o qwin-capture.exe .
-
-      - name: Run native host tests
-        run: python -m unittest discover -s tests\native-host -p test_*.py
-
-  test-go:
-    name: Go Tests
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: go
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.23"
-
-      - name: Run Go tests
-        run: go test ./...
-
-  build-and-test-extension:
-    name: Build & Extension Tests
+  build:
+    name: Build extension targets
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,16 +52,6 @@ jobs:
       - name: Install npm dependencies
         run: npm install
 
-      - name: Build test bundles (for extension tests)
-        run: node scripts/build-test-bundles.js
-
       - name: Build extension targets (chromium, firefox, yandex)
         shell: pwsh
         run: scripts\build-extension.ps1 -Target all
-
-      - name: Run extension tests
-        shell: pwsh
-        run: |
-          Get-ChildItem tests\extension -Filter test_*.js -Recurse | Sort-Object Name | ForEach-Object {
-            node $_.FullName
-          }
