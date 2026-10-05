@@ -5,6 +5,10 @@ node_modules/
 tools/
 dist/
 
+# Runtime download logs (may contain URLs; must never be committed)
+src/logs/
+logs/
+
 # Packaging / build artifacts
 packaging/installer-source/
 build/
