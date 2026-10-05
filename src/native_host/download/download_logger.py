@@ -22,35 +22,25 @@ PROBE_WIN           — A winning backend was selected.
 PROBE_ALL_FAIL      — All probes failed."""
 
 import json
-import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from log_utils import _normalize_exit_code, _redact_obj, _redact_str, clean_tail, maybe_rotate, resolve_log_path
+
+__all__ = ["DownloadLogger", "get_logger", "_redact_str"]
+
 
 def _default_log_path() -> Path:
     """Resolve the default log file path.
 
-    In development, logs are written to <project-root>/logs/downloads.jsonl.
-    The project root is determined by walking up from this file's location
-    (src/native_host/download_logger.py → src/native_host/ → src/ → project root).
-
-    If the resolved path is not writable (e.g. installed read-only), falls
-    back to %TEMP%\\qwin_logs\\downloads.jsonl.
+    Development logs go to `<repo-root>/src/logs/downloads.jsonl`
+    (see `log_utils.resolve_log_path` — the root is found by marker, not
+    by counting parents). Falls back to `%TEMP%\\qwin_logs\\` when the
+    tree is not writable.
     """
-    try:
-        project_root = Path(__file__).resolve().parent.parent.parent
-        log_dir = project_root / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        test_file = log_dir / ".qwin_write_test"
-        test_file.write_text("")
-        test_file.unlink()
-        return log_dir / "downloads.jsonl"
-    except (OSError, PermissionError):
-        fallback_dir = Path(os.environ.get("TEMP", os.environ.get("TMPDIR", "/tmp"))) / "qwin_logs"
-        fallback_dir.mkdir(parents=True, exist_ok=True)
-        return fallback_dir / "downloads.jsonl"
+    return resolve_log_path("downloads.jsonl")
 
 
 class DownloadLogger:
@@ -118,6 +108,10 @@ class DownloadLogger:
 
     def attempt_start(self, download_id: str, attempt_num: int, label: str, command: list[str]) -> None:
         """Log that a new subprocess attempt is starting."""
+        # Re-created per attempt: attempt_end() pops the buffer, so without
+        # this every attempt after the first would log no output at all
+        # (attempt_line drops lines when the key is missing).
+        self._output_lines[download_id] = []
         self._write(
             {
                 "event": "ATTEMPT_START",
@@ -138,20 +132,38 @@ class DownloadLogger:
         if lines is not None:
             lines.append(line)
 
-    def attempt_end(self, download_id: str, attempt_num: int, exit_code: int) -> None:
+    def attempt_end(
+        self,
+        download_id: str,
+        attempt_num: int,
+        exit_code: int,
+        recent_lines: list[str] | None = None,
+    ) -> None:
         """Log that a subprocess attempt finished with an exit code.
 
         Also flushes the buffered output lines as a single entry so they
-        appear together in the log.
+        appear together in the log. On failure the tail of `recent_lines`
+        (DownloadTask.recent_lines, the un-collapsed last 25 lines) is logged
+        instead of just the StageLogCollapser first/last pair — a failure
+        needs the tail, and DIAG lines are kept either way. Progress
+        repaints carry no errors, so they are filtered out of the tail.
         """
         lines = self._output_lines.pop(download_id, [])
-        entry = {
+        self._output_lines[download_id] = []
+        entry: dict = {
             "event": "ATTEMPT_END",
             "downloadId": download_id,
             "attemptNumber": attempt_num,
             "exitCode": exit_code,
         }
-        if lines:
+        entry.update(_normalize_exit_code(exit_code))
+        if exit_code != 0 and recent_lines:
+            tail = [str(line) for line in recent_lines if str(line)]
+            diag = [line for line in lines if line.startswith("[DIAG]")]
+            output = "\n".join([*diag, *clean_tail(tail)])
+            if output:
+                entry["output"] = output
+        elif lines:
             # Join all lines into a single string with newline separators
             entry["output"] = "\n".join(lines)
         self._write(entry)
@@ -196,8 +208,18 @@ class DownloadLogger:
             }
         )
 
-    def error(self, download_id: str, error_text: str, duration_seconds: float = 0.0) -> None:
+    def error(
+        self,
+        download_id: str,
+        error_text: str,
+        duration_seconds: float = 0.0,
+        attempt_number: int | None = None,
+    ) -> None:
         """Log a failed download with the full error text.
+
+        `attempt_number` links the outcome to its ATTEMPT_END entry, which
+        already holds the per-attempt output — readers join on
+        downloadId + attemptNumber instead of re-reading duplicated text.
 
         No-op if a terminal event was already logged for this download_id.
         """
@@ -205,14 +227,15 @@ class DownloadLogger:
             if download_id in self._terminated:
                 return
             self._terminated.add(download_id)
-        self._write(
-            {
-                "event": "DOWNLOAD_ERROR",
-                "downloadId": download_id,
-                "error": error_text,
-                "durationSeconds": round(duration_seconds, 1),
-            }
-        )
+        entry: dict = {
+            "event": "DOWNLOAD_ERROR",
+            "downloadId": download_id,
+            "error": error_text,
+            "durationSeconds": round(duration_seconds, 1),
+        }
+        if attempt_number is not None:
+            entry["attemptNumber"] = attempt_number
+        self._write(entry)
 
     def cancel(self, download_id: str, message: str = "") -> None:
         """Log a cancelled download.
@@ -243,11 +266,12 @@ class DownloadLogger:
 
     # ── Probe event helpers ────────────────────────────────────────────────
 
-    def probe_start(self, url: str, backends: list[str]) -> None:
+    def probe_start(self, url: str, backends: list[str], download_id: str = "") -> None:
         """Log that a parallel probe round was launched."""
         self._write(
             {
                 "event": "PROBE_START",
+                "downloadId": download_id,
                 "url": url,
                 "backends": backends,
             }
@@ -259,10 +283,12 @@ class DownloadLogger:
         ok: bool,
         duration_ms: int,
         error_type: str | None = None,
+        download_id: str = "",
     ) -> None:
         """Log an individual backend probe result."""
         entry: dict = {
             "event": "PROBE_RESULT",
+            "downloadId": download_id,
             "backend": backend,
             "ok": ok,
             "durationMs": duration_ms,
@@ -271,17 +297,18 @@ class DownloadLogger:
             entry["errorType"] = error_type
         self._write(entry)
 
-    def probe_win(self, backend: str, label: str) -> None:
+    def probe_win(self, backend: str, label: str, download_id: str = "") -> None:
         """Log the winning backend selected."""
         self._write(
             {
                 "event": "PROBE_WIN",
+                "downloadId": download_id,
                 "backend": backend,
                 "label": label,
             }
         )
 
-    def probe_all_fail(self, url: str, backends: list[str], errors: list) -> None:
+    def probe_all_fail(self, url: str, backends: list[str], errors: list, download_id: str = "") -> None:
         """Log that all probes failed, with aggregated error details.
 
         Parameters
@@ -312,6 +339,7 @@ class DownloadLogger:
         self._write(
             {
                 "event": "PROBE_ALL_FAIL",
+                "downloadId": download_id,
                 "url": url,
                 "backends": backends,
                 "errors": error_dicts,
@@ -323,11 +351,16 @@ class DownloadLogger:
     def _write(self, entry: dict) -> None:
         """Append a single JSON entry to the log file.
 
-        Thread-safe via an instance lock.
+        Thread-safe via an instance lock. Secrets are redacted before the
+        write so Cookie/Authorization values and signed-URL tokens never
+        reach the gitignored log. The file is rotated to its newest lines
+        when over budget, so it cannot grow without bound.
         """
+        entry = _redact_obj(entry)
         entry["timestamp"] = datetime.now(timezone.utc).isoformat()
         with self._lock:
             try:
+                maybe_rotate(self._path)
                 with open(self._path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(entry, ensure_ascii=False, default=str))
                     f.write("\n")

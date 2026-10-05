@@ -11,12 +11,13 @@ from probe_runner import (
     probe_yt_dlp,
     run_parallel_probes,
 )
+from registry import register_handler
 from spotify_fallback import run_spotify_fallback_download
 
 from browser_context import write_cookie_file_from_headers, write_cookie_file_from_string
 from download_task import DownloadTask
 from native_paths import resolve_download_dir, validate_download_url
-from native_protocol import send_native_message
+from native_protocol import HostError, send_native_message
 from stream_backends import (
     build_ffmpeg_direct_command,
     build_n_m3u8dl_re_command,
@@ -46,6 +47,25 @@ def _active_downloads_lock():
 # ── Probe config building ────────────────────────────────────────────────
 
 
+def winner_output_path(backend, download_dir, message):
+    """Where a probe winner will write, or `""` when it reports its own path.
+
+    yt-dlp is the only backend that names its output on the wire — the
+    `after_move:__QWIN_FILEPATH__` print in `yt_dlp_command.py`, which
+    `parsers/ytdlp.py` turns into `final_path`. The stream backends all take
+    `-o stream_output_path(...)` and emit nothing the progress parser recognises, so
+    without this hint a stream download finishes with `filepath: ""`, and an empty
+    filepath is exactly what hides the popup's Open / Folder buttons
+    (`downloadActions` gates both on it).
+
+    Same value the Tier-2 chain attaches as `final_path` / `artifact_root` per
+    fallback attempt; the probe-winner branch used to drop it.
+    """
+    if backend == "yt-dlp":
+        return ""
+    return str(stream_output_path(download_dir, message.get("title") or "Video"))
+
+
 def _build_probe_configs(
     url,
     message,
@@ -61,20 +81,74 @@ def _build_probe_configs(
     audio_format=None,
     download_subtitles=True,
     headers_config_path=None,
-    temp_files=None,
 ):
     """Build the list of probe configs for parallel reachability checks.
 
-    Returns a list of ProbeConfig objects for all applicable backends:
+    List order is priority order — the probe runner takes the lowest-index probe
+    that reported ok, so the stream backends lead and yt-dlp is the catch-all:
 
-    - yt-dlp: Always included (primary extractor)
-    - N_m3u8DL-RE: Only for stream manifest URLs
-    - Streamlink: Only for stream manifest URLs
+    - N_m3u8DL-RE: For stream manifest URLs, when the binary resolves
+    - Streamlink: For stream manifest URLs, when the command resolves
+    - yt-dlp: Always included (last resort extractor)
+
+    Each ProbeConfig also carries the command line that backend would actually
+    download with, and it is the SAME one run_download()'s Tier-2 fallback chain
+    reuses — build it once here, then read it back off the config by backend id.
     """
     probes = []
-    requested_backend = str(message.get("backend") or "auto").lower()
 
-    # 1. yt-dlp — always participates
+    # Hoisted: both stream backends below key off the same manifest check and
+    # write to the same output path.
+    is_stream = is_stream_manifest_url(url, message.get("format"))
+    final_path = stream_output_path(download_dir, message.get("title") or "Video")
+
+    # 1. N_m3u8DL-RE — for stream manifest URLs
+    if n_m3u8dl_re_location and is_stream:
+        probes.append(
+            ProbeConfig(
+                backend="n_m3u8dl_re",
+                label="N_m3u8DL-RE",
+                probe_fn=lambda u, ce: probe_n_m3u8dl_re(
+                    url=u,
+                    cancel_event=ce,
+                    n_m3u8dl_re_location=n_m3u8dl_re_location,
+                    request_headers=request_headers,
+                ),
+                command=build_n_m3u8dl_re_command(
+                    url=url,
+                    output_path=final_path,
+                    request_headers=request_headers,
+                    n_m3u8dl_re_location=n_m3u8dl_re_location,
+                    ffmpeg_location=ffmpeg_location,
+                ),
+            )
+        )
+
+    # 2. Streamlink — for stream manifest URLs
+    if streamlink_command and is_stream:
+        probes.append(
+            ProbeConfig(
+                backend="streamlink",
+                label="Streamlink",
+                probe_fn=lambda u, ce: probe_streamlink(
+                    url=u,
+                    cancel_event=ce,
+                    streamlink_command=streamlink_command,
+                    request_headers=request_headers,
+                    cookies_file=cookies_file,
+                ),
+                command=build_streamlink_command(
+                    url=url,
+                    output_path=final_path,
+                    request_headers=request_headers,
+                    cookies_file=cookies_file,
+                    streamlink_command=streamlink_command,
+                    ffmpeg_location=ffmpeg_location,
+                ),
+            )
+        )
+
+    # 3. yt-dlp — always participates, as the catch-all
     probes.append(
         ProbeConfig(
             backend="yt-dlp",
@@ -84,6 +158,10 @@ def _build_probe_configs(
                 cancel_event=ce,
                 yt_dlp_command=yt_dlp_command,
                 ffmpeg_location=ffmpeg_location,
+                request_headers=request_headers,
+                cookies_file=cookies_file,
+                referer=message.get("pageUrl"),
+                user_agent=message.get("userAgent"),
             ),
             command=build_yt_dlp_command(
                 url=url,
@@ -104,63 +182,13 @@ def _build_probe_configs(
         )
     )
 
-    # 2. N_m3u8DL-RE — for stream manifest URLs
-    if (
-        requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"}
-        and n_m3u8dl_re_location
-        and is_stream_manifest_url(url, message.get("format"))
-    ):
-        probes.append(
-            ProbeConfig(
-                backend="n_m3u8dl_re",
-                label="N_m3u8DL-RE",
-                probe_fn=lambda u, ce: probe_n_m3u8dl_re(
-                    url=u,
-                    cancel_event=ce,
-                    n_m3u8dl_re_location=n_m3u8dl_re_location,
-                ),
-                command=build_n_m3u8dl_re_command(
-                    url=url,
-                    output_path=stream_output_path(download_dir, message.get("title") or "Video"),
-                    request_headers=request_headers,
-                    n_m3u8dl_re_location=n_m3u8dl_re_location,
-                    ffmpeg_location=ffmpeg_location,
-                ),
-            )
-        )
-
-    # 3. Streamlink — for stream manifest URLs
-    if (
-        requested_backend in {"auto", "streamlink"}
-        and streamlink_command
-        and is_stream_manifest_url(url, message.get("format"))
-    ):
-        probes.append(
-            ProbeConfig(
-                backend="streamlink",
-                label="Streamlink",
-                probe_fn=lambda u, ce: probe_streamlink(
-                    url=u,
-                    cancel_event=ce,
-                    streamlink_command=streamlink_command,
-                ),
-                command=build_streamlink_command(
-                    url=url,
-                    output_path=stream_output_path(download_dir, message.get("title") or "Video"),
-                    request_headers=request_headers,
-                    cookies_file=cookies_file,
-                    streamlink_command=streamlink_command,
-                    ffmpeg_location=ffmpeg_location,
-                ),
-            )
-        )
-
     return probes
 
 
 # ── Main download orchestration ──────────────────────────────────────────
 
 
+@register_handler("download")
 def run_download(
     message,
     task_class=DownloadTask,
@@ -268,7 +296,6 @@ def run_download(
         audio_format=audio_format,
         download_subtitles=download_subtitles,
         headers_config_path=headers_config_path,
-        temp_files=temp_files,
     )
 
     probe_result = probe_runner_fn(
@@ -277,46 +304,33 @@ def run_download(
         cancel_event=cancel_event,
         send_message=lambda msg: send_native_message({**msg, "id": request_id}),
         logger=logger,
+        download_id=request_id,
     )
 
-    # If a winner was found, use it directly with empty fallbacks
-    if probe_result.winner is not None and probe_result.command is not None:
-        task = task_class(
-            message=message,
-            command=probe_result.command,
-            fallback_command=None,
-            fallback_commands=[],
-            download_dir=download_dir,
-            temp_files=temp_files,
-        )
-        with _active_downloads_lock():
-            ACTIVE_DOWNLOADS[request_id] = task
-        task.start()
-        return
-
     # ---- Sequential fallback chain (Tier 2) --------------------------------------
-    command = build_yt_dlp_command(**build_command_kwargs({"aria2c_location": aria2c_location}))
-    fallback_command = None
+    # The probe phase already built every command line; read them back instead of
+    # rebuilding, so probing and falling back can never disagree on the command.
+    by_backend = {config.backend: config.command for config in probe_configs}
+    is_stream = is_stream_manifest_url(url, message.get("format"))
+    final_path = stream_output_path(download_dir, message.get("title") or "Video")
+
+    # A probe proves the manifest is fetchable, not that its segments download
+    # (N_m3u8DL-RE's is `--skip-download`: parse the playlist, stop). A hotlink-
+    # protected CDN can still reject the segment request -- a Pornhub CDN answers
+    # 471 -- so the winner is the *first* attempt and the rest of the chain stays
+    # behind it. Returning early here with `fallback_commands=[]` made that a dead
+    # end: one attempt, then the raw tool stdout surfaced as the error text.
+    winner_backend = probe_result.winner
+    command = probe_result.command or by_backend["yt-dlp"]
+    primary_final_path = winner_output_path(winner_backend, download_dir, message) if winner_backend else ""
 
     fallback_commands = []
-    requested_backend = str(message.get("backend") or "auto").lower()
 
     # 1. N_m3u8DL-RE for HLS/DASH manifest URLs
-    if (
-        requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"}
-        and n_m3u8dl_re_location
-        and is_stream_manifest_url(url, message.get("format"))
-    ):
-        final_path = stream_output_path(download_dir, message.get("title") or "Video")
+    if "n_m3u8dl_re" in by_backend and winner_backend != "n_m3u8dl_re":
         fallback_commands.append(
             {
-                "command": build_n_m3u8dl_re_command(
-                    url=url,
-                    output_path=final_path,
-                    request_headers=request_headers,
-                    n_m3u8dl_re_location=n_m3u8dl_re_location,
-                    ffmpeg_location=ffmpeg_location,
-                ),
+                "command": by_backend["n_m3u8dl_re"],
                 "label": "N_m3u8DL-RE",
                 "final_path": str(final_path),
                 "artifact_root": str(final_path.parent),
@@ -324,36 +338,27 @@ def run_download(
         )
 
     # 2. yt-dlp strategy variants
+    #    Marked `"variant"` so DownloadTask.next_attempt_index can skip the whole
+    #    contiguous block on an error no variant can fix (an expired signed URL).
     fallback_commands.extend(
-        build_yt_dlp_fallback_variants(**build_command_kwargs({"aria2c_location": aria2c_location}))
+        {**variant, "variant": True}
+        for variant in build_yt_dlp_fallback_variants(**build_command_kwargs({"aria2c_location": aria2c_location}))
     )
 
     # 3. Streamlink for live-stream / HLS manifest URLs
-    if (
-        requested_backend in {"auto", "streamlink"}
-        and streamlink_command
-        and is_stream_manifest_url(url, message.get("format"))
-    ):
-        final_path = stream_output_path(download_dir, message.get("title") or "Video")
+    if "streamlink" in by_backend and winner_backend != "streamlink":
         fallback_commands.append(
             {
-                "command": build_streamlink_command(
-                    url=url,
-                    output_path=final_path,
-                    request_headers=request_headers,
-                    cookies_file=cookies_file,
-                    streamlink_command=streamlink_command,
-                    ffmpeg_location=ffmpeg_location,
-                ),
+                "command": by_backend["streamlink"],
                 "label": "Streamlink",
                 "final_path": str(final_path),
                 "artifact_root": str(final_path.parent),
             }
         )
 
-    # 4. ffmpeg direct stream copy
-    if is_stream_manifest_url(url, message.get("format")):
-        final_path = stream_output_path(download_dir, message.get("title") or "Video")
+    # 4. ffmpeg direct stream copy — the one stream command with no probe, so it is
+    #    built here. No binary-resolution gate: it runs on any stream manifest.
+    if is_stream:
         fallback_commands.append(
             {
                 "command": build_ffmpeg_direct_command(
@@ -378,11 +383,26 @@ def run_download(
     task = task_class(
         message=message,
         command=command,
-        fallback_command=fallback_command,
         fallback_commands=fallback_commands,
         download_dir=download_dir,
         temp_files=temp_files,
+        final_path=primary_final_path,
     )
     with _active_downloads_lock():
         ACTIVE_DOWNLOADS[request_id] = task
     task.start()
+
+
+# One function, three message types: the action *is* the message type on the wire.
+# Each stacked registration keeps its own bound `action`, so HANDLERS holds three
+# distinct wrappers around this single implementation.
+@register_handler("pause", action="pause")
+@register_handler("resume", action="resume")
+@register_handler("cancel", action="cancel")
+def control_download(message, action, send=send_native_message):
+    request_id = str(message.get("id") or message.get("requestId") or "")
+    with _active_downloads_lock():
+        task = ACTIVE_DOWNLOADS.get(request_id)
+    if task is None:
+        raise HostError(f"No active download with id {request_id!r}.")
+    return send(getattr(task, action)())

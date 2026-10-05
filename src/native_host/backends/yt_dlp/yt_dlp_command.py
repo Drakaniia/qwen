@@ -1,3 +1,4 @@
+from functools import partial
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -18,39 +19,16 @@ AUDIO_FORMAT_MAP = {
 DEFAULT_FORMAT_SELECTOR = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b"
 AUDIO_FORMAT_SELECTOR = "ba[ext=m4a]/ba[ext=mp3]/ba/best"
 
-# ── aria2c argument allowlist ─────────────────────────────────────────────
-
-# Strict allowlist of known-safe aria2c arguments.
-# Only arguments in this set may be passed via --downloader-args.
-# This prevents injection attacks via --on-download-complete or other
-# dangerous flags that could lead to arbitrary command execution.
-ARIA2C_ALLOWED_ARGS = frozenset(
-    {
-        "--max-connection-per-server",
-        "--split",
-        "--min-split-size",
-        "--continue",
-        "--file-allocation",
-        "--max-tries",
-        "--retry-wait",
-        "--summary-interval",
-        "--async-dns",
-    }
-)
-
 
 def build_aria2c_downloader_args(connection_count):
-    """Build a validated aria2c argument string for yt-dlp's --downloader-args.
+    """Build the "aria2c:<args>" string ready for yt-dlp.
 
-    Each argument name is validated against ARIA2C_ALLOWED_ARGS.
-    Arguments are constructed as structured key=value pairs, not string
-    concatenation, to prevent injection via connection_count.
-
-    Returns the "aria2c:<args>" string ready for yt-dlp.
+    Structured key=value pairs, never string concatenation. The flag names are
+    literals in this function and the one value is already a bounded int from the
+    caller, so there is nothing here an input could inject into.
     """
-    args = [
-        ("--max-connection-per-server", str(connection_count)),
-        ("--split", str(connection_count)),
+    args = (
+        ("--max-connection-per-server", connection_count),
         ("--min-split-size", "1M"),
         ("--continue", "true"),
         ("--file-allocation", "none"),
@@ -58,11 +36,7 @@ def build_aria2c_downloader_args(connection_count):
         ("--retry-wait", "2"),
         ("--summary-interval", "1"),
         ("--async-dns", "true"),
-    ]
-    # Validate every argument name against the strict allowlist
-    for arg_name, _arg_value in args:
-        if arg_name not in ARIA2C_ALLOWED_ARGS:
-            raise ValueError(f"Disallowed aria2c argument: {arg_name}")
+    )
     return "aria2c:" + " ".join(f"{k}={v}" for k, v in args)
 
 
@@ -244,7 +218,8 @@ def build_yt_dlp_command(
     return command
 
 
-def build_flat_playlist_command(
+def _build_probe_command(
+    flags,
     url,
     referer=None,
     user_agent=None,
@@ -255,25 +230,16 @@ def build_flat_playlist_command(
     nocheckcertificate=False,
     headers_config_path=None,
 ):
-    """Build a yt-dlp command to enumerate playlist items via --flat-playlist.
+    """Build a metadata-only yt-dlp command from a flag list.
 
-    Unlike build_formats_command which uses ``--no-playlist`` and returns
-    a single JSON blob for one video, this command uses ``--flat-playlist``
-    and returns one JSON line per playlist item. This allows the caller
-    to enumerate all items in a playlist.
+    Shared by build_flat_playlist_command and build_formats_command, which differ
+    only in `flags`. Every flag after --ignore-config is theirs, so the list is
+    passed through verbatim (including the order of --skip-download and
+    --no-check-formats) rather than normalised.
 
     Returns a list of command arguments suitable for subprocess.Popen.
     """
-    command = [
-        *(yt_dlp_command or ["yt-dlp"]),
-        "--ignore-config",
-        "--flat-playlist",
-        "--dump-json",
-        "--no-warnings",
-        "--no-color",
-        "--skip-download",
-        "--no-check-formats",
-    ]
+    command = [*(yt_dlp_command or ["yt-dlp"]), "--ignore-config", *flags]
     if nocheckcertificate:
         command.append("--no-check-certificate")
     append_youtube_ejs_options(command, url)
@@ -294,45 +260,20 @@ def build_flat_playlist_command(
     return command
 
 
-def build_formats_command(
-    url,
-    referer=None,
-    user_agent=None,
-    request_headers=None,
-    cookies_file=None,
-    yt_dlp_command=None,
-    ffmpeg_location=None,
-    nocheckcertificate=False,
-    headers_config_path=None,
-):
-    command = [
-        *(yt_dlp_command or ["yt-dlp"]),
-        "--ignore-config",
-        "--dump-single-json",
-        "--no-warnings",
-        "--no-color",
-        "--no-playlist",
-        "--no-check-formats",
-        "--skip-download",
-    ]
-    if nocheckcertificate:
-        command.append("--no-check-certificate")
-    append_youtube_ejs_options(command, url)
-    append_generic_impersonation_options(command)
+# Enumerate playlist items: --flat-playlist emits one JSON line per item, unlike
+# build_formats_command which uses --no-playlist and returns a single JSON blob
+# for one video, so the caller can enumerate every item in a playlist.
+build_flat_playlist_command = partial(
+    _build_probe_command,
+    ["--flat-playlist", "--dump-json", "--no-warnings", "--no-color", "--skip-download", "--no-check-formats"],
+)
 
-    if ffmpeg_location:
-        command.extend(["--ffmpeg-location", str(ffmpeg_location)])
-    append_browser_context_options(
-        command,
-        referer=referer,
-        user_agent=user_agent,
-        request_headers=request_headers,
-        cookies_file=cookies_file,
-        headers_config_path=headers_config_path,
-    )
-
-    command.append(url)
-    return command
+# One video: a single --dump-single-json blob, with --no-playlist so a playlist
+# URL cannot expand into many items.
+build_formats_command = partial(
+    _build_probe_command,
+    ["--dump-single-json", "--no-warnings", "--no-color", "--no-playlist", "--no-check-formats", "--skip-download"],
+)
 
 
 def human_size(num_bytes):
@@ -572,7 +513,24 @@ def build_yt_dlp_fallback_variants(**build_kwargs):
     All variants keep the original ``aria2c_location`` so aria2c is always
     used for fast segmented downloads.
     """
+    # build_yt_dlp_command is deterministic, so build the base argv once and copy
+    # it per variant — each variant then changes exactly one flag. The
+    # --no-check-certificate and --concurrent-fragments variants rebuild instead:
+    # --no-check-certificate is appended mid-list by the builder, and
+    # --concurrent-fragments is a value swap, not an addition.
+    base = build_yt_dlp_command(**build_kwargs)
     variants = []
+
+    # 0 — No subtitles. `--sub-langs all` fans out to dozens of subtitle requests;
+    # when one answers 429 yt-dlp exits 1 without writing the video, and every
+    # variant below keeps the same subtitle flags, so the chain burns ~150s
+    # retrying the identical failing subs fetch. The bare video runs second and
+    # rescues the download; a non-subtitle failure pays one short attempt instead.
+    # Skipped when the base already carries no subtitle flags (subtitles off or
+    # audio extract), where it would duplicate the base command.
+    no_subs_cmd = build_yt_dlp_command(**{**build_kwargs, "download_subtitles": False})
+    if no_subs_cmd != base:
+        variants.append({"command": no_subs_cmd, "label": "yt-dlp (no subtitles)"})
 
     # 1 — No SSL certificate verification (server-side SSL issues)
     variants.append(
@@ -583,17 +541,12 @@ def build_yt_dlp_fallback_variants(**build_kwargs):
     )
 
     # 2 — Geo-bypass (region-locked content)
-    geo_cmd = build_yt_dlp_command(**build_kwargs)
+    geo_cmd = list(base)
     geo_cmd.insert(geo_cmd.index("--ignore-config") + 1, "--geo-bypass")
-    variants.append(
-        {
-            "command": geo_cmd,
-            "label": "yt-dlp (geo bypass)",
-        }
-    )
+    variants.append({"command": geo_cmd, "label": "yt-dlp (geo bypass)"})
 
     # 3 — No impersonate (generic extractor fallback)
-    no_imp_cmd = build_yt_dlp_command(**build_kwargs)
+    no_imp_cmd = list(base)
     # Remove the --extractor-args generic:impersonate flag
     try:
         eargs_idx = next(
@@ -611,31 +564,12 @@ def build_yt_dlp_fallback_variants(**build_kwargs):
     except StopIteration:
         pass
     if no_imp_cmd != variants[0]["command"] and no_imp_cmd != geo_cmd:
-        variants.append(
-            {
-                "command": no_imp_cmd,
-                "label": "yt-dlp (no impersonate)",
-            }
-        )
+        variants.append({"command": no_imp_cmd, "label": "yt-dlp (no impersonate)"})
 
     # 4 — Maximum retries for transient failures
-    retry_cmd = build_yt_dlp_command(**build_kwargs)
-    retry_cmd.extend(
-        [
-            "--retries",
-            "infinite",
-            "--fragment-retries",
-            "infinite",
-            "--extractor-retries",
-            "10",
-        ]
-    )
-    variants.append(
-        {
-            "command": retry_cmd,
-            "label": "yt-dlp (max retries)",
-        }
-    )
+    retry_cmd = list(base)
+    retry_cmd.extend(["--retries", "infinite", "--fragment-retries", "infinite", "--extractor-retries", "10"])
+    variants.append({"command": retry_cmd, "label": "yt-dlp (max retries)"})
 
     # 5 — Single-threaded fragments (servers blocking concurrent downloads)
     single_cmd = build_yt_dlp_command(**{**build_kwargs, "concurrent_fragments": 1})
@@ -647,27 +581,17 @@ def build_yt_dlp_fallback_variants(**build_kwargs):
     )
 
     # 6 — Force generic extractor (when the site-specific extractor misbehaves)
-    generic_cmd = build_yt_dlp_command(**build_kwargs)
+    generic_cmd = list(base)
     generic_cmd.insert(generic_cmd.index("--ignore-config") + 1, "--force-generic-extractor")
-    variants.append(
-        {
-            "command": generic_cmd,
-            "label": "yt-dlp (generic extractor)",
-        }
-    )
+    variants.append({"command": generic_cmd, "label": "yt-dlp (generic extractor)"})
 
     # 7 — Throttled-rate detection (when the server throttles the connection)
     # yt-dlp monitors the download rate and detects when the server is
     # artificially throttling the connection. When detected, it reconnects
     # to bypass the throttle. 100K is a conservative threshold that catches
     # most throttling without false positives on slow connections.
-    throttle_cmd = build_yt_dlp_command(**build_kwargs)
+    throttle_cmd = list(base)
     throttle_cmd.extend(["--throttled-rate", "100K"])
-    variants.append(
-        {
-            "command": throttle_cmd,
-            "label": "yt-dlp (throttle detect)",
-        }
-    )
+    variants.append({"command": throttle_cmd, "label": "yt-dlp (throttle detect)"})
 
     return variants

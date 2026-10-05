@@ -1,16 +1,8 @@
 import json
 import subprocess
 import tempfile
-import threading
 
-from download_logger import get_logger
-from probe_runner import (
-    ProbeConfig,
-    probe_n_m3u8dl_re,
-    probe_streamlink,
-    probe_yt_dlp,
-    run_parallel_probes,
-)
+from registry import register_handler
 from spotify_metadata import is_spotify_url
 from spotify_resolver import resolve_spotify_formats
 
@@ -18,7 +10,6 @@ from browser_context import remove_temp_files, write_cookie_file_from_headers
 from native_paths import validate_download_url
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
-from stream_backends import is_stream_manifest_url
 from yt_dlp_command import (
     build_flat_playlist_command,
     build_formats_command,
@@ -27,86 +18,11 @@ from yt_dlp_command import (
 )
 from yt_dlp_dependencies import (
     resolve_ffmpeg_location,
-    resolve_n_m3u8dl_re_location,
-    resolve_streamlink_command,
     resolve_yt_dlp_command,
 )
 
 
-def _build_probe_configs_for_formats(
-    url,
-    message,
-    request_headers,
-    cookies_file,
-    yt_dlp_command,
-    ffmpeg_location,
-    n_m3u8dl_re_location,
-    streamlink_command,
-):
-    """Build probe configs for parallel reachability checks during format enumeration.
-
-    Similar to download_manager._build_probe_configs but simplified for format-only
-    checks (no download commands needed, just backend detection).
-    """
-    probes = []
-    requested_backend = str(message.get("backend") or "auto").lower()
-
-    # 1. yt-dlp — always participates
-    probes.append(
-        ProbeConfig(
-            backend="yt-dlp",
-            label="yt-dlp (format check)",
-            probe_fn=lambda u, ce: probe_yt_dlp(
-                url=u,
-                cancel_event=ce,
-                yt_dlp_command=yt_dlp_command,
-                ffmpeg_location=ffmpeg_location,
-            ),
-            command=None,  # No download command needed for format check
-        )
-    )
-
-    # 2. N_m3u8DL-RE — for stream manifest URLs
-    if (
-        requested_backend in {"auto", "n_m3u8dl-re", "n_m3u8dl_re", "n-m3u8dl-re"}
-        and n_m3u8dl_re_location
-        and is_stream_manifest_url(url, message.get("format"))
-    ):
-        probes.append(
-            ProbeConfig(
-                backend="n_m3u8dl_re",
-                label="N_m3u8DL-RE",
-                probe_fn=lambda u, ce: probe_n_m3u8dl_re(
-                    url=u,
-                    cancel_event=ce,
-                    n_m3u8dl_re_location=n_m3u8dl_re_location,
-                ),
-                command=None,
-            )
-        )
-
-    # 3. Streamlink — for stream manifest URLs
-    if (
-        requested_backend in {"auto", "streamlink"}
-        and streamlink_command
-        and is_stream_manifest_url(url, message.get("format"))
-    ):
-        probes.append(
-            ProbeConfig(
-                backend="streamlink",
-                label="Streamlink",
-                probe_fn=lambda u, ce: probe_streamlink(
-                    url=u,
-                    cancel_event=ce,
-                    streamlink_command=streamlink_command,
-                ),
-                command=None,
-            )
-        )
-
-    return probes
-
-
+@register_handler("formats")
 def run_format_list(
     message,
     send=send_native_message,
@@ -130,38 +46,11 @@ def run_format_list(
     headers_config.close()  # close so yt-dlp can read it; we remove it in finally
     temp_files.append(headers_config_path)
 
-    # ---- Parallel probe phase for format enumeration --------------------------------
-    # Run parallel probes to detect compatible backends before format enumeration
-    # This allows us to skip slow yt-dlp format checks if a faster backend is available
+    # No probe phase here: it duplicated the yt-dlp extraction that execute_yt_dlp()
+    # does immediately below, and its only wire effect was progress messages tagged
+    # with this request id, which native_requests.js resolves on as the response.
     yt_dlp_command = yt_dlp_command_resolver()
     ffmpeg_location = ffmpeg_location_resolver()
-    n_m3u8dl_re_location = resolve_n_m3u8dl_re_location()
-    streamlink_command = resolve_streamlink_command()
-
-    cancel_event = threading.Event()
-    logger = get_logger()
-
-    probe_configs = _build_probe_configs_for_formats(
-        url=url,
-        message=message,
-        request_headers=request_headers,
-        cookies_file=cookies_file,
-        yt_dlp_command=yt_dlp_command,
-        ffmpeg_location=ffmpeg_location,
-        n_m3u8dl_re_location=n_m3u8dl_re_location,
-        streamlink_command=streamlink_command,
-    )
-
-    run_parallel_probes(
-        url=url,
-        probes=probe_configs,
-        cancel_event=cancel_event,
-        send_message=lambda msg: send({**msg, "id": request_id}),
-        logger=logger,
-    )
-
-    # If a probe winner was found, we can use that information to optimize format enumeration
-    # For now, we still run yt-dlp for formats but the probe result gives us backend hints
 
     def execute_yt_dlp(nocheckcertificate=False):
         command = build_formats_command(
@@ -235,6 +124,7 @@ def run_format_list(
         send({"type": "formats", "id": request_id, **summarize_formats(info)})
 
 
+@register_handler("enumeratePlaylist")
 def run_playlist_enumeration(
     message,
     send=send_native_message,

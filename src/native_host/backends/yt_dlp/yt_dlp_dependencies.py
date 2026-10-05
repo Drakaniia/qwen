@@ -45,25 +45,32 @@ def resolve_ffmpeg_location(imageio_resolver=None):
     raise HostError("ffmpeg is not installed. Run scripts/install.sh, then restart your browser.")
 
 
-def resolve_aria2c_location(local_aria2c=None):
-    configured = os.environ.get("QWIN_ARIA2C")
+def _resolve_bundled_tool(env_var, which_names, bundled, override=None):
+    """Resolve one external helper: env override -> PATH -> bundled copy.
+
+    Returns the resolved path as a string, or None when the tool is missing.
+    An env override that still holds unexpanded ``%VAR%`` after expansion counts
+    as unset, so a Windows path pasted with unresolved placeholders falls through
+    to PATH instead of silently resolving to nothing.
+    """
+    configured = os.environ.get(env_var)
     if configured:
         expanded = os.path.expandvars(os.path.expanduser(configured))
         if has_unexpanded_env_vars(expanded):
             return None
-        configured_path = Path(expanded)
-        if configured_path.exists():
-            return str(configured_path)
+        if Path(expanded).exists():
+            return str(Path(expanded))
 
-    executable = shutil.which("aria2c")
-    if executable:
-        return executable
+    for name in which_names:
+        if executable := shutil.which(name):
+            return executable
 
-    bundled = LOCAL_ARIA2C if local_aria2c is None else Path(local_aria2c)
-    if bundled.exists():
-        return str(bundled)
+    bundled_path = bundled if override is None else Path(override)
+    return str(bundled_path) if bundled_path.exists() else None
 
-    return None
+
+def resolve_aria2c_location(local_aria2c=None):
+    return _resolve_bundled_tool("QWIN_ARIA2C", ("aria2c",), LOCAL_ARIA2C, local_aria2c)
 
 
 def require_aria2c_location(local_aria2c=None):
@@ -83,24 +90,9 @@ def require_aria2c_location(local_aria2c=None):
 
 
 def resolve_n_m3u8dl_re_location(local_n_m3u8dl_re=None):
-    configured = os.environ.get("QWIN_N_M3U8DL_RE")
-    if configured:
-        expanded = os.path.expandvars(os.path.expanduser(configured))
-        if has_unexpanded_env_vars(expanded):
-            return None
-        configured_path = Path(expanded)
-        if configured_path.exists():
-            return str(configured_path)
-
-    executable = shutil.which("N_m3u8DL-RE") or shutil.which("N_m3u8DL-RE.exe")
-    if executable:
-        return executable
-
-    bundled = LOCAL_N_M3U8DL_RE if local_n_m3u8dl_re is None else Path(local_n_m3u8dl_re)
-    if bundled.exists():
-        return str(bundled)
-
-    return None
+    return _resolve_bundled_tool(
+        "QWIN_N_M3U8DL_RE", ("N_m3u8DL-RE", "N_m3u8DL-RE.exe"), LOCAL_N_M3U8DL_RE, local_n_m3u8dl_re
+    )
 
 
 def resolve_streamlink_command():

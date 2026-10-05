@@ -51,6 +51,11 @@ def build_n_m3u8dl_re_command(
     command = [
         str(n_m3u8dl_re_location or "N_m3u8DL-RE"),
         "--auto-select",
+        # Piped stdout disables the live grid, so HLS progress never arrives.
+        # --force-ansi-console keeps the rows flowing; --no-ansi-color keeps the
+        # tested no-spinner shape (parsers/n_m3u8dl_re.py strips ANSI anyway).
+        "--force-ansi-console",
+        "--no-ansi-color",
         "--thread-count",
         "32",
         "--download-retry-count",
@@ -79,6 +84,15 @@ def build_streamlink_command(
 ):
     command = [
         *(streamlink_command or ["streamlink"]),
+        # NOTE: `--json` is deliberately NOT passed, despite spec §3.2 / D5 proposing it.
+        # Verified in the installed streamlink_cli/console/console.py: `msg` and
+        # `msg_status` both `return` when `self.json` is set, and `Progress.update`
+        # writes through exactly those two -- and nothing calls `msg_json` for progress.
+        # So `--json` emits no progress object at all *and* suppresses the `[cli][info]` /
+        # `[download][info]` text that `download_task.py:353` turns into the user-facing
+        # error. It would trade real diagnostic text for nothing. See
+        # `download/parsers/streamlink.py`, which still parses the shape for a build that
+        # does emit it.
         "--retry-streams",
         "2",
         "--retry-max",
@@ -104,6 +118,18 @@ def build_streamlink_command(
     return command
 
 
+def ffmpeg_headers_args(request_headers):
+    """The ``-headers`` argument for ffmpeg, or ``[]`` when there is nothing to send.
+
+    ffmpeg takes the whole header block as one CRLF-joined string rather than
+    repeated ``-H`` flags (spec §4.2). Extracted out of
+    build_ffmpeg_direct_command() so the thumbnail grab and the download path
+    cannot drift apart on the join or on which headers survive the filter.
+    """
+    parts = [f"{header['name']}: {header['value']}" for header in clean_request_headers(request_headers)]
+    return ["-headers", "\r\n".join(parts)] if parts else []
+
+
 def build_ffmpeg_direct_command(
     url,
     output_path,
@@ -114,11 +140,14 @@ def build_ffmpeg_direct_command(
 
     Produces::
 
-        ffmpeg -headers <k:v pairs> -i <url> -c copy -y <output>
+        ffmpeg -progress pipe:2 -headers <k:v pairs> -i <url> -c copy -y <output>
 
     This is the simplest, most reliable way to download an HLS or DASH
     stream once the manifest URL has been intercepted. Used as a fallback
     before gallery-dl / yt-dlp-native steps.
+
+    `-progress pipe:2` (spec §3.3, D12) is what turns ffmpeg's stderr into a machine-readable
+    `key=value` stream. It needs no Popen change: stderr is already merged into stdout.
 
     Args:
         url: The stream manifest URL (m3u8, mpd, etc.).
@@ -130,18 +159,10 @@ def build_ffmpeg_direct_command(
     Returns:
         List of command-line arguments suitable for subprocess.Popen.
     """
-    command = [str(ffmpeg_location or "ffmpeg")]
+    command = [str(ffmpeg_location or "ffmpeg"), "-progress", "pipe:2"]
 
     # Build custom header string (ffmpeg accepts -headers for HTTP headers)
-    headers_parts = []
-    if request_headers:
-        for h in clean_request_headers(request_headers):
-            name = h["name"]
-            value = h["value"]
-            headers_parts.append(f"{name}: {value}")
-
-    if headers_parts:
-        command.extend(["-headers", "\r\n".join(headers_parts)])
+    command.extend(ffmpeg_headers_args(request_headers))
 
     command.extend(
         [

@@ -3,6 +3,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from registry import register_handler
+
 from native_paths import default_download_dir, has_unexpanded_env_vars, resolve_download_dir
 from native_protocol import HostError, send_native_message
 from process_control import creation_flags
@@ -19,6 +21,8 @@ def build_open_path_command(path, reveal=False):
     return [opener, str(target.parent if reveal else target)]
 
 
+@register_handler("openFile", reveal=False)
+@register_handler("showFile", reveal=True)
 def open_download_path(message, reveal=False):
     request_id = str(message.get("id") or message.get("requestId") or "")
     raw_path = str(message.get("path") or message.get("filepath") or "").strip()
@@ -165,6 +169,7 @@ def unique_delete_targets(message, allowed_root=None):
     return collapsed
 
 
+@register_handler("deleteArtifacts")
 def delete_download_artifacts(message, send=send_native_message):
     request_id = str(message.get("id") or message.get("requestId") or "")
     deleted = []

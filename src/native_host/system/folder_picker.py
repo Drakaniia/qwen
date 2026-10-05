@@ -3,8 +3,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from registry import register_handler
+
 from native_paths import default_download_dir, has_unexpanded_env_vars
-from native_protocol import HostError
+from native_protocol import HostError, folder_response, send_native_message
 from process_control import creation_flags
 
 
@@ -75,3 +77,9 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
 
 def choose_download_folder(initial_folder=None):
     return choose_download_folder_with_powershell(initial_folder_for_picker(initial_folder))
+
+
+@register_handler("chooseFolder")
+def handle_choose_folder(message, send=send_native_message):
+    selected = choose_download_folder(message.get("initialFolder"))
+    send(folder_response(message, selected))

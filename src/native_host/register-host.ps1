@@ -8,7 +8,7 @@
   no visible console window.
 
 .PARAMETER Browser
-  Browser name: chrome, edge, brave, yandex, chromium, firefox
+  Browser name: chrome, edge, brave, yandex, chromium
 
 .PARAMETER ManifestPath
   Full path to the native messaging manifest JSON file.
@@ -25,7 +25,7 @@
 
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet("chrome", "edge", "brave", "yandex", "chromium", "firefox")]
+  [ValidateSet("chrome", "edge", "brave", "yandex", "chromium")]
   [string]$Browser,
 
   [Parameter(Mandatory = $true)]
@@ -36,9 +36,7 @@ param(
 
   [string]$HostName = "com.qwin.video_downloader",
 
-  [string]$ExtensionId = $(if ($env:QWIN_EXTENSION_ID) { $env:QWIN_EXTENSION_ID } else { "dbjddokdmkodnkiaccmbjagfalmmmkmi" }),
-
-  [string]$FirefoxExtensionId = $(if ($env:QWIN_FIREFOX_EXTENSION_ID) { $env:QWIN_FIREFOX_EXTENSION_ID } else { "qwin-video-downloader@example.com" })
+  [string]$ExtensionId = $(if ($env:QWIN_EXTENSION_ID) { $env:QWIN_EXTENSION_ID } else { "dbjddokdmkodnkiaccmbjagfalmmmkmi" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,7 +48,6 @@ $registryPaths = @{
   brave    = "HKCU:\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\$HostName"
   yandex   = "HKCU:\Software\Yandex\YandexBrowser\NativeMessagingHosts\$HostName"
   chromium = "HKCU:\Software\Chromium\NativeMessagingHosts\$HostName"
-  firefox  = "HKCU:\Software\Mozilla\NativeMessagingHosts\$HostName"
 }
 
 $registryKey = $registryPaths[$Browser]
@@ -62,22 +59,12 @@ if (-not $registryKey) {
 $launcherPath = Join-Path $InstallDir "qwin_video_host.bat"
 
 # ── Write the manifest JSON ───────────────────────────────────────────────
-if ($Browser -eq "firefox") {
-  $manifest = [ordered]@{
-    name               = $HostName
-    description        = "Qwin Video Downloader native host"
-    path               = $launcherPath
-    type               = "stdio"
-    allowed_extensions = @($FirefoxExtensionId)
-  }
-} else {
-  $manifest = [ordered]@{
-    name            = $HostName
-    description     = "Qwin Video Downloader native host"
-    path            = $launcherPath
-    type            = "stdio"
-    allowed_origins = @("chrome-extension://$ExtensionId/")
-  }
+$manifest = [ordered]@{
+  name            = $HostName
+  description     = "Qwin Video Downloader native host"
+  path            = $launcherPath
+  type            = "stdio"
+  allowed_origins = @("chrome-extension://$ExtensionId/")
 }
 
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false

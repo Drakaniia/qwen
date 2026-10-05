@@ -55,44 +55,6 @@ def is_safe_resolved_path(resolved_path, allowed_bases=None):
     return False
 
 
-def validate_magnet_url(url):
-    """Validate that the URL is a legitimate magnet link."""
-    if not isinstance(url, str) or not url.strip():
-        raise HostError("Download request did not include a magnet URL.")
-    url = url.strip()
-    if not url.startswith("magnet:?xt=urn:"):
-        raise HostError("Invalid magnet link format. Magnet links should start with 'magnet:?xt=urn:btih:' or similar.")
-    xt_part = url.split("xt=urn:", 1)
-    if len(xt_part) < 2 or not xt_part[1]:
-        raise HostError("Magnet link is missing the info hash (xt=urn:btih:...).")
-    # Ensure there's actual hash content after the URN type prefix (e.g. "btih:")
-    remaining = xt_part[1]
-    hash_part = remaining.split("&", 1)[0] if "&" in remaining else remaining
-    hash_value = hash_part.split(":", 1)[1] if ":" in hash_part else ""
-    if not hash_value:
-        raise HostError("Magnet link is missing the info hash value (expected 40 hex chars after btih:).")
-    return url
-
-
-def validate_torrent_file(path):
-    """Validate that the path points to an existing local .torrent file.
-
-    Returns the resolved absolute path string on success.
-    """
-    if not isinstance(path, str) or not path.strip():
-        raise HostError("Download request did not include a .torrent file path.")
-
-    expanded = os.path.expandvars(os.path.expanduser(path.strip()))
-    if has_unexpanded_env_vars(expanded):
-        raise HostError("Torrent file path contains unexpanded environment variables.")
-    candidate = Path(expanded).resolve()
-    if candidate.suffix.lower() != ".torrent":
-        raise HostError("Selected file is not a .torrent file.")
-    if not candidate.is_file():
-        raise HostError(f"The .torrent file could not be found: {candidate}")
-    return str(candidate)
-
-
 def sanitize_filename(name):
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", str(name))
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")

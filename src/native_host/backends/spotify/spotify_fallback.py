@@ -69,10 +69,9 @@ def run_spotify_fallback_download(
         aria2c_location=aria2c_location,
     )
 
-    # aria2c is required — no fallback without it
-    fallback_command = None
-
-    # Build fallback variants for the YouTube URL
+    # Build fallback variants for the YouTube URL.
+    # aria2c is required — the primary command above needs it, and none of these
+    # variants pass aria2c_location.
     fallback_commands = []
 
     def _yt_base():
@@ -110,7 +109,6 @@ def run_spotify_fallback_download(
     task = task_class(
         message={**message, "url": youtube_url, "spotifyMetadata": metadata},
         command=command,
-        fallback_command=fallback_command,
         fallback_commands=fallback_commands,
         download_dir=download_dir,
         temp_files=temp_files,

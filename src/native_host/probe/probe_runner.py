@@ -1,8 +1,8 @@
 """probe_runner — Parallel reachability probes for download backends.
 
 Launches lightweight reachability checks for all applicable backends
-simultaneously, returns the first one to succeed, and collects errors
-from the rest.
+simultaneously, returns the highest-priority one that succeeded, and
+collects errors from the rest.
 
 See ``parallel-reachability-spec.md`` for the full specification.
 
@@ -16,8 +16,6 @@ import time
 from typing import Callable
 
 from probe_backends import (
-    curl_cffi_available,
-    probe_curl_cffi,
     probe_n_m3u8dl_re,
     probe_streamlink,
     probe_yt_dlp,
@@ -31,10 +29,8 @@ __all__ = [
     "ProbeError",
     "ProbeResult",
     "probe_yt_dlp",
-    "probe_curl_cffi",
     "probe_n_m3u8dl_re",
     "probe_streamlink",
-    "curl_cffi_available",
     "run_parallel_probes",
 ]
 
@@ -48,8 +44,9 @@ def run_parallel_probes(
     cancel_event: threading.Event,
     send_message: Callable,
     logger,
+    download_id: str = "",
 ) -> ProbeResult:
-    """Launch all probes in parallel, return first success or all errors.
+    """Launch all probes in parallel, return the highest-priority success or all errors.
 
     Parameters
     ----------
@@ -63,6 +60,9 @@ def run_parallel_probes(
         Function to send progress messages to the extension.
     logger : DownloadLogger
         Shared logger for probe events.
+    download_id : str
+        The download this probe round belongs to, so probe events join to
+        it in `downloads.jsonl`.
 
     Returns
     -------
@@ -80,7 +80,7 @@ def run_parallel_probes(
         return ProbeResult(winner=None, command=None, label=None, errors=[], duration_ms=elapsed)
 
     # Log probe start
-    logger.probe_start(url=url, backends=[p.backend for p in probes])
+    logger.probe_start(url=url, backends=[p.backend for p in probes], download_id=download_id)
 
     # Send initial progress message
     send_message(
@@ -94,7 +94,6 @@ def run_parallel_probes(
 
     results_lock = threading.Lock()
     probe_results: dict[int, dict] = {}
-    winner_found = threading.Event()
     errors: list[ProbeError] = []
     threads = []
 
@@ -125,38 +124,27 @@ def run_parallel_probes(
                 ok=probe_result.get("ok", False),
                 duration_ms=probe_duration,
                 error_type=probe_result.get("error_type"),
+                download_id=download_id,
             )
-
-            if probe_result.get("ok") and not winner_found.is_set():
-                winner_found.set()
-                cancel_event.set()
-                logger.probe_win(backend=config.backend, label=config.label)
 
     # Launch all probe threads
     for i, config in enumerate(probes):
-        if cancel_event.is_set():
-            break
         t = threading.Thread(target=run_probe, args=(i, config), daemon=True)
         t.start()
         threads.append(t)
 
-    # Wait for a winner with an overall timeout,
-    # then cancel remaining probes so they can clean up.
-    winner_config = None
-
-    # Poll loop checks winner_found, cancel_event, and thread completion
-    # to avoid blocking indefinitely. The overall timeout prevents
-    # hanging forever if a probe is truly stuck.
+    # Wait for every probe to answer, with an overall timeout so a probe
+    # that is truly stuck cannot hang the download.
+    # Poll loop watches cancel_event and thread completion to avoid
+    # blocking indefinitely.
     deadline = time.time() + 60
     while time.time() < deadline:
-        if winner_found.is_set():
-            break
         if cancel_event.is_set():
             break
         # Also break early if all threads have completed (all failed)
         if all(not t.is_alive() for t in threads):
             break
-        winner_found.wait(timeout=0.5)  # Poll periodically
+        cancel_event.wait(timeout=0.5)  # Poll periodically
 
     # Signal cancellation for any remaining threads
     cancel_event.set()
@@ -167,39 +155,19 @@ def run_parallel_probes(
 
     elapsed = int((time.time() - start_time) * 1000)
 
-    # Check for winner with stream manifest priority.
-    # For stream manifest URLs (m3u8, mpd), N_m3u8DL-RE is preferred
-    # over yt-dlp because it's purpose-built for fragmented stream
-    # downloads with multi-threaded segment fetching.
-    # Priority order: N_m3u8DL-RE > Streamlink > yt-dlp > curl_cffi > ffmpeg
-    is_stream = url.endswith(".m3u8") or ".m3u8?" in url or url.endswith(".mpd") or ".mpd?" in url
-
-    # Backend priority for stream manifest URLs
-    STREAM_PRIORITY = ["n_m3u8dl_re", "streamlink", "yt-dlp", "curl_cffi", "ffmpeg"]
-    DEFAULT_PRIORITY = ["yt-dlp", "curl_cffi", "n_m3u8dl_re", "streamlink", "ffmpeg"]
-
-    priority = STREAM_PRIORITY if is_stream else DEFAULT_PRIORITY
-
+    # Index order IS priority: download_manager._build_probe_configs emits the
+    # probes already in priority order (N_m3u8DL-RE, Streamlink, yt-dlp for a
+    # stream manifest), so the lowest index that reported ok wins. No local
+    # priority list — that would be a second source of truth.
     with results_lock:
         winner_config = None
-        for backend_name in priority:
-            for i, config in enumerate(probes):
-                pr = probe_results.get(i, {})
-                if pr.get("ok") and config.backend == backend_name:
-                    winner_config = config
-                    break
-            if winner_config:
+        for i, config in enumerate(probes):
+            if probe_results.get(i, {}).get("ok"):
+                winner_config = config
                 break
 
-        # Fallback: any winning probe if no priority match
-        if not winner_config:
-            for i, config in enumerate(probes):
-                pr = probe_results.get(i, {})
-                if pr.get("ok"):
-                    winner_config = config
-                    break
-
     if winner_config:
+        logger.probe_win(backend=winner_config.backend, label=winner_config.label, download_id=download_id)
         send_message(
             {
                 "type": "progress",
@@ -234,7 +202,7 @@ def run_parallel_probes(
                 )
             )
 
-    logger.probe_all_fail(url=url, backends=[p.backend for p in probes], errors=errors)
+    logger.probe_all_fail(url=url, backends=[p.backend for p in probes], errors=errors, download_id=download_id)
 
     return ProbeResult(
         winner=None,

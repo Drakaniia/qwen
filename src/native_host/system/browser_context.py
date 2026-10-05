@@ -85,9 +85,16 @@ def parse_cookie_header(cookie_header):
     return cookies
 
 
-def write_cookie_file_from_headers(url, request_headers, temp_dir=None):
-    cookie_header = cookie_header_from_request_headers(request_headers)
-    cookies = parse_cookie_header(cookie_header)
+def _write_netscape_cookie_file(cookies, url, temp_dir, error_source):
+    """Write parsed cookies to a Netscape-format temp file for yt-dlp's --cookies.
+
+    Shared body of write_cookie_file_from_headers() and
+    write_cookie_file_from_string(), which differ only in how they obtain the raw
+    Cookie header. ``error_source`` only picks the wording of the OSError that
+    ``HostError`` wraps, so each caller keeps its own user-facing message.
+
+    Returns the temp file path, or None if there is nothing to write or no host.
+    """
     if not cookies:
         return None
 
@@ -114,7 +121,16 @@ def write_cookie_file_from_headers(url, request_headers, temp_dir=None):
                 cookie_file.write(f"{host}\tFALSE\t/\t{secure}\t0\t{name}\t{value}\n")
             return cookie_file.name
     except OSError as exc:
-        raise HostError(f"Could not create temporary cookie file for yt-dlp: {exc}") from exc
+        raise HostError(f"Could not create temporary cookie file {error_source}: {exc}") from exc
+
+
+def write_cookie_file_from_headers(url, request_headers, temp_dir=None):
+    return _write_netscape_cookie_file(
+        parse_cookie_header(cookie_header_from_request_headers(request_headers)),
+        url,
+        temp_dir,
+        "for yt-dlp",
+    )
 
 
 def remove_temp_files(paths):
@@ -137,34 +153,12 @@ def write_cookie_file_from_string(cookie_str, url, temp_dir=None):
 
     Returns the path to the temp file, or None if the cookie string is empty.
     """
-    cookies = parse_cookie_header(cookie_str or "")
-    if not cookies:
-        return None
-
-    parsed = urlparse(str(url or ""))
-    host = (parsed.hostname or "").lower()
-    if not host:
-        return None
-
-    temp_base = Path(temp_dir) if temp_dir else Path(tempfile.gettempdir())
-    try:
-        temp_base.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            newline="\n",
-            delete=False,
-            dir=str(temp_base),
-            prefix="qwin-cookies-",
-            suffix=".txt",
-        ) as cookie_file:
-            cookie_file.write("# Netscape HTTP Cookie File\n")
-            secure = "TRUE" if parsed.scheme == "https" else "FALSE"
-            for name, value in cookies:
-                cookie_file.write(f"{host}\tFALSE\t/\t{secure}\t0\t{name}\t{value}\n")
-            return cookie_file.name
-    except OSError as exc:
-        raise HostError(f"Could not create temporary cookie file from string: {exc}") from exc
+    return _write_netscape_cookie_file(
+        parse_cookie_header(cookie_str or ""),
+        url,
+        temp_dir,
+        "from string",
+    )
 
 
 def _quote_ytdlp_config_value(value):
