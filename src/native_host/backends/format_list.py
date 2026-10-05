@@ -145,6 +145,17 @@ def run_playlist_enumeration(
     url = str(message.get("url") or "").strip()
     validate_download_url(url)
 
+    if is_spotify_url(url):
+        from spotify_resolver import resolve_spotify_playlist
+
+        result = resolve_spotify_playlist(
+            url,
+            yt_dlp_command=yt_dlp_command_resolver(),
+            ffmpeg_location=ffmpeg_location_resolver(),
+        )
+        send({"type": "playlistItems", "id": request_id, "ok": True, **result})
+        return
+
     request_headers = message.get("requestHeaders")
     cookies_file = write_cookie_file_from_headers(url, request_headers)
     temp_files = [cookies_file] if cookies_file else []

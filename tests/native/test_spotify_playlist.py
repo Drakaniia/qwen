@@ -79,3 +79,23 @@ def test_resolver_rejects_single_track_sentinel():
 
     with pytest.raises(HostError, match="__QWIN_SINGLE_TRACK__"):
         resolve_spotify_playlist("https://open.spotify.com/track/abc123")
+
+
+def test_enumerate_playlist_spotify_branch():
+    """A Spotify playlist URL must not go near yt-dlp -- it hard-blocks with [DRM]."""
+    import format_list
+
+    messages = []
+    fake = {
+        "playlistTitle": "My Mix",
+        "items": [{"title": "Song A", "url": "https://open.spotify.com/track/1"}],
+        "totalItems": 1,
+    }
+    with patch("spotify_resolver.resolve_spotify_playlist", return_value=fake) as mocked:
+        format_list.run_playlist_enumeration(
+            {"id": "pl_1", "url": "https://open.spotify.com/playlist/abc123"},
+            send=messages.append,
+        )
+    mocked.assert_called_once()
+    assert messages[0]["type"] == "playlistItems"
+    assert messages[0]["items"][0]["title"] == "Song A"
