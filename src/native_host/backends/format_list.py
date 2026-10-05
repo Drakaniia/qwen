@@ -148,12 +148,11 @@ def run_playlist_enumeration(
     if is_spotify_url(url):
         from spotify_resolver import resolve_spotify_playlist
 
-        result = resolve_spotify_playlist(
-            url,
-            yt_dlp_command=yt_dlp_command_resolver(),
-            ffmpeg_location=ffmpeg_location_resolver(),
-        )
-        send({"type": "playlistItems", "id": request_id, "ok": True, **result})
+        result = resolve_spotify_playlist(url)
+        # A Spotify playlist/album URL is always a real collection — there is no
+        # single-video shape of one to be mistaken for, and a `/track/` URL never reaches
+        # this line (the resolver raises the sentinel instead).
+        send({"type": "playlistItems", "id": request_id, "ok": True, "isCollection": True, **result})
         return
 
     request_headers = message.get("requestHeaders")
@@ -252,5 +251,11 @@ def run_playlist_enumeration(
             "items": items,
             "playlistTitle": playlist_title,
             "totalItems": len(items),
+            # Whether this was REALLY a collection. `--flat-playlist` answers an ordinary
+            # video URL with exactly one entry, which the popup would otherwise read as a
+            # one-item playlist — losing the quality sheet for every plain paste. yt-dlp
+            # stamps `playlist_title` on a real playlist and leaves it empty for a single
+            # video, so that plus the item count is the whole signal.
+            "isCollection": bool(playlist_title) or len(items) > 1,
         }
     )
