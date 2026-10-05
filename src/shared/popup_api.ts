@@ -47,6 +47,20 @@ function getFormatsForUrl(tabId: number, video?: unknown): Promise<MessageResult
   return runtimeMessage({ type: "getFormatsForUrl", tabId, video });
 }
 
+/**
+ * @param tabId @param url — playlist URL; the background expands it to rows.
+ */
+function enumeratePlaylist(tabId: number, url: string): Promise<MessageResult> {
+  return runtimeMessage({ type: "enumeratePlaylist", tabId, url });
+}
+
+/**
+ * @param tabId @param videoIds — ordered selection; background queues 3-at-a-time.
+ */
+function downloadMany(tabId: number, videoIds: string[], formatId = "best"): Promise<MessageResult> {
+  return runtimeMessage({ type: "downloadMany", tabId, videoIds, formatId });
+}
+
 // ─── Stream frame grabs (hls-thumbnail-spec.md §6.1, §5.3) ──────────────────
 
 /**
@@ -222,6 +236,8 @@ export {
   getVideos,
   getVideoFormats,
   getFormatsForUrl,
+  enumeratePlaylist,
+  downloadMany,
   grabThumbnailFrame,
   thumbnailFrames,
   rescanForFrames,

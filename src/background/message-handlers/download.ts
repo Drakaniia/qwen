@@ -1,4 +1,5 @@
 import { register } from "../message_router.js";
+import { enumeratePlaylistVideos } from "../playlist_helpers.js";
 import type { BackgroundContext, HandlerMessage, MessageOf } from "../types.js";
 
 /**
@@ -212,6 +213,16 @@ export function registerDownloadHandlers(ctx: BackgroundContext): void {
           addDetectedVideo,
         )),
       };
+    },
+  });
+
+  // ── Enumerate a playlist ──────────────────────────────────────────────
+
+  register({
+    name: "enumeratePlaylist",
+    async handle(message: HandlerMessage<MessageOf<"enumeratePlaylist">>) {
+      const tabId = senderTabId(message, message.sender);
+      return { ok: true, ...(await enumeratePlaylistVideos(ctx, tabId, String(message.url || ""))) };
     },
   });
 

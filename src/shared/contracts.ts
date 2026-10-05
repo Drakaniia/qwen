@@ -262,6 +262,23 @@ export interface GetFormatsForUrlMessage {
   video?: Partial<DetectedVideo>;
 }
 
+/**
+ * A playlist (or album) URL to expand. The background asks the helper for its items and
+ * turns each into a tab-scoped video row, so the popup needs nothing but the URL.
+ */
+export interface EnumeratePlaylistMessage {
+  url?: string;
+}
+
+/**
+ * A batch of already-enumerated rows. `videoIds` is an ordered selection; the background
+ * throttles the batch to a few at a time rather than firing one message per row.
+ */
+export interface DownloadManyMessage {
+  videoIds?: string[];
+  formatId?: string;
+}
+
 export interface SaveSettingsMessage {
   settings: Partial<Settings>;
 }
@@ -328,6 +345,8 @@ export const BACKGROUND_MESSAGE_TYPES = [
   "clearDownloads",
   "getVideoFormats",
   "getFormatsForUrl",
+  "enumeratePlaylist",
+  "downloadMany",
   "getBestVideoFormats",
   "chooseDownloadFolder",
   "getDownloadSyncHistory",
@@ -368,6 +387,8 @@ export type BackgroundMessage =
   | ({ type: "clearDownloads" } & ClearDownloadsMessage)
   | ({ type: "getVideoFormats" } & GetVideoFormatsMessage)
   | ({ type: "getFormatsForUrl" } & GetFormatsForUrlMessage)
+  | ({ type: "enumeratePlaylist" } & EnumeratePlaylistMessage)
+  | ({ type: "downloadMany" } & DownloadManyMessage)
   | ({ type: "getBestVideoFormats" } & EmptyMessage)
   | ({ type: "chooseDownloadFolder" } & EmptyMessage)
   | ({ type: "getDownloadSyncHistory" } & EmptyMessage)
