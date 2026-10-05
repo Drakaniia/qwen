@@ -6,4 +6,4 @@ select = ["E", "F", "W", "I"]
 ignore = ["E402"]
 
 [lint.isort]
-known-first-party = ["artifacts", "browser_context", "download_manager", "download_task", "folder_picker", "host_dispatch", "media_resolver", "native_paths", "native_protocol", "process_control", "progress_parser", "stream_backends", "yt_dlp_adapter", "yt_dlp_command", "yt_dlp_dependencies"]
+known-first-party = ["artifacts", "browser_context", "download_manager", "download_task", "folder_picker", "media_candidates", "media_resolver", "native_paths", "native_protocol", "process_control", "progress_parser", "stream_backends", "yt_dlp_command", "yt_dlp_dependencies"]
