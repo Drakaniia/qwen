@@ -28,6 +28,31 @@ function activeTabIdOrZero(): number {
 }
 
 /**
+ * The popup's reply-narrowing helper, verbatim from `popup/downloads/state.ts`:
+ * `popup_api.js` types every response as a bare `Object`, so the properties read here are
+ * invisible to the checker, and one cast beats repeating it at every call site.
+ *
+ * Third copy on purpose — `popup/options/state.ts` keeps its own and neither is exported.
+ * Deduplicating them means editing two files this change does not own; do it as its own
+ * pass, not folded into a feature. `null` is folded to `{}`, so callers never null-check.
+ */
+function asRecord(response: unknown): Record<string, any> {
+  return (response || {}) as Record<string, any>;
+}
+
+/**
+ * "This URL is one track", raised by the native resolver
+ * (`backends/spotify/spotify_resolver.py`) for a `/track/` URL, which it refuses to
+ * expand because its job is collections.
+ *
+ * An internal marker, never copy for the user: a single track is exactly what the
+ * `getFormatsForUrl` flow below is for, so the sentinel branch falls through to it rather
+ * than reporting the marker as an error. Matching is a substring test because the host
+ * prefixes the marker with prose ("Use the formats flow for individual tracks.").
+ */
+const SINGLE_TRACK_SENTINEL = "__QWIN_SINGLE_TRACK__";
+
+/**
  * Resolve a pasted link (spec §6.5, D19, D20).
  *
  * ## Why this function exists instead of two
@@ -51,7 +76,17 @@ function activeTabIdOrZero(): number {
  * answering the dialog, not waiting on the helper. Everything after the pick runs
  * detached through {@link dispatchPastedFormat}.
  *
- * @returns whether the quality sheet is now open with the link's formats.
+ * ## Why a playlist answers differently
+ *
+ * `enumeratePlaylist` runs first, ahead of `getFormatsForUrl`, because a collection and
+ * a single item are not two answers to the same question. A playlist has no per-item
+ * quality sheet (spec §6.5), so it expands to rows and Downloads; anything that is not a
+ * collection — including a single track, which the native resolver marks with
+ * {@link SINGLE_TRACK_SENTINEL} rather than expanding — continues into the original
+ * single-URL flow untouched.
+ *
+ * @returns whether the paste was handled: rows for a playlist, the quality sheet for a
+ *   single link, `false` with a notice on failure.
  */
 export async function resolvePastedUrl(raw: string): Promise<boolean> {
   await updateActiveTabContext();
@@ -63,6 +98,29 @@ export async function resolvePastedUrl(raw: string): Promise<boolean> {
   }
 
   setNotice("");
+
+  // A pasted link is a collection as often as it is a video, and the two want different
+  // shapes: a playlist becomes rows plus the Downloads view, a single link becomes the
+  // quality sheet below. One extra message buys that split, and the single flow stays the
+  // fallback for every answer that is not a collection — including "not a collection".
+  const playlist = asRecord(await PopupApi.enumeratePlaylist(activeTabIdOrZero(), url));
+
+  if (playlist.ok && playlist.videoIds?.length) {
+    // No quality sheet for a playlist: bulk quality is `best` and the per-track picker is
+    // explicitly out (spec §6.5), so a dialog here would ask a question with one answer.
+    hideQualityDialog();
+    setNotice(`Added ${playlist.videoIds.length} tracks from ${playlist.playlistTitle || "playlist"}.`);
+    setViewMode("downloads");
+    await refresh();
+    return true;
+  }
+  // Anything else that failed is a real failure — a track (the sentinel) is not, so it
+  // falls through to the single-URL flow, which is the path that handles one track.
+  if (!playlist.ok && playlist.error && !String(playlist.error).includes(SINGLE_TRACK_SENTINEL)) {
+    hideQualityDialog();
+    setNotice(String(playlist.error), true);
+    return false;
+  }
 
   // D20: `audioFormat` still decides the output container when the resolved item turns
   // out to be audio-only, so the current value goes to the helper with this request.
