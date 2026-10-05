@@ -1,5 +1,6 @@
 import { createOperations } from "../download_operations.js";
 import { startNativeDownloadFromVideo } from "./native.js";
+import { createBoundedQueue } from "./queue.js";
 import type {
   DownloadOrchestratorDeps,
   DownloadStartResult,
@@ -113,6 +114,30 @@ function create(deps: DownloadOrchestratorDeps) {
     return startNativeDownload(tabId, video.id as string, formatId, variantId);
   }
 
+  const MAX_CONCURRENT_DOWNLOADS = 3;
+  const batchQueue = createBoundedQueue(MAX_CONCURRENT_DOWNLOADS, (queueTabId, queueVideoId, queueFormatId) =>
+    startNativeDownload(queueTabId, queueVideoId, queueFormatId),
+  );
+
+  async function downloadMany(tabId: TabId, videoIds: string[], formatId = "best"): Promise<{ jobIds: string[] }> {
+    await deps.ensureStateLoaded();
+    const ids = [...new Set(videoIds)].slice(0, 100);
+    if (!ids.length) {
+      throw new Error("Select at least one video first.");
+    }
+    const started = await Promise.allSettled(ids.map((id) => batchQueue.add(tabId, id, formatId)));
+    const jobIds: string[] = [];
+    for (const result of started) {
+      if (result.status === "fulfilled") {
+        jobIds.push(result.value.jobId);
+      }
+    }
+    if (!jobIds.length) {
+      throw new Error("None of those downloads could start.");
+    }
+    return { jobIds };
+  }
+
   // Patch opsDeps (internal closures in createOperations) so that
   // resumeDownload/retryDownload see the real function.
   const wrappedStartNativeDownloadFromVideo = (
@@ -130,6 +155,7 @@ function create(deps: DownloadOrchestratorDeps) {
     startBestNativeDownload,
     startNativeDownload,
     startNativeDownloadForUrl,
+    downloadMany,
     startNativeDownloadFromVideo: wrappedStartNativeDownloadFromVideo,
   };
 }

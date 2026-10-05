@@ -26,6 +26,7 @@ export function registerDownloadHandlers(ctx: BackgroundContext): void {
     startNativeDownloadForUrl,
     getBestDownloadableVideo,
     startBestNativeDownload,
+    downloadMany,
     controlActiveDownload,
     resumeDownload,
     cancelDownload,
@@ -223,6 +224,15 @@ export function registerDownloadHandlers(ctx: BackgroundContext): void {
     async handle(message: HandlerMessage<MessageOf<"enumeratePlaylist">>) {
       const tabId = senderTabId(message, message.sender);
       return { ok: true, ...(await enumeratePlaylistVideos(ctx, tabId, String(message.url || ""))) };
+    },
+  });
+
+  register({
+    name: "downloadMany",
+    async handle(message: HandlerMessage<MessageOf<"downloadMany">>) {
+      const tabId = senderTabId(message, message.sender);
+      const ids = Array.isArray(message.videoIds) ? message.videoIds.map(String) : [];
+      return { ok: true, ...(await downloadMany(tabId, ids, message.formatId || "best")) };
     },
   });
 
