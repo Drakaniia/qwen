@@ -1,20 +1,48 @@
 import esbuild from "esbuild";
-import { copyFileSync, mkdirSync, readdirSync, statSync } from "fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, statSync } from "fs";
 import { resolve, dirname, join, extname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, "..");
 
+/**
+ * esbuild has no notion of Vite's `?inline` / `?raw` "read this file as a string"
+ * suffix, so the content script's `import css from "...css?inline"` — the shadow
+ * root's stylesheet — has to be resolved by hand. Vite already handles the same
+ * specifier natively, which is what lets the overlay's tests run through vitest.
+ */
+function cssTextPlugin() {
+  return {
+    name: "css-text",
+    setup(build) {
+      build.onResolve({ filter: /\.css\?(raw|inline)$/ }, (args) => ({
+        path: resolve(args.resolveDir, args.path.replace(/\?(raw|inline)$/, "")),
+        namespace: "css-text",
+      }));
+      build.onLoad({ filter: /.*/, namespace: "css-text" }, (args) => ({
+        contents: `export default ${JSON.stringify(readFileSync(args.path, "utf8"))};`,
+        loader: "js",
+      }));
+    },
+  };
+}
+
 const targets = {
   content: {
-    entryPoints: [resolve(rootDir, "src/content/content.js")],
+    entryPoints: [resolve(rootDir, "src/content/content.ts")],
+    // The overlay's Preact components are compiled here, not by Vite: a declared
+    // content script cannot be an ES module (manifest `content_scripts` has no
+    // `type` field), so it must stay a single IIFE and the popup's Vite build
+    // must not be reachable from here. One esbuild pass inlines both.
+    esbuildOptions: {
+      jsx: "automatic",
+      jsxImportSource: "preact",
+      plugins: [cssTextPlugin()],
+    },
   },
   background: {
-    entryPoints: [resolve(rootDir, "src/background/background.js")],
-  },
-  popup: {
-    entryPoints: [resolve(rootDir, "src/popup/popup.js")],
+    entryPoints: [resolve(rootDir, "src/background/background.ts")],
   },
 };
 
@@ -27,10 +55,7 @@ function copyNativeHostAssets(outDir) {
 
   mkdirSync(outNativeHost, { recursive: true });
 
-  const filesToCopy = [
-    "qwin_video_host.bat",
-    "register-host.ps1",
-  ];
+  const filesToCopy = ["qwin_video_host.bat", "register-host.ps1"];
 
   for (const file of filesToCopy) {
     const src = resolve(srcNativeHost, file);
@@ -53,11 +78,7 @@ function copyConfigAssets(outDir) {
 
   mkdirSync(outNativeHost, { recursive: true });
 
-  const manifestFiles = [
-    "com.qwin.video_downloader.chrome.json",
-    "com.qwin.video_downloader.firefox.json",
-    "com.qwin.video_downloader.yandex.json",
-  ];
+  const manifestFiles = ["com.qwin.video_downloader.chrome.json", "com.qwin.video_downloader.yandex.json"];
 
   for (const file of manifestFiles) {
     const src = resolve(configNativeHost, file);
@@ -90,9 +111,10 @@ async function build(targetNames, outDir) {
       outbase: resolve(rootDir, "src"),
       outdir: resolve(outDir, "src"),
       entryNames: "[dir]/[name].bundle",
-      target: ["chrome120", "firefox121"],
+      target: ["chrome148"],
       platform: "browser",
       logLevel: "info",
+      ...config.esbuildOptions,
     });
   }
 

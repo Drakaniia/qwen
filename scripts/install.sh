@@ -45,7 +45,6 @@ header() {
 # ---------------------------------------------------------------------------
 HOST_NAME="com.qwin.video_downloader"
 CHROME_EXTENSION_ID="dbjddokdmkodnkiaccmbjagfalmmmkmi"
-FIREFOX_EXTENSION_ID="qwin-video-downloader@example.com"
 
 TOOLS_DIR="$ROOT_DIR/tools"
 HOST_SCRIPT="$ROOT_DIR/src/native_host/host.py"
@@ -54,7 +53,6 @@ NATIVE_DIR="$ROOT_DIR/config/native-host"
 
 CHROME_MANIFEST="$NATIVE_DIR/$HOST_NAME.chrome.json"
 YANDEX_MANIFEST="$NATIVE_DIR/$HOST_NAME.yandex.json"
-FIREFOX_MANIFEST="$NATIVE_DIR/$HOST_NAME.firefox.json"
 
 PYTHON_CMD=""
 PYTHON_EXE=""
@@ -403,18 +401,14 @@ register_native_hosts() {
     win_chrome_manifest="$(to_win_path "$CHROME_MANIFEST")"
     local win_yandex_manifest
     win_yandex_manifest="$(to_win_path "$YANDEX_MANIFEST")"
-    local win_firefox_manifest
-    win_firefox_manifest="$(to_win_path "$FIREFOX_MANIFEST")"
 
     if powershell -NoProfile -Command "
 \$ErrorActionPreference = 'Stop'
 \$chromePath = '$win_chrome_manifest'
 \$yandexPath = '$win_yandex_manifest'
-\$firefoxPath = '$win_firefox_manifest'
 \$launcher = '$win_launcher'
 \$hostName = '$HOST_NAME'
 \$chromeId = '$CHROME_EXTENSION_ID'
-\$firefoxId = '$FIREFOX_EXTENSION_ID'
 
 \$chrome = [ordered]@{
   name            = \$hostName
@@ -423,17 +417,9 @@ register_native_hosts() {
   type            = 'stdio'
   allowed_origins = @('chrome-extension://' + \$chromeId + '/')
 }
-\$firefox = [ordered]@{
-  name               = \$hostName
-  description        = 'Qwin Video Downloader native host'
-  path               = \$launcher
-  type               = 'stdio'
-  allowed_extensions = @(\$firefoxId)
-}
 \$utf8 = New-Object System.Text.UTF8Encoding \$false
 [System.IO.File]::WriteAllText(\$chromePath, (\$chrome | ConvertTo-Json -Depth 5), \$utf8)
 [System.IO.File]::WriteAllText(\$yandexPath, (\$chrome | ConvertTo-Json -Depth 5), \$utf8)
-[System.IO.File]::WriteAllText(\$firefoxPath, (\$firefox | ConvertTo-Json -Depth 5), \$utf8)
 Write-Output 'Manifest files written'
 " 2>&1; then
       manifests_written=true
@@ -449,7 +435,6 @@ import json, os
 
 host_name = '$HOST_NAME'
 chrome_id = '$CHROME_EXTENSION_ID'
-firefox_id = '$FIREFOX_EXTENSION_ID'
 launcher = '$HOST_LAUNCHER'
 native_dir = '$NATIVE_DIR'
 
@@ -460,15 +445,8 @@ chrome = {
     'type': 'stdio',
     'allowed_origins': ['chrome-extension://' + chrome_id + '/']
 }
-firefox = {
-    'name': host_name,
-    'description': 'Qwin Video Downloader native host',
-    'path': launcher,
-    'type': 'stdio',
-    'allowed_extensions': [firefox_id]
-}
 
-for fname, data in [('$HOST_NAME.chrome.json', chrome), ('$HOST_NAME.yandex.json', chrome), ('$HOST_NAME.firefox.json', firefox)]:
+for fname, data in [('$HOST_NAME.chrome.json', chrome), ('$HOST_NAME.yandex.json', chrome)]:
     os.makedirs(native_dir, exist_ok=True)
     with open(os.path.join(native_dir, fname), 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
@@ -492,8 +470,6 @@ print('Manifest files written')
   win_manifest_chrome="$(to_win_path "$CHROME_MANIFEST")"
   local win_manifest_yandex
   win_manifest_yandex="$(to_win_path "$YANDEX_MANIFEST")"
-  local win_manifest_firefox
-  win_manifest_firefox="$(to_win_path "$FIREFOX_MANIFEST")"
 
   local registered_via=""
 
@@ -503,18 +479,15 @@ print('Manifest files written')
 \$hostName = '$HOST_NAME'
 \$chromeManifest = '$win_manifest_chrome'
 \$yandexManifest = '$win_manifest_yandex'
-\$firefoxManifest = '$win_manifest_firefox'
 \$launcher = '$win_launcher'
 \$chromeId = '$CHROME_EXTENSION_ID'
-\$firefoxId = '$FIREFOX_EXTENSION_ID'
 
 \$browsers = @(
     @{ Name = 'Chrome';  RegPath = 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\' + \$hostName;  Manifest = \$chromeManifest },
     @{ Name = 'Edge';    RegPath = 'HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\' + \$hostName;  Manifest = \$chromeManifest },
     @{ Name = 'Brave';   RegPath = 'HKCU:\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\' + \$hostName;  Manifest = \$chromeManifest },
     @{ Name = 'Chromium'; RegPath = 'HKCU:\Software\Chromium\NativeMessagingHosts\' + \$hostName;  Manifest = \$yandexManifest },
-    @{ Name = 'Yandex';  RegPath = 'HKCU:\Software\Yandex\YandexBrowser\NativeMessagingHosts\' + \$hostName;  Manifest = \$yandexManifest },
-    @{ Name = 'Firefox'; RegPath = 'HKCU:\Software\Mozilla\NativeMessagingHosts\' + \$hostName;  Manifest = \$firefoxManifest }
+    @{ Name = 'Yandex';  RegPath = 'HKCU:\Software\Yandex\YandexBrowser\NativeMessagingHosts\' + \$hostName;  Manifest = \$yandexManifest }
 )
 
 \$registered = 0
@@ -534,7 +507,7 @@ foreach (\$b in \$browsers) {
 if (\$registered -gt 0) {
     Write-Output \"Registered native host for \$registered browser(s).\"
 } else {
-    Write-Warning \"No browsers were registered. Install Chrome/Firefox/Edge/Brave/Yandex and re-run.\"
+    Write-Warning \"No browsers were registered. Install Chrome/Edge/Brave/Yandex and re-run.\"
     exit 1
 }
 " 2>&1; then
@@ -557,12 +530,11 @@ if (\$registered -gt 0) {
     MSYS2_ARG_CONV_EXCL='*' reg.exe add "HKCU\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\$HOST_NAME" /ve /t REG_SZ /d "$win_manifest" /f &>/dev/null && any_registered=true
     MSYS2_ARG_CONV_EXCL='*' reg.exe add "HKCU\Software\Chromium\NativeMessagingHosts\$HOST_NAME" /ve /t REG_SZ /d "$win_manifest_yandex" /f &>/dev/null && any_registered=true
     MSYS2_ARG_CONV_EXCL='*' reg.exe add "HKCU\Software\Yandex\YandexBrowser\NativeMessagingHosts\$HOST_NAME" /ve /t REG_SZ /d "$win_manifest_yandex" /f &>/dev/null && any_registered=true
-    MSYS2_ARG_CONV_EXCL='*' reg.exe add "HKCU\Software\Mozilla\NativeMessagingHosts\$HOST_NAME" /ve /t REG_SZ /d "$win_manifest_firefox" /f &>/dev/null && any_registered=true
 
     if $any_registered; then
       registered_via="reg.exe"
     else
-      warn "No browsers were registered.  Install Chrome/Firefox/Edge/Brave/Yandex and re-run."
+      warn "No browsers were registered.  Install Chrome/Edge/Brave/Yandex and re-run."
     fi
   fi
 
@@ -618,7 +590,6 @@ main() {
   echo ""
   echo "  Chrome extension ID expected:  $CHROME_EXTENSION_ID"
   echo "  Yandex extension ID expected:  $CHROME_EXTENSION_ID"
-  echo "  Firefox extension ID expected: $FIREFOX_EXTENSION_ID"
   echo ""
   echo "  Tools installed in: $TOOLS_DIR"
   echo "${_BOLD}${_GREEN}══════════════════════════════════════════════════════════════${_RESET}"
