@@ -4,220 +4,34 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Qwin Video Downloader</title>
-    <link rel="stylesheet" href="popup.css" />
   </head>
+  <!--
+    Shell only (spec §5.1, §5.2, D5, D10). Every control, every panel and every id that
+    used to live here is now a Preact component reading a signal from
+    `src/popup/state/`, so a re-render is the only way state changes. The five hidden
+    mirror controls are gone with it - see §12's mitigation on the hidden form.
+
+    Three roots, one reason each (spec §5.2 "shell + 3 roots"):
+
+      #popupApp       the frame: header, dependency banner, view switch, the active
+                      view, the footer, and the resize grip. One tree, because
+                      `useResize` owns `document.body.style.width` and two hook
+                      instances would fight over it.
+      #selectionBar   the sticky selection bar (spec §6.9). Its own root because it is
+                      a fixed layer with no parent in the flow to inherit a
+                      positioning context from, and it reads the module-level
+                      `useStickySelection` signal, so it needs no props from the frame.
+      #qualityDialog  the format chooser, shared with the in-page overlay.
+
+    `<body>` carries no width and no background: `useResize` owns the width (D5,
+    400-720px, default 460) and D10 wants the popup transparent so the chrome's
+    `backdrop-filter` reads as depth against the desktop rather than as a white page.
+    Every surface paints itself from `ui/theme.css`.
+  -->
   <body>
-    <header class="topbar">
-      <div class="topbar-brand">
-        <div class="brand-logo">
-          <h1>Qwin Video Downloader</h1>
-          <span
-            id="downloadIndicator"
-            class="download-indicator"
-            data-status="checking"
-            title="Checking for videos..."
-            aria-label="Checking for downloadable videos"
-          ></span>
-        </div>
-        <p id="helperStatus" class="helper-status"></p>
-      </div>
-      <div class="topbar-actions">
-        <button id="rescan" class="icon-button" type="button" aria-label="Rescan" title="Rescan">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              fill="none"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4m-4 4a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"
-            ></path>
-          </svg>
-        </button>
-        <button
-          id="settingsToggle"
-          class="icon-button"
-          type="button"
-          aria-label="Settings"
-          title="Settings"
-          aria-controls="settingsPanel"
-          aria-expanded="false"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.5-2.4 1a8 8 0 0 0-2.6-1.5L14 2h-4l-.4 2.5A8 8 0 0 0 7 6L4.6 5 2.6 8.5l2 1.5a9.8 9.8 0 0 0 0 3l-2 1.5 2 3.5L7 18a8 8 0 0 0 2.6 1.5L10 22h4l.4-2.5A8 8 0 0 0 17 18l2.4 1 2-3.5-2-1.5ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"
-            ></path>
-          </svg>
-        </button>
-      </div>
-    </header>
-    <!-- ─── Collapsible dependency warning banner ──────────────────────── -->
-    <div id="depBanner" class="dep-banner" hidden>
-      <button id="depBannerToggle" class="dep-banner-toggle" type="button" aria-expanded="false">
-        <span class="dep-banner-icon">⚠️</span>
-        <span id="depBannerTitle" class="dep-banner-title">Some download tools missing</span>
-        <span class="dep-banner-chevron">▶</span>
-      </button>
-      <div id="depBannerBody" class="dep-banner-body" hidden>
-        <div id="depBannerList" class="dep-banner-list"></div>
-        <p class="dep-banner-cta">Run <code>scripts/install.sh</code> from the Qwin project directory to install missing tools.</p>
-        <button id="depBannerCopyBtn" class="dep-banner-copy-btn" type="button">
-          <span class="setup-button-icon">📋</span>
-          Copy install command
-        </button>
-      </div>
-    </div>
-
-    <section id="settingsPanel" class="settings-panel" hidden>
-      <label for="manualUrl">Download from link</label>
-      <input
-        id="manualUrl"
-        type="url"
-        spellcheck="false"
-        placeholder="Paste YouTube, Spotify, Instagram, TikTok, or other video/music URL"
-      />
-      <button id="downloadManualUrl" class="primary settings-button" type="button">Download link</button>
-      <p class="hint">Uses yt-dlp and stream fallbacks for video page URLs.</p>
-
-      <hr class="settings-divider" />
-      <label for="backend">Download method</label>
-      <select id="backend">
-        <option value="auto">Auto (recommended)</option>
-        <option value="yt-dlp">yt-dlp (native helper)</option>
-        <option value="browser">Browser (direct download)</option>
-      </select>
-      <p class="hint">
-        <strong>Auto</strong> lets the helper choose the best backend.
-        <strong>Browser</strong> downloads directly via the browser for
-        simple MP4/WebM URLs without stream processing.
-      </p>
-
-      <label for="audioFormat">Audio format (when Music mode is on)</label>
-      <select id="audioFormat" class="settings-select">
-        <option value="mp3">MP3</option>
-        <option value="m4a">M4A (AAC)</option>
-        <option value="flac">FLAC (Lossless)</option>
-        <option value="opus">Opus</option>
-        <option value="wav">WAV</option>
-        <option value="aac">AAC</option>
-        <option value="ogg">OGG (Vorbis)</option>
-      </select>
-
-      <label class="checkbox-label">
-        <input id="downloadSubtitles" type="checkbox" checked />
-        Download subtitles (CC) when available
-      </label>
-
-      <label class="checkbox-label">
-        <input id="overlayToggle" type="checkbox" checked />
-        Show download overlay on videos
-      </label>
-      <p class="hint">
-        When enabled, a Download button appears on detected video players.
-        Disable this to hide the overlay.
-      </p>
-
-      <label class="checkbox-label">
-        <input id="syncHistoryToggle" type="checkbox" checked />
-        Sync download history across browsers
-      </label>
-      <p class="hint">
-        When signed into Chrome, completed downloads are synced via your Google
-        Account so you can view them on other devices.
-      </p>
-
-      <label for="downloadFolder">Download folder</label>
-      <div class="folder-picker">
-        <input id="downloadFolder" type="text" spellcheck="false" placeholder="Default: Windows Downloads" />
-        <button id="chooseDownloadFolder" type="button">Browse</button>
-      </div>
-      <button id="saveSettings" class="settings-button" type="button">Save</button>
-      <p class="hint">Use a Windows path such as C:\Users\You\Downloads\Videos.</p>
-      <p id="settingsStatus" class="settings-status" role="status" aria-live="polite" hidden></p>
-      <p id="syncStatus" class="settings-status sync-status" role="status" aria-live="polite" hidden></p>
-    </section>
-
-    <nav id="viewToggle" class="view-toggle" aria-label="Popup view">
-      <button id="showVideos" class="active" type="button" aria-pressed="true">Videos</button>
-      <button id="showMusic" type="button" aria-pressed="false">Music</button>
-      <button id="showDownloads" type="button" aria-pressed="false">Downloads</button>
-    </nav>
-
-    <section id="musicLinkSection" class="music-link-section">
-      <div class="music-link-input-row">
-        <input
-          id="musicLinkUrl"
-          type="url"
-          spellcheck="false"
-          placeholder="Paste Spotify, YouTube Music, SoundCloud, Deezer link..."
-          aria-label="Music link URL"
-        />
-        <button id="downloadMusicLink" class="primary" type="button">Download Music</button>
-      </div>
-      <div class="music-link-hint">
-        <span class="platform-badge">Spotify</span>
-        <span class="platform-badge">YouTube Music</span>
-        <span class="platform-badge">SoundCloud</span>
-        <span class="platform-badge">Deezer</span>
-        <span class="platform-badge">Bandcamp</span>
-        <span class="more-platforms">+ more</span>
-      </div>
-    </section>
-
-    <!-- Playlist download prompt -->
-    <div id="playlistPrompt" class="playlist-prompt" hidden>
-      <div class="playlist-info">
-        <span class="playlist-icon">💿</span>
-        <span id="playlistTitle" class="playlist-title-text">Playlist detected</span>
-      </div>
-      <div class="playlist-actions">
-        <button id="downloadAllBtn" type="button" class="primary">Download All</button>
-      </div>
-    </div>
-
-    <main id="contentView">
-      <div id="message" class="message">Scanning for videos...</div>
-      <div id="videoToolbar" class="video-toolbar" hidden>
-        <div class="layout-toggle" role="group" aria-label="Video list layout">
-          <button
-            id="showListLayout"
-            class="active"
-            type="button"
-            aria-pressed="true"
-            aria-label="List view"
-            title="List view"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 5h3v3H4V5Zm5 0h11v3H9V5ZM4 11h3v3H4v-3Zm5 0h11v3H9v-3ZM4 17h3v3H4v-3Zm5 0h11v3H9v-3Z"></path>
-            </svg>
-          </button>
-          <button id="showBoxLayout" type="button" aria-pressed="false" aria-label="Box view" title="Box view">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 4h8v8H4V4Zm10 0h6v8h-6V4ZM4 14h8v6H4v-6Zm10 0h6v6h-6v-6Z"></path>
-            </svg>
-          </button>
-        </div>
-      </div>
-      <div id="videoList" class="video-list"></div>
-      <div id="downloadList" class="download-list"></div>
-
-
-    </main>
-
-    <section id="qualityDialog" class="quality-dialog" hidden>
-      <div class="quality-card">
-        <h2 id="qualityTitle">Choose quality</h2>
-        <div id="qualityList" class="quality-list"></div>
-        <div class="quality-actions">
-          <button id="cancelQuality" type="button">Cancel</button>
-        </div>
-      </div>
-    </section>
-
-    <footer id="footerActions">
-      <button id="clear" type="button">Clear</button>
-    </footer>
-
-    <script src="popup.bundle.js"></script>
+    <div id="popupApp"></div>
+    <div id="selectionBar"></div>
+    <div id="qualityDialog"></div>
+    <script type="module" src="./main.tsx"></script>
   </body>
 </html>

@@ -1,10 +1,11 @@
-"use strict";
-
 // ─── Module references ──────────────────────────────────────────────────────
 import { init } from "./popup_helpers.js";
 
-// Import event listeners (side-effects: registers all listeners, subscribes to PopupState)
-import "./popup_events.js";
+// Side effect: registers the background-broadcast listener. The other two
+// `popup_*_events` modules are gone with the chrome they wired: `popup_events.js` held
+// the settings-toggle, view-nav and layout-toggle listeners on markup that no longer
+// exists, and `popup_url_events.js` is now one exported function the paste box calls.
+import "./popup_background_events.js";
 
 // ─── Boot ───────────────────────────────────────────────────────────────────
-init();
+void init();
