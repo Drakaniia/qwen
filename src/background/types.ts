@@ -431,6 +431,7 @@ export interface BackgroundContext {
   startNativeDownloadForUrl(tabId: TabId, input: VideoInput): Promise<DownloadStartResult>;
   getBestDownloadableVideo(tabId: TabId): Promise<VideoRecord>;
   startBestNativeDownload(tabId: TabId, formatId?: string, variantId?: string): Promise<DownloadStartResult>;
+  downloadMany(tabId: TabId, videoIds: string[], formatId?: string): Promise<{ jobIds: string[] }>;
   controlActiveDownload(jobId: string, nativeType: string): { jobId: string };
   resumeDownload(tabId: TabId, jobId: string): Promise<DownloadStartResult>;
   cancelDownload(tabId: TabId, jobId: string): Promise<{ jobId: string }>;

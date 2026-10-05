@@ -198,6 +198,11 @@ async function addDetectedVideo(tabId: TabId, input: VideoInput, notify = true):
     title: finalTitle,
     pageUrl: input.pageUrl || input.frameUrl || "",
     frameUrl: input.frameUrl || "",
+    // Playlist enumeration stamps every row of one enumeration with the same groupId so
+    // the popup can group them and offer "Download all". Not part of the network
+    // detection ladder — before playlist-parallel-download nothing set it here, so it was
+    // dropped on the floor.
+    groupId: input.groupId || current?.groupId || "",
     contentType: input.contentType || "",
     downloadable: current?.downloadable === false ? false : isDownloadableUrl(normalizedUrl, input.contentType),
     width: Number.isFinite(width) && width > 0 ? width : current?.width || null,
@@ -397,6 +402,10 @@ async function startBestNativeDownload(tabId: TabId, formatId = "best", variantI
   return getDownloadOrchestration().startBestNativeDownload(tabId, formatId, variantId);
 }
 
+async function downloadMany(tabId: TabId, videoIds: string[], formatId = "best") {
+  return getDownloadOrchestration().downloadMany(tabId, videoIds, formatId);
+}
+
 function controlActiveDownload(jobId: string, nativeType: string) {
   return getDownloadOrchestration().controlActiveDownload(jobId, nativeType);
 }
@@ -520,6 +529,7 @@ const handlerContext: BackgroundContext = {
   startNativeDownloadForUrl,
   getBestDownloadableVideo,
   startBestNativeDownload,
+  downloadMany,
   controlActiveDownload,
   resumeDownload,
   cancelDownload,

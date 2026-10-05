@@ -127,6 +127,10 @@ describe("popup_api surface", () => {
     "getVideos",
     "getVideoFormats",
     "getFormatsForUrl",
+    // playlist-parallel-download: a playlist URL expands to rows, then one batched
+    // download message instead of one per row.
+    "enumeratePlaylist",
+    "downloadMany",
     "rescanTab",
     "clearVideos",
     "clearDownloads",
