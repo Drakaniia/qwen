@@ -1,30 +1,44 @@
-"use strict";
-
 /**
  * Download Control & File Operations
  *
  * Download management, control commands (pause/resume/cancel/retry),
  * file operations (open/choose folder), and download list management.
  *
- * Extracted from download_orchestration.js for modularity.
+ * Extracted from download_orchestration.ts for modularity.
  * Receives core download functions via `deps` to avoid circular imports.
  */
 
-export function createOperations(deps) {
-  function settings() {
+import { ACTIVE_DOWNLOAD_STATUSES } from "../shared/download_statuses.js";
+import type {
+  BackgroundSettings,
+  DownloadJobRecord,
+  DownloadOrchestratorDeps,
+  DownloadStartResult,
+  FolderChoiceResult,
+  NativeFileCommand,
+  TabId,
+  VideoInput,
+  VideoRecord,
+} from "./types.js";
+
+export function createOperations(deps: DownloadOrchestratorDeps) {
+  function settings(): BackgroundSettings {
     return deps.getSettings();
   }
 
-  function downloadsById() {
+  function downloadsById(): Record<string, DownloadJobRecord> {
     return deps.getDownloadsById();
   }
 
-  function isBlockingDownloadStatus(status) {
+  function isBlockingDownloadStatus(status?: string): boolean {
     return deps.blockingDownloadStatuses.has(status || "queued");
   }
 
-  function findBlockingDownloadJobForVideo(video, selectedVideo) {
-    const ids = new Set();
+  function findBlockingDownloadJobForVideo(
+    video: VideoRecord,
+    selectedVideo: VideoRecord,
+  ): DownloadJobRecord | undefined {
+    const ids = new Set<string>();
     for (const value of [video?.id, video?.groupId, selectedVideo?.id, selectedVideo?.groupId]) {
       if (value) {
         ids.add(value);
@@ -39,11 +53,11 @@ export function createOperations(deps) {
       if ((job.videoId && ids.has(job.videoId)) || (job.variantId && ids.has(job.variantId))) {
         return true;
       }
-      return selectedUrl && deps.normalizeUrl(job.url || "") === selectedUrl;
+      return Boolean(selectedUrl) && deps.normalizeUrl(job.url || "") === selectedUrl;
     });
   }
 
-  function getDownloadJob(jobId) {
+  function getDownloadJob(jobId: string): DownloadJobRecord {
     const job = downloadsById()[jobId];
     if (!job) {
       throw new Error("That download is no longer in the history.");
@@ -51,42 +65,49 @@ export function createOperations(deps) {
     return job;
   }
 
-  function videoFromDownloadJob(job) {
-    const video = {
-      id: job.videoId || deps.hashId(job.url),
+  function videoFromDownloadJob(job: DownloadJobRecord): VideoRecord {
+    const video: VideoInput = {
+      id: job.videoId || deps.hashId(job.url as string),
       url: job.url,
-      format: job.format || deps.detectFormat(job.url),
-      title: job.title || deps.titleFromUrl(job.url),
+      format: job.format || deps.detectFormat(job.url as string),
+      title: job.title || deps.titleFromUrl(job.url as string),
       pageUrl: job.pageUrl || "",
+      // Rebuilding the video from the job is the only art a resume/retry has: the
+      // tab's record is gone by then, and the memory-only captures (D10) went with
+      // the service worker. `download/native.ts` stamps this back onto the job.
+      thumbnailUrl: job.thumbnailUrl || "",
       requestHeaders: job.requestHeaders || [],
       downloadable: true,
     };
-    if (deps.videoFilters.isBlockedVideoUrl(video.url, job.contentType || "")) {
-      return deps.pageFallbackVideoForSource(video, new Set([deps.normalizeUrl(video.url || "")])) || video;
+    if (deps.videoFilters.isBlockedVideoUrl(video.url as string, job.contentType || "")) {
+      return (
+        deps.pageFallbackVideoForSource(video as VideoRecord, new Set([deps.normalizeUrl(video.url || "")])) ||
+        (video as VideoRecord)
+      );
     }
-    return video;
+    return video as VideoRecord;
   }
 
-  function controlActiveDownload(jobId, nativeType) {
+  function controlActiveDownload(jobId: string, nativeType: string): { jobId: string } {
     const port = deps.downloadPortsById[jobId];
     if (!port) {
       throw new Error("That download is not active anymore. Use Retry to start it again.");
     }
 
-    const nextStatus = {
+    const nextStatus: Record<string, string> = {
       pause: "pausing",
       resume: "running",
       cancel: "canceling",
-    }[nativeType];
-    const nextMessage = {
+    };
+    const nextMessage: Record<string, string> = {
       pause: "Pausing download...",
       resume: "Resuming download...",
       cancel: "Canceling download...",
-    }[nativeType];
+    };
 
     deps.updateDownload(jobId, {
-      status: nextStatus || downloadsById()[jobId]?.status || "running",
-      message: nextMessage || "Sending download command...",
+      status: nextStatus[nativeType] || downloadsById()[jobId]?.status || "running",
+      message: nextMessage[nativeType] || "Sending download command...",
     });
     if (nativeType === "pause") {
       port.postMessage({ type: "pause", id: jobId });
@@ -98,7 +119,7 @@ export function createOperations(deps) {
     return { jobId };
   }
 
-  async function resumeDownload(tabId, jobId) {
+  async function resumeDownload(tabId: TabId, jobId: string): Promise<DownloadStartResult> {
     await deps.ensureStateLoaded();
     if (deps.downloadPortsById[jobId]) {
       return controlActiveDownload(jobId, "resume");
@@ -116,17 +137,17 @@ export function createOperations(deps) {
       jobId,
       resume: true,
       backend: job.backend || "auto",
-    });
+    }) as Promise<DownloadStartResult>;
   }
 
-  async function cancelDownload(_tabId, jobId) {
+  async function cancelDownload(_tabId: TabId, jobId: string): Promise<{ jobId: string }> {
     await deps.ensureStateLoaded();
     if (deps.downloadPortsById[jobId]) {
       return controlActiveDownload(jobId, "cancel");
     }
 
     const job = getDownloadJob(jobId);
-    if (["done", "error", "canceled"].includes(job.status)) {
+    if (["done", "error", "canceled"].includes(job.status as string)) {
       throw new Error("This download is no longer active.");
     }
 
@@ -142,10 +163,10 @@ export function createOperations(deps) {
     return { jobId };
   }
 
-  async function retryDownload(tabId, jobId) {
+  async function retryDownload(tabId: TabId, jobId: string): Promise<DownloadStartResult> {
     await deps.ensureStateLoaded();
     const job = getDownloadJob(jobId);
-    if (["queued", "connecting", "running", "paused", "pausing", "canceling"].includes(job.status)) {
+    if (ACTIVE_DOWNLOAD_STATUSES.has(job.status as string)) {
       throw new Error("That download is still active. Cancel it or wait before retrying.");
     }
     if (!job.url) {
@@ -154,27 +175,31 @@ export function createOperations(deps) {
 
     return deps.startNativeDownloadFromVideo(job.tabId || tabId, videoFromDownloadJob(job), job.formatId || "best", {
       backend: job.backend || "auto",
-    });
+    }) as Promise<DownloadStartResult>;
   }
 
-  async function openDownloadedPath(jobId, nativeType) {
+  async function openDownloadedPath(jobId: string, nativeType: NativeFileCommand): Promise<{ jobId: string }> {
     await deps.ensureStateLoaded();
     const job = getDownloadJob(jobId);
-    if (!job.filepath) {
+    // The job's own path when it has one, else the folder it was downloading into.
+    // The native side opens a directory as a folder, so this is what backs the tray's
+    // `open-folder` fallback — a finished row whose path was never stamped (every job
+    // predating that, plus the browser-download backend) still leads somewhere useful
+    // instead of to an error toast.
+    const path = job.filepath || job.downloadFolder || settings().downloadFolder;
+    if (!path) {
       throw new Error("That download has no saved file path yet.");
     }
 
     const requestId = `open_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const payload =
-      nativeType === "openFile"
-        ? { type: "openFile", id: requestId, path: job.filepath }
-        : { type: "showFile", id: requestId, path: job.filepath };
+      nativeType === "openFile" ? { type: "openFile", id: requestId, path } : { type: "showFile", id: requestId, path };
 
     await deps.nativeRequest(payload, 10000);
     return { jobId };
   }
 
-  async function chooseDownloadFolder() {
+  async function chooseDownloadFolder(): Promise<FolderChoiceResult> {
     await deps.ensureStateLoaded();
     const requestId = `folder_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const response = await deps.nativeRequest(
@@ -196,7 +221,7 @@ export function createOperations(deps) {
     return { path: selectedPath, settings: settings() };
   }
 
-  async function removeDownload(jobId) {
+  async function removeDownload(jobId: string): Promise<{ jobId: string }> {
     await deps.ensureStateLoaded();
     const job = getDownloadJob(jobId);
     if (deps.downloadPortsById[jobId]) {
@@ -222,10 +247,10 @@ export function createOperations(deps) {
     return { jobId };
   }
 
-  async function clearDownloads() {
+  async function clearDownloads(): Promise<{ jobIds: string[]; downloads: DownloadJobRecord[] }> {
     await deps.ensureStateLoaded();
-    const removedJobIds = [];
-    const activeDownloads = {};
+    const removedJobIds: string[] = [];
+    const activeDownloads: Record<string, DownloadJobRecord> = {};
 
     for (const [jobId, job] of Object.entries(downloadsById())) {
       if (deps.downloadPortsById[jobId] || deps.blockingDownloadStatuses.has(job?.status || "queued")) {

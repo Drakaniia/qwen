@@ -1,12 +1,10 @@
-"use strict";
-
 import * as filterListLoader from "../shared/filter_list_loader.js";
 import * as mediaCandidates from "../shared/media_candidates.js";
 
 // ── State ────────────────────────────────────────────────────────────────
 
-let videoExceptionDomains = new Set();
-let filterRefreshTimer = null;
+let videoExceptionDomains = new Set<string>();
+let filterRefreshTimer: ReturnType<typeof setInterval> | null = null;
 const FILTER_REFRESH_INTERVAL_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 // ── Initialization ───────────────────────────────────────────────────────
@@ -16,7 +14,7 @@ const FILTER_REFRESH_INTERVAL_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
  * 1. Loads compiled patterns from cache (exception domains)
  * 2. Schedules periodic refresh of all filter lists
  */
-async function initFilterIntegration() {
+async function initFilterIntegration(): Promise<void> {
   try {
     const patterns = await filterListLoader.getActivePatterns();
     if (patterns && patterns.exceptionDomains && patterns.exceptionDomains.length > 0) {
@@ -60,7 +58,7 @@ async function initFilterIntegration() {
 /**
  * Check if a URL is blocked, with filter-list exception domains applied.
  */
-function isBlockedUrlWithFilters(url, contentType = "") {
+function isBlockedUrlWithFilters(url: string, contentType = ""): boolean {
   return mediaCandidates.isBlockedMediaUrlWithExceptions(url, contentType, videoExceptionDomains);
 }
 

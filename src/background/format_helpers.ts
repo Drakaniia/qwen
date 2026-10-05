@@ -1,24 +1,44 @@
-"use strict";
-
 import * as tabState from "./tab_state.js";
 import * as videoFilters from "../shared/video_filters.js";
 import { browserApi } from "../shared/browser_api.js";
 import * as downloadHelpers from "./download_helpers.js";
+import {
+  downloadableVariants,
+  isExtractorPageVideo,
+  isHardAccessError,
+  isRetryableSourceError,
+  pageFallbackVideoForSource,
+  resolveMediaCandidatesForSource,
+} from "./download_fallbacks.js";
 import * as videoUtils from "./video_utils.js";
 import * as headerUtils from "./header_utils.js";
 import { SIZE_PROBE_LIMIT_PER_GROUP, probeVideoSize, updateVideoSize } from "./size_probe.js";
+import type {
+  DownloadFallbackDeps,
+  FormatOption,
+  NativeRequestFn,
+  NativeResponse,
+  NotifyPopup,
+  TabId,
+  VideoInput,
+  VideoRecord,
+} from "./types.js";
 
 // ── Source helpers ───────────────────────────────────────────────────────
+//
+// Everything above `getNativeFormatsForVideo` is a step of that one function, and
+// `BackgroundContext.formatHelpers` is narrowed to that function alone — so none of
+// these need an `export`.
 
-function sourceHost(url) {
+function sourceHost(url?: string): string {
   try {
-    return new URL(url).hostname;
+    return new URL(url as string).hostname;
   } catch (_error) {
     return "";
   }
 }
 
-function sourceText(video) {
+function sourceText(video: VideoRecord): string {
   if (video.source === "youtube-page" || String(video.format || "").toUpperCase() === "YOUTUBE") {
     return "YouTube full video";
   }
@@ -33,7 +53,7 @@ function sourceText(video) {
 
 // ── Variant option helpers ───────────────────────────────────────────────
 
-function detectedVariantOption(variant) {
+function detectedVariantOption(variant: VideoRecord): FormatOption {
   const height = Number(variant.height || 0);
   const width = Number(variant.width || 0);
   const ext = videoFilters.displayVideoFormat(variant);
@@ -41,7 +61,7 @@ function detectedVariantOption(variant) {
   return {
     id: `variant:${variant.id}`,
     formatId: "best",
-    variantId: variant.id,
+    variantId: variant.id as string,
     backend: variant.backend || "auto",
     fallbackReason: variant.fallbackReason || "",
     optionType: "detected-source",
@@ -59,7 +79,7 @@ function detectedVariantOption(variant) {
   };
 }
 
-function normalizeNativeFormatOption(format, video) {
+function normalizeNativeFormatOption(format: Record<string, any>, video: VideoRecord): FormatOption {
   const ext = format.ext || (format.id === "best" ? "mp4" : "");
   return {
     ...format,
@@ -76,7 +96,13 @@ function normalizeNativeFormatOption(format, video) {
 
 // ── Title update helpers ─────────────────────────────────────────────────
 
-async function updateGroupedTitle(tabId, video, title, getVisibleVideosFn, notifyPopupFn) {
+async function updateGroupedTitle(
+  tabId: TabId,
+  video: VideoRecord,
+  title: string | undefined,
+  getVisibleVideosFn: (tabId: TabId) => VideoRecord[],
+  notifyPopupFn?: NotifyPopup,
+): Promise<void> {
   if (!title || videoFilters.isGenericTitle(title)) {
     return;
   }
@@ -92,7 +118,12 @@ async function updateGroupedTitle(tabId, video, title, getVisibleVideosFn, notif
 
 // ── Native format retrieval ──────────────────────────────────────────────
 
-async function ensureComparisonSizes(tabId, video, getVisibleVideosFn, notifyPopupFn) {
+async function ensureComparisonSizes(
+  tabId: TabId,
+  video: VideoRecord,
+  getVisibleVideosFn: (tabId: TabId) => VideoRecord[],
+  notifyPopupFn?: NotifyPopup,
+): Promise<VideoRecord> {
   const variantsToProbe = downloadHelpers
     .variantsForVideo(video)
     .filter((variant) => videoUtils.canProbeVideoSize(variant))
@@ -104,7 +135,7 @@ async function ensureComparisonSizes(tabId, video, getVisibleVideosFn, notifyPop
 
   const results = await Promise.all(
     variantsToProbe.map(async (variant) => ({
-      id: variant.id,
+      id: variant.id as string,
       sizeBytes: await probeVideoSize(variant),
     })),
   );
@@ -132,7 +163,7 @@ async function ensureComparisonSizes(tabId, video, getVisibleVideosFn, notifyPop
   return video;
 }
 
-async function requestNativeFormats(video, nativeRequestFn) {
+async function requestNativeFormats(video: VideoRecord, nativeRequestFn: NativeRequestFn): Promise<NativeResponse> {
   const requestId = `formats_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const currentSettings = tabState.getSettings();
   return nativeRequestFn({
@@ -141,51 +172,65 @@ async function requestNativeFormats(video, nativeRequestFn) {
     url: video.url,
     pageUrl: video.pageUrl || "",
     userAgent: navigator.userAgent || "",
-    requestHeaders: await headerUtils.nativeRequestHeadersForVideo(video.url, video.pageUrl || ""),
+    requestHeaders: await headerUtils.nativeRequestHeadersForVideo(video.url as string, video.pageUrl || ""),
     musicMode: currentSettings.musicMode || false,
     audioFormat: currentSettings.audioFormat || "mp3",
   });
 }
 
-async function notifyContentStatus(tabId, text) {
+async function notifyContentStatus(tabId: TabId, text: string): Promise<void> {
   if (!tabId) return;
   await browserApi.tabs.sendMessage(tabId, { type: "updateLoadingStatus", text });
 }
 
-function notifyPopupQualityStatus(notifyPopupFn, text) {
+function notifyPopupQualityStatus(notifyPopupFn: NotifyPopup | undefined, text: string): void {
   if (notifyPopupFn) {
     notifyPopupFn({ type: "updateQualityLoadingStatus", text });
   }
 }
 
-function notifyDownloadDebugLog(notifyPopupFn, level, message, details) {
-  console.debug(`[qwin:${level}] ${message}`, details || "");
+/** The shape `getNativeFormatsForVideo` answers with; spread into `{ ok: true, ... }`. */
+interface NativeFormatsResult {
+  videoId: string;
+  title: string;
+  thumbnailUrl: string;
+  formats: FormatOption[];
+  nativeError: string;
+  hasSubtitles: boolean;
+  subtitleLanguages: number;
 }
 
 async function getNativeFormatsForVideo(
-  tabId,
-  video,
-  getVisibleVideosFn,
-  notifyPopupFn,
-  nativeRequestFn,
-  addDetectedVideoFn,
-) {
+  tabId: TabId,
+  video: VideoRecord,
+  getVisibleVideosFn: (tabId: TabId) => VideoRecord[],
+  notifyPopupFn: NotifyPopup | undefined,
+  nativeRequestFn: NativeRequestFn,
+  addDetectedVideoFn: DownloadFallbackDeps["addDetectedVideo"],
+): Promise<NativeFormatsResult> {
   await tabState.load();
 
-  const fallbackDeps = buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn);
+  const fallbackDeps = downloadHelpers.buildDownloadFallbackDeps(
+    nativeRequestFn,
+    addDetectedVideoFn,
+    getVisibleVideosFn,
+  );
   const sizeProbePromise = ensureComparisonSizes(tabId, video, getVisibleVideosFn, notifyPopupFn);
   const lookupVideo = downloadHelpers.preferredNativeVideo(video);
   let formatLookupVideo = lookupVideo;
-  let response = null;
+  let response: NativeResponse | null = null;
   let nativeError = "";
   let firstNativeError = "";
 
-  const log = (level, message, details) => {
-    notifyDownloadDebugLog(notifyPopupFn, level, message, details);
+  // Enumeration is a multi-second network walk; these are the only record of which
+  // branch the user is waiting on, and the service worker console is the only place
+  // they survive a service-worker teardown.
+  const log = (level: string, message: string, details?: unknown) => {
+    console.debug(`[qwin:${level}] ${message}`, details || "");
   };
 
-  const status = (text) => {
-    notifyContentStatus(tabId, text);
+  const status = (text: string) => {
+    void notifyContentStatus(tabId, text);
     notifyPopupQualityStatus(notifyPopupFn, text);
   };
 
@@ -205,11 +250,11 @@ async function getNativeFormatsForVideo(
       log("warn", "yt-dlp returned empty response");
     }
   } catch (error) {
-    nativeError = error.message || String(error);
+    nativeError = (error as Error).message || String(error);
     firstNativeError = nativeError;
     log("error", "yt-dlp format check failed", nativeError);
-    const pageFallback = downloadHelpers.isRetryableSourceError(nativeError)
-      ? await downloadHelpers.pageFallbackVideoForSource(
+    const pageFallback = isRetryableSourceError(nativeError)
+      ? await pageFallbackVideoForSource(
           lookupVideo,
           new Set([headerUtils.normalizeUrl(lookupVideo.url || "")]),
           fallbackDeps,
@@ -224,17 +269,17 @@ async function getNativeFormatsForVideo(
       await status("Checking page fallback...");
       try {
         response = await requestNativeFormats(pageFallback, nativeRequestFn);
-        formatLookupVideo =
-          (await addDetectedVideoFn(tabId, {
-            ...pageFallback,
-            title: pageFallback.title || lookupVideo.title || video.title,
-            duration: pageFallback.duration || lookupVideo.duration || video.duration,
-            width: pageFallback.width || lookupVideo.width || video.width,
-            height: pageFallback.height || lookupVideo.height || video.height,
-            bitrate: pageFallback.bitrate || lookupVideo.bitrate || video.bitrate,
-            thumbnailUrl: pageFallback.thumbnailUrl || lookupVideo.thumbnailUrl || video.thumbnailUrl,
-            downloadable: true,
-          })) || pageFallback;
+        const pageFallbackInput: VideoInput = {
+          ...pageFallback,
+          title: pageFallback.title || lookupVideo.title || video.title,
+          duration: pageFallback.duration || lookupVideo.duration || video.duration,
+          width: pageFallback.width || lookupVideo.width || video.width,
+          height: pageFallback.height || lookupVideo.height || video.height,
+          bitrate: pageFallback.bitrate || lookupVideo.bitrate || video.bitrate,
+          thumbnailUrl: pageFallback.thumbnailUrl || lookupVideo.thumbnailUrl || video.thumbnailUrl,
+          downloadable: true,
+        };
+        formatLookupVideo = (await addDetectedVideoFn(tabId, pageFallbackInput)) || pageFallback;
         nativeError = "";
         log(
           "info",
@@ -242,13 +287,13 @@ async function getNativeFormatsForVideo(
           `Found ${response && response.formats ? response.formats.length : 0} format(s)`,
         );
       } catch (pageError) {
-        nativeError = pageError.message || String(pageError);
+        nativeError = (pageError as Error).message || String(pageError);
         log("error", "Page URL fallback also failed", nativeError);
       }
     }
-    if (!response && downloadHelpers.isRetryableSourceError(nativeError)) {
+    if (!response && isRetryableSourceError(nativeError)) {
       log("warn", "Trying resolved media candidates as fallback...");
-      const resolvedCandidates = await downloadHelpers.resolveMediaCandidatesForSource(
+      const resolvedCandidates = await resolveMediaCandidatesForSource(
         tabId,
         pageFallback || lookupVideo,
         new Set([headerUtils.normalizeUrl(lookupVideo.url || "")]),
@@ -277,7 +322,7 @@ async function getNativeFormatsForVideo(
           );
           break;
         } catch (candidateError) {
-          nativeError = candidateError.message || String(candidateError);
+          nativeError = (candidateError as Error).message || String(candidateError);
           log("error", `Resolved source ${resolvedCandidates.indexOf(candidate) + 1} failed`, nativeError);
         }
       }
@@ -299,12 +344,12 @@ async function getNativeFormatsForVideo(
       ? response.formats.map((format) => normalizeNativeFormatOption(format, formatLookupVideo))
       : [];
 
-  const firstHardNativeError = firstNativeError && downloadHelpers.isHardAccessError(firstNativeError);
-  const hardNativeError = nativeError && !nativeFormats.length && downloadHelpers.isHardAccessError(nativeError);
+  const firstHardNativeError = Boolean(firstNativeError && isHardAccessError(firstNativeError));
+  const hardNativeError = Boolean(nativeError && !nativeFormats.length && isHardAccessError(nativeError));
   if (firstHardNativeError) {
     await downloadHelpers.markVideoUrlUnavailable(
       tabId,
-      lookupVideo.url,
+      lookupVideo.url as string,
       firstNativeError,
       getVisibleVideosFn,
       notifyPopupFn,
@@ -312,14 +357,14 @@ async function getNativeFormatsForVideo(
   } else if (hardNativeError) {
     await downloadHelpers.markVideoUrlUnavailable(
       tabId,
-      formatLookupVideo.url,
+      formatLookupVideo.url as string,
       nativeError,
       getVisibleVideosFn,
       notifyPopupFn,
     );
   }
 
-  let refreshedVideo = null;
+  let refreshedVideo: VideoRecord;
   if (nativeFormats.length > 0) {
     if (response && response.title) {
       await updateGroupedTitle(tabId, formatLookupVideo, response.title, getVisibleVideosFn, notifyPopupFn);
@@ -337,7 +382,7 @@ async function getNativeFormatsForVideo(
       formatLookupVideo ||
       sizedVideo;
   }
-  const excludedUrls = new Set();
+  const excludedUrls = new Set<string>();
   if (firstHardNativeError) {
     excludedUrls.add(headerUtils.normalizeUrl(lookupVideo.url || ""));
   }
@@ -345,11 +390,11 @@ async function getNativeFormatsForVideo(
     excludedUrls.add(headerUtils.normalizeUrl(formatLookupVideo.url || ""));
   }
 
-  const sourceFormats = nativeFormats.length
+  const sourceFormats: FormatOption[] = nativeFormats.length
     ? []
-    : downloadHelpers.isExtractorPageVideo(refreshedVideo)
+    : isExtractorPageVideo(refreshedVideo)
       ? []
-      : downloadHelpers.downloadableVariants(refreshedVideo, excludedUrls, fallbackDeps).map(detectedVariantOption);
+      : downloadableVariants(refreshedVideo, excludedUrls, fallbackDeps).map(detectedVariantOption);
 
   if (nativeError && !nativeFormats.length && !sourceFormats.length) {
     log("warn", "Format enumeration found no formats, using fallback", nativeError);
@@ -397,7 +442,7 @@ async function getNativeFormatsForVideo(
   }
 
   return {
-    videoId: refreshedVideo.id || formatLookupVideo.id || lookupVideo.id,
+    videoId: refreshedVideo.id || formatLookupVideo.id || (lookupVideo.id as string),
     title: finalTitle,
     thumbnailUrl: serverThumbnail || refreshedVideo.thumbnailUrl || "",
     formats: formats.length
@@ -414,25 +459,9 @@ async function getNativeFormatsForVideo(
   };
 }
 
-// ── Internal: build fallback deps for format retrieval ───────────────────
-
-function buildFallbackDeps(getVisibleVideosFn, addDetectedVideoFn, nativeRequestFn) {
-  return {
-    ...downloadHelpers.buildDownloadFallbackDeps(nativeRequestFn, addDetectedVideoFn, getVisibleVideosFn),
-    nativeRequestHeadersForVideo: headerUtils.nativeRequestHeadersForVideo,
-  };
-}
-
-export {
-  sourceHost,
-  sourceText,
-  detectedVariantOption,
-  normalizeNativeFormatOption,
-  updateGroupedTitle,
-  ensureComparisonSizes,
-  requestNativeFormats,
-  notifyContentStatus,
-  notifyPopupQualityStatus,
-  notifyDownloadDebugLog,
-  getNativeFormatsForVideo,
-};
+// ── Public surface ───────────────────────────────────────────────────────
+//
+// Exactly one export: `getVideoFormats`, `getFormatsForUrl` and `getBestVideoFormats`
+// are the only messages that enumerate formats, and `BackgroundContext.formatHelpers`
+// is narrowed to this name.
+export { getNativeFormatsForVideo };

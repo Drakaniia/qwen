@@ -1,14 +1,13 @@
-"use strict";
-
 import { browserApi } from "../shared/browser_api.js";
+import type { BlockedUrlCheck, RequestHeader } from "./types.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
 // Import isBlockedUrlWithFilters lazily to avoid circular deps.
-// Set by background.js at startup.
-let isBlockedUrlCheck = null;
+// Set by background.ts at startup.
+let isBlockedUrlCheck: BlockedUrlCheck | null = null;
 
-function setBlockedUrlCheck(fn) {
+function setBlockedUrlCheck(fn: BlockedUrlCheck): void {
   isBlockedUrlCheck = fn;
 }
 
@@ -42,11 +41,16 @@ const MAX_COOKIE_HEADER_LENGTH = 4096;
 
 // ── State ────────────────────────────────────────────────────────────────
 
-const requestHeadersByUrl = {};
+interface CapturedHeaders {
+  headers: RequestHeader[];
+  lastSeen: number;
+}
+
+const requestHeadersByUrl: Record<string, CapturedHeaders> = {};
 
 // ── Pure utility functions ───────────────────────────────────────────────
 
-function normalizeUrl(url) {
+function normalizeUrl(url: string): string {
   try {
     const parsed = new URL(url);
     parsed.hash = "";
@@ -56,13 +60,13 @@ function normalizeUrl(url) {
   }
 }
 
-function normalizeHeaderName(name) {
+function normalizeHeaderName(name: unknown): string {
   return String(name || "")
     .trim()
     .toLowerCase();
 }
 
-function canonicalHeaderName(name) {
+function canonicalHeaderName(name: string): string {
   return normalizeHeaderName(name)
     .split("-")
     .filter(Boolean)
@@ -70,14 +74,19 @@ function canonicalHeaderName(name) {
     .join("-");
 }
 
-function cleanHeaderValue(value) {
+function cleanHeaderValue(value: unknown): string {
   const text = String(value || "")
     .replace(/[\r\n]/g, " ")
     .trim();
   return text.length > 8192 ? text.slice(0, 8192) : text;
 }
 
-function addNativeHeader(headerMap, name, value, overwrite = false) {
+function addNativeHeader(
+  headerMap: Map<string, RequestHeader>,
+  name: unknown,
+  value: unknown,
+  overwrite = false,
+): void {
   const normalizedName = normalizeHeaderName(name);
   const cleanedValue = cleanHeaderValue(value);
   if (!normalizedName || !cleanedValue || !NATIVE_HEADER_NAMES.has(normalizedName)) {
@@ -92,15 +101,15 @@ function addNativeHeader(headerMap, name, value, overwrite = false) {
   });
 }
 
-function capturedNativeHeaders(headers) {
-  const headerMap = new Map();
+function capturedNativeHeaders(headers?: chrome.webRequest.HttpHeader[]): RequestHeader[] {
+  const headerMap = new Map<string, RequestHeader>();
   for (const header of headers || []) {
     addNativeHeader(headerMap, header.name, header.value);
   }
   return Array.from(headerMap.values());
 }
 
-function pruneCapturedRequestHeaders() {
+function pruneCapturedRequestHeaders(): void {
   const entries = Object.entries(requestHeadersByUrl);
   if (entries.length <= MAX_CAPTURED_REQUEST_HEADERS) {
     return;
@@ -114,7 +123,7 @@ function pruneCapturedRequestHeaders() {
     });
 }
 
-function rememberRequestHeaders(details) {
+function rememberRequestHeaders(details: chrome.webRequest.OnBeforeSendHeadersDetails): void {
   if (!details || !details.url) {
     return;
   }
@@ -136,7 +145,7 @@ function rememberRequestHeaders(details) {
   pruneCapturedRequestHeaders();
 }
 
-function pageOrigin(pageUrl) {
+function pageOrigin(pageUrl: string): string {
   try {
     return new URL(pageUrl).origin;
   } catch (_error) {
@@ -144,7 +153,7 @@ function pageOrigin(pageUrl) {
   }
 }
 
-async function cookieHeaderForUrl(url) {
+async function cookieHeaderForUrl(url: string): Promise<string> {
   try {
     const parsed = new URL(url);
     if (!["http:", "https:"].includes(parsed.protocol)) {
@@ -154,11 +163,18 @@ async function cookieHeaderForUrl(url) {
     return "";
   }
 
-  const cookies = await browserApi.cookies.getAll({ url });
+  // `cookies.getAll` only reads `url`, but `@types/chrome` types its parameter as
+  // `CookieDetails` — the get-one shape, whose `name` is required. The declaration is
+  // wrong for `getAll` and `src/shared/browser_api.ts` owns that signature, so the
+  // workaround lives at the one call site instead of leaking into the shim.
+  const cookies = await browserApi.cookies.getAll({ url } as unknown as chrome.cookies.CookieDetails);
   let cookieStr = cookies
-    .filter((cookie) => cookie && cookie.name)
-    .sort((left, right) => String(right.path || "").length - String(left.path || "").length)
-    .map((cookie) => `${cookie.name}=${cookie.value || ""}`)
+    .filter((cookie: chrome.cookies.Cookie) => cookie && cookie.name)
+    .sort(
+      (left: chrome.cookies.Cookie, right: chrome.cookies.Cookie) =>
+        String(right.path || "").length - String(left.path || "").length,
+    )
+    .map((cookie: chrome.cookies.Cookie) => `${cookie.name}=${cookie.value || ""}`)
     .join("; ");
 
   // Truncate oversized cookie headers to prevent HTTP 413 errors.
@@ -172,9 +188,9 @@ async function cookieHeaderForUrl(url) {
   return cookieStr;
 }
 
-async function nativeRequestHeadersForVideo(videoUrl, pageUrl) {
-  const headerMap = new Map();
-  const captured = requestHeadersByUrl[normalizeUrl(videoUrl)] || {};
+async function nativeRequestHeadersForVideo(videoUrl: string, pageUrl: string): Promise<RequestHeader[]> {
+  const headerMap = new Map<string, RequestHeader>();
+  const captured = requestHeadersByUrl[normalizeUrl(videoUrl)] || { headers: [], lastSeen: 0 };
   for (const header of captured.headers || []) {
     addNativeHeader(headerMap, header.name, header.value);
   }
@@ -196,7 +212,7 @@ async function nativeRequestHeadersForVideo(videoUrl, pageUrl) {
 }
 
 export {
-  // DI: allows background.js to inject the filter-block check
+  // DI: allows background.ts to inject the filter-block check
   setBlockedUrlCheck,
 
   // Core utilities

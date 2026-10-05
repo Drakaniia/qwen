@@ -1,9 +1,8 @@
-"use strict";
-
 import { browserApi } from "../shared/browser_api.js";
 import * as headerUtils from "./header_utils.js";
 import { hasMediaContentType } from "../shared/media_protocols.js";
 import { isStreamingUrl, isLikelyStreamingUrl, classifyStreamingUrl } from "../shared/streaming_patterns.js";
+import type { TabId, VideoInput } from "./types.js";
 
 /**
  * Pattern to detect Service Worker script URLs used as request initiators.
@@ -14,20 +13,11 @@ const SERVICE_WORKER_SCOPE_RE =
 /**
  * Check if a URL corresponds to a Service Worker script scope.
  */
-function isServiceWorkerScopeUrl(url) {
+function isServiceWorkerScopeUrl(url: unknown): boolean {
   if (!url || typeof url !== "string") {
     return false;
   }
   return SERVICE_WORKER_SCOPE_RE.test(url);
-}
-
-/**
- * Handle WebSocket upgrade requests detected via webRequest.
- */
-function handleWebSocketRequest(details) {
-  if (!details || details.tabId < 0 || !details.url) {
-    return;
-  }
 }
 
 /**
@@ -58,39 +48,42 @@ const VIDEO_REQUEST_PATTERNS = [
 ];
 
 /**
- * Check that the message sender is from an extension page (popup, options, etc.)
- * rather than a web page content script.
+ * The page URL a request was made from.
  *
- * Blocks compromised content scripts while allowing extension UI pages to
- * invoke sensitive operations (debugger, recording).
+ * `WebRequestDetails.documentUrl` was replaced by `documentId` in Chrome 106 and the
+ * project floors at 148, so the declared details type no longer carries it — but the
+ * request object's field is still what the page-scoped bookkeeping wants, so it is
+ * read through a cast with `initiator` (which survives in the type) as the fallback.
+ * This is the only place the two are mixed.
  */
-function isExtensionPageSender(sender) {
-  if (!sender || !sender.url) {
-    return false;
-  }
-  return /^(chrome|moz)-extension:\/\//i.test(sender.url);
+function pageUrlFor(details: { documentUrl?: string; initiator?: string }): string {
+  return details.documentUrl || details.initiator || "";
+}
+
+/** What `background.ts` injects so this module owns no detection logic itself. */
+export interface WebRequestDeps {
+  clearTab(tabId: TabId): void;
+  addDetectedVideo(tabId: TabId, input: VideoInput, notify?: boolean): Promise<unknown>;
+  detectFormat(url: string, contentType?: string): string;
+  isLikelyVideoRequest(url: string, resourceType: string, contentType?: string): boolean;
+  isBlockedMediaUrl(url: string, contentType?: string): boolean;
+  VIDEO_EXTENSION_RE: RegExp;
+  HLS_RE: RegExp;
+  CDN_HINT_RE: RegExp;
+  contentTypeFromHeaders(headers?: chrome.webRequest.HttpHeader[]): string;
+  contentLengthFromHeaders(headers?: chrome.webRequest.HttpHeader[]): number | null;
 }
 
 /**
- * Initialize web request handlers with dependencies from background.js.
- *
- * @param {Object} deps - Dependencies injected from background.js
- * @param {Function} deps.clearTab - Clear tab function
- * @param {Function} deps.addDetectedVideo - Add detected video function (tabId, input, notify)
- * @param {Function} deps.detectFormat - Detect video format from URL/contentType
- * @param {Function} deps.isLikelyVideoRequest - Check if request is a video
- * @param {RegExp} deps.VIDEO_EXTENSION_RE - Video extension regex
- * @param {RegExp} deps.HLS_RE - HLS playlist regex
- * @param {RegExp} deps.CDN_HINT_RE - CDN hint regex
- * @param {Function} deps.contentTypeFromHeaders - Extract content-type from headers
- * @param {Function} deps.contentLengthFromHeaders - Extract content-length from headers
+ * Initialize web request handlers with dependencies from background.ts.
  */
-export function initWebRequestHandlers(deps) {
+export function initWebRequestHandlers(deps: WebRequestDeps): void {
   const {
     clearTab,
     addDetectedVideo,
     detectFormat,
     isLikelyVideoRequest,
+    isBlockedMediaUrl,
     VIDEO_EXTENSION_RE,
     HLS_RE,
     CDN_HINT_RE,
@@ -98,7 +91,7 @@ export function initWebRequestHandlers(deps) {
     contentLengthFromHeaders,
   } = deps;
 
-  function handleBeforeRequest(details) {
+  function handleBeforeRequest(details: chrome.webRequest.OnBeforeRequestDetails): void {
     if (!details || details.tabId < 0 || !details.url) {
       return;
     }
@@ -115,15 +108,15 @@ export function initWebRequestHandlers(deps) {
       return;
     }
 
-    addDetectedVideo(details.tabId, {
+    void addDetectedVideo(details.tabId, {
       url: details.url,
       format: detectFormat(details.url),
       source: HLS_RE.test(details.url) ? "hls-network" : "network",
-      pageUrl: details.documentUrl || details.initiator || "",
+      pageUrl: pageUrlFor(details),
     });
   }
 
-  function handleBeforeSendHeaders(details) {
+  function handleBeforeSendHeaders(details: chrome.webRequest.OnBeforeSendHeadersDetails): void {
     if (!details || details.tabId < 0 || !details.url) {
       return;
     }
@@ -133,7 +126,7 @@ export function initWebRequestHandlers(deps) {
     headerUtils.rememberRequestHeaders(details);
   }
 
-  function handleHeadersReceived(details) {
+  function handleHeadersReceived(details: chrome.webRequest.OnHeadersReceivedDetails): void {
     if (!details || details.tabId < 0 || !details.url) {
       return;
     }
@@ -143,14 +136,14 @@ export function initWebRequestHandlers(deps) {
       return;
     }
 
-    const initiator = details.initiator || details.documentUrl || "";
+    const initiator = pageUrlFor(details);
     const source = isServiceWorkerScopeUrl(initiator) ? "service-worker" : contentType ? "headers" : "network";
 
-    addDetectedVideo(details.tabId, {
+    void addDetectedVideo(details.tabId, {
       url: details.url,
       format: detectFormat(details.url, contentType),
       source,
-      pageUrl: details.documentUrl || details.initiator || "",
+      pageUrl: pageUrlFor(details),
       contentType,
       sizeBytes: contentLengthFromHeaders(details.responseHeaders),
     });
@@ -168,8 +161,15 @@ export function initWebRequestHandlers(deps) {
    * patterns (VIDEO_REQUEST_PATTERNS). This missed videos served from
    * generic-looking CDN URLs.
    */
-  function handleHeadersReceivedBroad(details) {
+  function handleHeadersReceivedBroad(details: chrome.webRequest.OnHeadersReceivedDetails): void {
     if (!details || details.tabId < 0 || !details.url) {
+      return;
+    }
+
+    const contentType = contentTypeFromHeaders(details.responseHeaders);
+    // Block list is authoritative on every path — streaming patterns must not
+    // resurrect a URL the shared tables rejected (e.g. /cdn-cgi/ infra).
+    if (isBlockedMediaUrl(details.url, contentType)) {
       return;
     }
 
@@ -177,8 +177,6 @@ export function initWebRequestHandlers(deps) {
     if (VIDEO_EXTENSION_RE.test(details.url) || CDN_HINT_RE.test(details.url)) {
       return;
     }
-
-    const contentType = contentTypeFromHeaders(details.responseHeaders);
 
     // Coc Coc approach: check ALL response content-types for media
     if (!hasMediaContentType(contentType)) {
@@ -193,11 +191,11 @@ export function initWebRequestHandlers(deps) {
 
     const source = streamingResult.isStreaming ? "streaming-pattern" : "headers-broad";
 
-    addDetectedVideo(details.tabId, {
+    void addDetectedVideo(details.tabId, {
       url: details.url,
       format: streamingResult.format || detectFormat(details.url, contentType),
       source,
-      pageUrl: details.documentUrl || details.initiator || "",
+      pageUrl: pageUrlFor(details),
       contentType,
       sizeBytes: contentLengthFromHeaders(details.responseHeaders),
     });
@@ -212,8 +210,14 @@ export function initWebRequestHandlers(deps) {
    * Pattern-matched URLs are flagged immediately rather than waiting for
    * response headers.
    */
-  function handleBeforeRequestStreaming(details) {
+  function handleBeforeRequestStreaming(details: chrome.webRequest.OnBeforeRequestDetails): void {
     if (!details || details.tabId < 0 || !details.url) {
+      return;
+    }
+
+    // Block list is authoritative — never pattern-match an infra/ad URL
+    // into a fake M3U8 (e.g. /cdn-cgi/challenge-platform matched `cdn`).
+    if (isBlockedMediaUrl(details.url)) {
       return;
     }
 
@@ -227,11 +231,11 @@ export function initWebRequestHandlers(deps) {
       return;
     }
 
-    addDetectedVideo(details.tabId, {
+    void addDetectedVideo(details.tabId, {
       url: details.url,
       format: "M3U8", // Best guess — yt-dlp handles the actual format detection
       source: "streaming-pattern",
-      pageUrl: details.documentUrl || details.initiator || "",
+      pageUrl: pageUrlFor(details),
     });
   }
 
@@ -244,12 +248,6 @@ export function initWebRequestHandlers(deps) {
   // Video detection — narrow patterns only
   browserApi.webRequest.onBeforeRequest.addListener(handleBeforeRequest, {
     urls: VIDEO_REQUEST_PATTERNS,
-  });
-
-  // WebSocket stream detection — <all_urls> required because WebSocket URLs use ws:///wss://
-  browserApi.webRequest.onBeforeRequest.addListener(handleWebSocketRequest, {
-    urls: ["<all_urls>"],
-    types: ["websocket"],
   });
 
   // Request headers for video download context — narrow patterns + extraHeaders
@@ -280,4 +278,4 @@ export function initWebRequestHandlers(deps) {
   ]);
 }
 
-export { isExtensionPageSender, VIDEO_REQUEST_PATTERNS };
+export { VIDEO_REQUEST_PATTERNS };

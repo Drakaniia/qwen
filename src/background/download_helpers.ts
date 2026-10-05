@@ -1,81 +1,76 @@
-"use strict";
-
 import * as tabState from "./tab_state.js";
-import * as downloadFallbacks from "./download_fallbacks.js";
-import * as downloadState from "./download_state.js";
+import { cleanProgressText, normalizeDownloadProgress as normalizePercent } from "./download_state.js";
 import * as videoUtils from "./video_utils.js";
 import * as headerUtils from "./header_utils.js";
-import { ACTIVE_DOWNLOAD_STATUSES as BLOCKING_DOWNLOAD_STATUSES } from "../popup/popup_state.js";
+// R11: the service worker used to import this from `popup/popup_state.ts`, which only
+// resolved because esbuild bundles the two into one IIFE. The definition moved to
+// shared/ so neither layer has to know about the other.
+import { ACTIVE_DOWNLOAD_STATUSES as BLOCKING_DOWNLOAD_STATUSES } from "../shared/download_statuses.js";
+import type {
+  DownloadFallbackDeps,
+  DownloadJobRecord,
+  JobPatch,
+  NativeRequestFn,
+  NativeResponse,
+  NotifyPopup,
+  TabId,
+  VideoPatch,
+  VideoRecord,
+} from "./types.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
-// ── Formatting helpers ────────────────────────────────────────────────────
-
-function formatBytes(bytes) {
-  if (!bytes || bytes <= 0) return "";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex++;
-  }
-  return `${value.toFixed(1)} ${units[unitIndex]}`;
-}
 const HOST_NAME = "com.qwin.video_downloader";
 
 // ── Download ports (shared mutable state) ────────────────────────────────
 
-const downloadPortsById = {};
-
-function getDownloadPortsById() {
-  return downloadPortsById;
-}
+const downloadPortsById: Record<string, chrome.runtime.Port> = {};
 
 // ── Download update helper ───────────────────────────────────────────────
 
-function updateDownload(jobId, patch, notifyPopupFn) {
-  tabState.updateDownload(jobId, patch);
+function updateDownload(jobId: string, patch: JobPatch, notifyPopupFn?: NotifyPopup): void {
+  void tabState.updateDownload(jobId, patch);
+  // The write above is synchronous despite the promise `tabState.updateDownload`
+  // returns, so the job is always readable here — the guard only satisfies
+  // `DownloadUpdatedEvent`'s non-nullable `job`.
   const job = tabState.getDownload(jobId);
-  if (notifyPopupFn) {
+  if (notifyPopupFn && job) {
     notifyPopupFn({ type: "downloadUpdated", job });
   }
 }
 
-// ── Segmented download detection ─────────────────────────────────────────
-
-function isSegmentedDownloadJob(job) {
-  const format = String(job?.format || "").toUpperCase();
-  const url = String(job?.url || "");
-  return format === "M3U8" || format === "MPD" || videoUtils.HLS_RE.test(url) || videoUtils.DASH_RE.test(url);
-}
-
 // ── Download progress helpers ────────────────────────────────────────────
 
-function normalizeDownloadProgress(jobId, percent) {
-  const job = tabState.getDownload(jobId) || {};
-  return downloadState.visibleDownloadProgressPercent(job.percent, percent, isSegmentedDownloadJob(job));
-}
-
-function downloadProgressMessage(percent) {
-  return downloadState.downloadProgressMessage(percent);
-}
-
-function cleanProgressText(value) {
-  return downloadState.cleanProgressText(value);
-}
-
-function resetDownloadProgressDetails() {
-  return downloadState.resetDownloadProgressDetails();
-}
-
-function progressDetailPatchFromMessage(message) {
-  return downloadState.progressDetailPatchFromMessage(message);
+/**
+ * The job-specific rule on top of `download_state.ts`'s parsing: supply the stage
+ * context D7 needs, which only the stored job has.
+ *
+ * What this *used* to be is worth recording, because the old comment here was a lie
+ * after D7 and the lie was load-bearing. It read "a segmented job reports tool
+ * progress directly, while a plain file job gets the monotonic clamp", which is the
+ * `useToolPercent` bypass: segmented jobs (`M3U8`/`MPD`/`HLS_RE`/`DASH_RE`, via
+ * `isSegmentedDownloadJob`) skipped the clamp entirely and showed the tool's percent
+ * raw — so a segmented bar walked backwards while a plain file bar did not. D7
+ * replaces the special case with one rule for every job (spec §4.2): a percent never
+ * decreases within a stage, and a new stage resets the baseline. That retired
+ * `visibleDownloadProgressPercent` and left `isSegmentedDownloadJob` with no caller,
+ * so it was deleted rather than left exported (AGENTS.md: "Do not add dead exports").
+ *
+ * `nextStage` is optional and omitted by the browser-download path
+ * (`download/browser.ts`), which never changes `stage` mid-transfer — an empty value
+ * therefore means "no stage information", not "stage became empty", and never resets.
+ */
+function normalizeDownloadProgress(jobId: string, percent: unknown, nextStage?: unknown): number | null {
+  const job = tabState.getDownload(jobId);
+  const currentStage = String(job?.stage || "").trim();
+  const incomingStage = String(nextStage || "").trim();
+  const stageChanged = incomingStage !== "" && incomingStage !== currentStage;
+  return normalizePercent(job?.percent, percent, stageChanged);
 }
 
 // ── Artifact helpers ─────────────────────────────────────────────────────
 
-function artifactPatchFromMessage(message) {
+function artifactPatchFromMessage(message: NativeResponse): JobPatch {
   const patch = {
     filepath: message.filepath,
     artifactRoot: message.artifactRoot,
@@ -83,7 +78,7 @@ function artifactPatchFromMessage(message) {
   return Object.fromEntries(Object.entries(patch).filter(([, value]) => value));
 }
 
-function cleanupPatchFromMessage(message) {
+function cleanupPatchFromMessage(message: NativeResponse): JobPatch {
   const patch = {
     artifactCleanupDeleted: Array.isArray(message.artifactCleanupDeleted) ? message.artifactCleanupDeleted : undefined,
     artifactCleanupMissing: Array.isArray(message.artifactCleanupMissing) ? message.artifactCleanupMissing : undefined,
@@ -92,17 +87,20 @@ function cleanupPatchFromMessage(message) {
   return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined && value !== ""));
 }
 
-function clearedArtifactPatch(cleanupPatch) {
-  return Array.isArray(cleanupPatch.artifactCleanupDeleted) && cleanupPatch.artifactCleanupDeleted.length
-    ? { filepath: "", artifactRoot: "", artifactPaths: [] }
-    : {};
+function clearedArtifactPatch(cleanupPatch: JobPatch): JobPatch {
+  const deleted = cleanupPatch.artifactCleanupDeleted;
+  return Array.isArray(deleted) && deleted.length ? { filepath: "", artifactRoot: "", artifactPaths: [] } : {};
 }
 
-function hasDownloadArtifacts(job) {
+function hasDownloadArtifacts(job: DownloadJobRecord): boolean {
   return Boolean(job?.filepath || job?.artifactRoot || (Array.isArray(job?.artifactPaths) && job.artifactPaths.length));
 }
 
-async function cleanupDownloadArtifacts(jobId, job, nativeRequestFn) {
+async function cleanupDownloadArtifacts(
+  jobId: string,
+  job: DownloadJobRecord,
+  nativeRequestFn: NativeRequestFn,
+): Promise<JobPatch> {
   if (!hasDownloadArtifacts(job)) {
     return {};
   }
@@ -126,28 +124,16 @@ async function cleanupDownloadArtifacts(jobId, job, nativeRequestFn) {
     };
   } catch (error) {
     return {
-      artifactCleanupError: cleanProgressText(error && error.message ? error.message : String(error)),
+      artifactCleanupError: cleanProgressText((error as Error)?.message || String(error)),
     };
   }
 }
 
 // ── Fallback helpers ─────────────────────────────────────────────────────
-
-function isHardAccessError(error) {
-  return downloadFallbacks.isHardAccessError(error);
-}
-
-function isRetryableSourceError(error) {
-  return downloadFallbacks.isRetryableSourceError(error);
-}
-
-function exhaustedSourcesError(error, attemptedUrls) {
-  return downloadFallbacks.exhaustedSourcesError(error, attemptedUrls);
-}
-
-function userFriendlyDownloadError(error) {
-  return downloadFallbacks.userFriendlyDownloadError(error);
-}
+//
+// The error mappers and the fallback *search* live in `download_fallbacks.ts` and are
+// imported from there directly. They used to be re-exported here one-for-one, which
+// gave every caller two names for one function and neither name was load-bearing.
 
 // ── Fallback wrappers (accept deps to avoid closure coupling) ────────────
 
@@ -155,55 +141,37 @@ function userFriendlyDownloadError(error) {
  * Mark a video URL as unavailable. Accepts optional getVisibleVideosFn and
  * notifyPopupFn for notifying the popup of the change.
  */
-async function markVideoUrlUnavailable(tabId, url, error, getVisibleVideosFn, notifyPopupFn) {
+async function markVideoUrlUnavailable(
+  tabId: TabId,
+  url: string,
+  error: unknown,
+  getVisibleVideosFn?: (tabId: TabId) => VideoRecord[],
+  notifyPopupFn?: NotifyPopup,
+): Promise<boolean> {
   const targetUrl = headerUtils.normalizeUrl(url);
+  const patch: VideoPatch = {
+    downloadable: false,
+    blockedReason: String(error || "The server refused this source.").slice(0, 500),
+    lastSeen: Date.now(),
+  };
   const changed = await tabState.patchVideo(
     tabId,
     (item) => headerUtils.normalizeUrl(item.url || "") === targetUrl && item.downloadable !== false,
-    {
-      downloadable: false,
-      blockedReason: String(error || "The server refused this source.").slice(0, 500),
-      lastSeen: Date.now(),
-    },
+    patch,
   );
   if (changed && notifyPopupFn) {
-    notifyPopupFn({ type: "videoListUpdated", tabId, videos: getVisibleVideosFn(tabId) });
+    notifyPopupFn({ type: "videoListUpdated", tabId, videos: getVisibleVideosFn ? getVisibleVideosFn(tabId) : [] });
   }
   return changed;
 }
 
-function downloadableVariants(video, attemptedUrls, fallbackDeps) {
-  return downloadFallbacks.downloadableVariants(video, attemptedUrls || new Set(), fallbackDeps);
-}
-
-function isExtractorPageVideo(video) {
-  return downloadFallbacks.isExtractorPageVideo(video);
-}
-
-function pageFallbackVideoForSource(video, attemptedUrls, fallbackDeps) {
-  return downloadFallbacks.pageFallbackVideoForSource(video, attemptedUrls || new Set(), fallbackDeps);
-}
-
-function resolveMediaCandidatesForSource(tabId, sourceVideo, attemptedUrls, fallbackDeps) {
-  return downloadFallbacks.resolveMediaCandidatesForSource(
-    tabId,
-    sourceVideo,
-    attemptedUrls || new Set(),
-    fallbackDeps,
-  );
-}
-
-function fallbackVideoForDownload(tabId, failedVideo, attemptedUrls, fallbackDeps) {
-  return downloadFallbacks.fallbackVideoForDownload(tabId, failedVideo, attemptedUrls || new Set(), fallbackDeps);
-}
-
 // ── Variant helpers ──────────────────────────────────────────────────────
 
-function variantsForVideo(video) {
+function variantsForVideo(video: VideoRecord): VideoRecord[] {
   return Array.isArray(video.variants) && video.variants.length ? video.variants : [video];
 }
 
-function preferredNativeVideo(video) {
+function preferredNativeVideo(video: VideoRecord): VideoRecord {
   const variants = variantsForVideo(video);
   return (
     variants.find((variant) => ["M3U8", "MPD"].includes(String(variant.format || "").toUpperCase())) ||
@@ -212,8 +180,12 @@ function preferredNativeVideo(video) {
   );
 }
 
-function findGroupedVideoForAnyVariant(tabId, video, getVisibleVideosFn) {
-  const ids = new Set();
+function findGroupedVideoForAnyVariant(
+  tabId: TabId,
+  video: VideoRecord,
+  getVisibleVideosFn: (tabId: TabId) => VideoRecord[],
+): VideoRecord | undefined {
+  const ids = new Set<string>();
   if (video && video.id) {
     ids.add(video.id);
   }
@@ -234,11 +206,15 @@ function findGroupedVideoForAnyVariant(tabId, video, getVisibleVideosFn) {
   });
 }
 
-function findGroupedVideoForVariant(tabId, variant, getVisibleVideosFn) {
+function findGroupedVideoForVariant(
+  tabId: TabId,
+  variant: VideoRecord,
+  getVisibleVideosFn: (tabId: TabId) => VideoRecord[],
+): VideoRecord | undefined {
   return getVisibleVideosFn(tabId).find((video) => variantsForVideo(video).some((item) => item.id === variant.id));
 }
 
-function findVariant(video, variantId) {
+function findVariant(video: VideoRecord, variantId: string): VideoRecord | null {
   if (!variantId) {
     return preferredNativeVideo(video);
   }
@@ -247,7 +223,12 @@ function findVariant(video, variantId) {
 
 // ── Fallback deps building ──────────────────────────────────────────────
 
-function buildDownloadFallbackDeps(nativeRequestFn, addDetectedVideoFn, getVisibleVideosFn, headersFn) {
+function buildDownloadFallbackDeps(
+  nativeRequestFn: NativeRequestFn,
+  addDetectedVideoFn: DownloadFallbackDeps["addDetectedVideo"],
+  getVisibleVideosFn: (tabId: TabId) => VideoRecord[],
+  headersFn?: DownloadFallbackDeps["nativeRequestHeadersForVideo"],
+): DownloadFallbackDeps {
   return {
     addDetectedVideo: addDetectedVideoFn,
     detectFormat: videoUtils.detectFormat,
@@ -268,30 +249,13 @@ export {
   BLOCKING_DOWNLOAD_STATUSES,
   HOST_NAME,
   downloadPortsById,
-  formatBytes,
-  getDownloadPortsById,
   updateDownload,
-  isSegmentedDownloadJob,
   normalizeDownloadProgress,
-  downloadProgressMessage,
-  cleanProgressText,
-  resetDownloadProgressDetails,
-  progressDetailPatchFromMessage,
   artifactPatchFromMessage,
   cleanupPatchFromMessage,
   clearedArtifactPatch,
-  hasDownloadArtifacts,
   cleanupDownloadArtifacts,
-  isHardAccessError,
-  isRetryableSourceError,
-  exhaustedSourcesError,
-  userFriendlyDownloadError,
   markVideoUrlUnavailable,
-  downloadableVariants,
-  isExtractorPageVideo,
-  pageFallbackVideoForSource,
-  resolveMediaCandidatesForSource,
-  fallbackVideoForDownload,
   variantsForVideo,
   preferredNativeVideo,
   findGroupedVideoForAnyVariant,

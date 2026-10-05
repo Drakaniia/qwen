@@ -1,7 +1,6 @@
-"use strict";
-
 import * as tabState from "./tab_state.js";
 import * as videoUtils from "./video_utils.js";
+import type { TabId, VideoRecord } from "./types.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -10,11 +9,11 @@ const SIZE_PROBE_LIMIT_PER_GROUP = 6;
 
 // ── State ────────────────────────────────────────────────────────────────
 
-const sizeProbePromises = {};
+const sizeProbePromises: Record<string, Promise<unknown> | undefined> = {};
 
 // ── Core probing functions ───────────────────────────────────────────────
 
-function sizeFromFetchResponse(response, ranged = false) {
+function sizeFromFetchResponse(response: Response, ranged = false): number | null {
   if (!response || (!response.ok && response.status !== 206)) {
     return null;
   }
@@ -38,7 +37,11 @@ function sizeFromFetchResponse(response, ranged = false) {
   return contentLength;
 }
 
-async function fetchSizeProbe(url, options) {
+// `RequestInit` is spelled through `typeof fetch` because it is a type-only global
+// that eslint's `no-undef` does not know about.
+type ProbeInit = Parameters<typeof fetch>[1];
+
+async function fetchSizeProbe(url: string, options: ProbeInit): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SIZE_PROBE_TIMEOUT_MS);
   try {
@@ -54,13 +57,13 @@ async function fetchSizeProbe(url, options) {
   }
 }
 
-async function probeVideoSize(video) {
+async function probeVideoSize(video: VideoRecord): Promise<number | null> {
   if (!videoUtils.canProbeVideoSize(video)) {
     return null;
   }
 
   try {
-    const headResponse = await fetchSizeProbe(video.url, { method: "HEAD" });
+    const headResponse = await fetchSizeProbe(video.url as string, { method: "HEAD" });
     const headSize = sizeFromFetchResponse(headResponse);
     if (headSize) {
       return headSize;
@@ -69,11 +72,11 @@ async function probeVideoSize(video) {
     // Some CDNs disallow HEAD. Try a one-byte request below.
   }
 
-  let rangeResponse = null;
+  let rangeResponse: Response | null = null;
   try {
     const headers = new Headers();
     headers.set("Range", "bytes=0-0");
-    rangeResponse = await fetchSizeProbe(video.url, { method: "GET", headers });
+    rangeResponse = await fetchSizeProbe(video.url as string, { method: "GET", headers });
     return sizeFromFetchResponse(rangeResponse, true);
   } catch (_error) {
     return null;
@@ -86,24 +89,20 @@ async function probeVideoSize(video) {
   }
 }
 
-async function updateVideoSize(tabId, videoId, sizeBytes, _notify = false) {
+async function updateVideoSize(tabId: TabId, videoId: string, sizeBytes: number | null): Promise<boolean> {
   const size = Number(sizeBytes || 0);
   if (!Number.isFinite(size) || size <= 0) {
     return false;
   }
 
-  const changed = await tabState.patchVideo(tabId, (item) => item.id === videoId && !item.sizeBytes, {
+  // `patchVideo` only reports `true` when it actually wrote, so a video that already
+  // had a size reports `false` and every caller treats that as "nothing changed".
+  return tabState.patchVideo(tabId, (item) => item.id === videoId && !item.sizeBytes, {
     sizeBytes: size,
   });
-
-  if (!changed) {
-    return false;
-  }
-
-  return true;
 }
 
-function scheduleVideoSizeProbe(tabId, video) {
+function scheduleVideoSizeProbe(tabId: TabId, video: VideoRecord): void {
   if (!videoUtils.canProbeVideoSize(video)) {
     return;
   }
@@ -114,14 +113,14 @@ function scheduleVideoSizeProbe(tabId, video) {
   }
 
   sizeProbePromises[key] = probeVideoSize(video)
-    .then((sizeBytes) => updateVideoSize(tabId, video.id, sizeBytes))
+    .then((sizeBytes) => updateVideoSize(tabId, video.id as string, sizeBytes))
     .catch(() => false)
     .finally(() => {
       delete sizeProbePromises[key];
     });
 }
 
-function scheduleMissingSizeProbes(tabId) {
+function scheduleMissingSizeProbes(tabId: TabId): void {
   for (const video of tabState.getVideosForTab(tabId)) {
     scheduleVideoSizeProbe(tabId, video);
   }

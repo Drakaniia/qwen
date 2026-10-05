@@ -1,8 +1,7 @@
-"use strict";
-
 import * as tabState from "./tab_state.js";
 import * as filterIntegration from "./filter_integration.js";
 import { startHelperPing } from "./background_helper_ping.js";
+import type { NotifyPopup } from "./types.js";
 
 /**
  * Run background service worker initialization.
@@ -10,18 +9,16 @@ import { startHelperPing } from "./background_helper_ping.js";
  * Called once at startup to load persisted state, start periodic
  * processes, and register filter list integration.
  *
- * @param {Object} ctx - Context dependencies from background.js
- * @param {Function} ctx.notifyPopup - Function to notify popup of state changes
- * @param {string} ctx.HOST_NAME - Native messaging host name
+ * @param ctx - Context dependencies from background.ts
  */
-export function runInit(ctx) {
+export function runInit(ctx: { notifyPopup: NotifyPopup; HOST_NAME: string }): void {
   const { notifyPopup, HOST_NAME } = ctx;
 
   // Load persisted tab state
-  tabState.load();
+  void tabState.load();
 
   // Start filter list integration (ad blocking patterns)
-  filterIntegration.initFilterIntegration();
+  void filterIntegration.initFilterIntegration();
 
   // Start periodic helper ping to maintain native host connection
   startHelperPing(notifyPopup, HOST_NAME);

@@ -1,9 +1,9 @@
-"use strict";
-
 import * as videoFilters from "../shared/video_filters.js";
 import * as mediaCandidates from "../shared/media_candidates.js";
+import { lower } from "../shared/media_patterns.js";
+import type { VideoRecord } from "./types.js";
 
-// Re-export canonical regex patterns from media_candidates.js
+// Re-export canonical regex patterns from media_candidates.ts
 const VIDEO_EXTENSION_RE = mediaCandidates.VIDEO_EXTENSION_RE;
 const HLS_RE = mediaCandidates.HLS_RE;
 const DASH_RE = mediaCandidates.DASH_RE;
@@ -14,7 +14,7 @@ const MAX_VIDEOS_PER_TAB = 100;
 
 // ── Hashing ──────────────────────────────────────────────────────────────
 
-function hashId(value) {
+function hashId(value: string): string {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
@@ -25,34 +25,30 @@ function hashId(value) {
 
 // ── Content type / size helpers ──────────────────────────────────────────
 
-function contentTypeFromHeaders(headers) {
+function contentTypeFromHeaders(headers?: chrome.webRequest.HttpHeader[]): string {
   const header = (headers || []).find((item) => item.name && item.name.toLowerCase() === "content-type");
   return header ? String(header.value || "").toLowerCase() : "";
 }
 
-function contentLengthFromHeaders(headers) {
+function contentLengthFromHeaders(headers?: chrome.webRequest.HttpHeader[]): number | null {
   const header = (headers || []).find((item) => item.name && item.name.toLowerCase() === "content-length");
   const size = header ? Number(header.value) : 0;
   return Number.isFinite(size) && size > 0 ? size : null;
 }
 
-function parseContentRangeSize(value) {
+function parseContentRangeSize(value: unknown): number | null {
   const match = String(value || "").match(/\/(\d+)\s*$/);
   const size = match ? Number(match[1]) : 0;
   return Number.isFinite(size) && size > 0 ? size : null;
 }
 
-function lower(value) {
-  return String(value || "").toLowerCase();
-}
-
 // ── Format detection ─────────────────────────────────────────────────────
 
-function detectFormat(url, contentType = "") {
+function detectFormat(url: string, contentType = ""): string {
   return videoFilters.classifyVideoUrl(url, contentType);
 }
 
-function isPlaylistVideo(video) {
+function isPlaylistVideo(video: Pick<VideoRecord, "url" | "format" | "contentType">): boolean {
   const format = String(video.format || detectFormat(video.url || "", video.contentType || "")).toUpperCase();
   const contentType = lower(video.contentType);
   return (
@@ -65,7 +61,7 @@ function isPlaylistVideo(video) {
   );
 }
 
-function canProbeVideoSize(video) {
+function canProbeVideoSize(video: Pick<VideoRecord, "url" | "sizeBytes" | "contentType" | "format">): boolean {
   if (!video || video.sizeBytes || !isDownloadableUrl(video.url || "", video.contentType || "")) {
     return false;
   }
@@ -76,40 +72,19 @@ function canProbeVideoSize(video) {
   return DIRECT_VIDEO_EXTENSION_RE.test(video.url || "") || contentType.startsWith("video/");
 }
 
-// ── WebSocket & Service Worker helpers ────────────────────────────────────
-
-const WEBSOCKET_PROTOCOL_RE = /^wss?:\/\//i;
-
-/**
- * Check if a URL uses the WebSocket protocol (ws:// or wss://).
- *
- * Modern streaming platforms (especially live-streaming sites)
- * deliver video frames through WebSocket connections. When detected,
- * the tab can be flagged for possible video delivery inspection.
- *
- * @param {string} url - The URL to check.
- * @returns {boolean} True if the URL is a WebSocket URL.
- */
-function isWebSocketDeliveryUrl(url) {
-  if (!url || typeof url !== "string") {
-    return false;
-  }
-  return WEBSOCKET_PROTOCOL_RE.test(url);
-}
-
 // ── URL classification ───────────────────────────────────────────────────
 
-function isDownloadableUrl(url, contentType = "") {
+function isDownloadableUrl(url: string, contentType = ""): boolean {
   return videoFilters.isDownloadableUrl(url, contentType);
 }
 
-function isLikelyVideoRequest(url, resourceType, contentType = "") {
+function isLikelyVideoRequest(url: string, resourceType: string, contentType = ""): boolean {
   return videoFilters.isLikelyVideoRequest(url, resourceType, contentType);
 }
 
 // ── Title helpers ────────────────────────────────────────────────────────
 
-function looksLikeServerToken(text) {
+function looksLikeServerToken(text: string): boolean {
   if (!text || text.length <= 30 || /\s/.test(text)) {
     return false;
   }
@@ -117,7 +92,7 @@ function looksLikeServerToken(text) {
   return alphaNum / text.length > 0.8;
 }
 
-function titleFromUrl(url) {
+function titleFromUrl(url: string): string {
   try {
     const parsed = new URL(url);
     const file = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || parsed.hostname);
@@ -157,9 +132,6 @@ export {
   // URL classification
   isDownloadableUrl,
   isLikelyVideoRequest,
-
-  // WebSocket detection
-  isWebSocketDeliveryUrl,
 
   // Title helpers
   looksLikeServerToken,

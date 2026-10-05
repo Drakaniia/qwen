@@ -1,10 +1,22 @@
-"use strict";
+import type { ExtensionApi, NativeRequestPayload, NativeResponse } from "./types.js";
 
-function nativeRequest(api, hostName, payload, timeoutMs = 60000) {
+/**
+ * One request/response round trip over native messaging.
+ *
+ * Rejects with an `Error` for every failure mode (no port, host `error` message,
+ * early disconnect, timeout) so the caller has a single failure path, and resolves
+ * with the host's own reply otherwise.
+ */
+function nativeRequest(
+  api: ExtensionApi,
+  hostName: string,
+  payload: NativeRequestPayload,
+  timeoutMs = 60000,
+): Promise<NativeResponse> {
   return new Promise((resolve, reject) => {
-    let port;
+    let port: chrome.runtime.Port | undefined;
     let settled = false;
-    const finish = (error, response) => {
+    const finish = (error: Error | null, response?: NativeResponse) => {
       if (settled) {
         return;
       }
@@ -18,7 +30,7 @@ function nativeRequest(api, hostName, payload, timeoutMs = 60000) {
       if (error) {
         reject(error);
       } else {
-        resolve(response);
+        resolve(response as NativeResponse);
       }
     };
 
@@ -28,7 +40,7 @@ function nativeRequest(api, hostName, payload, timeoutMs = 60000) {
         throw new Error("Native messaging is not available.");
       }
     } catch (error) {
-      reject(new Error(`Native messaging is not connected: ${error.message || error}`));
+      reject(new Error(`Native messaging is not connected: ${(error as Error).message || error}`));
       return;
     }
 
@@ -36,7 +48,7 @@ function nativeRequest(api, hostName, payload, timeoutMs = 60000) {
       finish(new Error("Native helper did not respond in time."));
     }, timeoutMs);
 
-    port.onMessage.addListener((message) => {
+    port.onMessage.addListener((message: NativeResponse) => {
       if (!message || message.id !== payload.id) {
         return;
       }

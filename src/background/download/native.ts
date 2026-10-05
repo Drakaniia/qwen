@@ -1,16 +1,32 @@
-"use strict";
-
 import { browserDownload } from "./browser.js";
 import { isBrowserDownloadableFormat } from "../browser_download.js";
-import { formatBytes } from "../download_helpers.js";
+// The byte ladder lives in one place, `ui/format.ts`'s `formatSize`. `download_helpers.ts`
+// carried a third copy that stopped at GB and rendered bytes as `"500.0 B"`; importing the
+// canonical one is safe here because it reaches only `shared/video_filters.js` and
+// `shared/download_statuses.js` — no Preact, no DOM, so it costs the service worker nothing.
+import { formatSize } from "../../ui/format.js";
+import type {
+  DownloadOrchestratorDeps,
+  DownloadStartResult,
+  JobPatch,
+  NativeDownloadOptions,
+  TabId,
+  VideoRecord,
+} from "../types.js";
 
 /**
  * Core native download flow: connects to native messaging host,
  * sends download request, handles all message types, fallbacks, and errors.
  */
-export async function startNativeDownloadFromVideo(deps, tabId, video, formatId = "best", options = {}) {
+export async function startNativeDownloadFromVideo(
+  deps: DownloadOrchestratorDeps,
+  tabId: TabId,
+  video: VideoRecord,
+  formatId = "best",
+  options: NativeDownloadOptions = {},
+): Promise<DownloadStartResult> {
   const tabs = await deps.callTabsQuery({ active: true, currentWindow: true });
-  const activeTab = tabs && tabs[0] ? tabs[0] : {};
+  const activeTab: Partial<chrome.tabs.Tab> = (tabs && tabs[0]) || {};
   const jobId = options.jobId || `job_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const existingJob = deps.getDownloadsById()[jobId] || {};
   const pageUrl = video.pageUrl || activeTab.url || "";
@@ -20,11 +36,11 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
     (Array.isArray(existingJob.requestHeaders) && existingJob.requestHeaders.length
       ? existingJob.requestHeaders
       : null) ||
-    (await deps.nativeRequestHeadersForVideo(video.url, pageUrl));
+    (await deps.nativeRequestHeadersForVideo(video.url as string, pageUrl));
   const attemptedUrls = new Set((options.attemptedUrls || []).map((url) => deps.normalizeUrl(url)));
   attemptedUrls.add(deps.normalizeUrl(video.url || ""));
   const backend = options.backend || video.backend || "auto";
-  let port;
+  let port: chrome.runtime.Port;
   let finished = false;
 
   // ── Browser backend shortcut ──────────────────────────────────────
@@ -52,6 +68,17 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
       downloadFolder: deps.getSettings().downloadFolder || "",
       requestHeaders: requestHeaders,
       pageUrl,
+      // The downloads page renders history art from the job (thumbnail-spec.md §7.1),
+      // and the job is the only record that outlives the tab. The ladder's head is the
+      // same URL the row was already showing; `download_operations.ts` re-derives it
+      // on resume/retry, where a `VideoRecord` is no longer in scope.
+      //
+      // Never a `data:` URL here (hls-thumbnail-spec.md §5.2/§11). An ffmpeg frame grab
+      // arrives as `data:image/jpeg;base64,…` and this field is copied into the synced
+      // history entry, whose whole budget is ~100 KB — a base64 JPEG per row destroys it
+      // in a dozen. Frame art is a service-worker capture instead
+      // (`thumbnail_captures.ts`), or a `thumbnailFrames` lookup for a synced row.
+      thumbnailUrl: video.thumbnailUrl || (video.thumbnailCandidates || [])[0] || "",
       backend,
       filepath: existingJob.filepath || "",
       artifactRoot: existingJob.artifactRoot || "",
@@ -77,14 +104,14 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
   const MIN_REALISTIC_BYTES = 1024 * 1024;
   let initialTotalSize = "";
   if (rawSizeBytes >= MIN_REALISTIC_BYTES) {
-    initialTotalSize = formatBytes(rawSizeBytes);
+    initialTotalSize = formatSize(rawSizeBytes);
   } else if (rawSizeBytes > 0) {
     const duration = video.duration || 0;
     const bitrate = video.tbr || video.bitrate || 0;
     if (duration > 0 && bitrate > 0) {
       const estimatedBytes = (duration * bitrate * 1000) / 8;
       if (estimatedBytes >= MIN_REALISTIC_BYTES) {
-        initialTotalSize = `~${formatBytes(estimatedBytes)}`;
+        initialTotalSize = `~${formatSize(estimatedBytes)}`;
       }
     }
   }
@@ -115,7 +142,7 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
   try {
     port = deps.api.runtime.connectNative(deps.hostName);
   } catch (error) {
-    const errMsg = `Native messaging is not connected: ${error.message || error}`;
+    const errMsg = `Native messaging is not connected: ${(error as Error).message || error}`;
     deps.updateDownload(jobId, {
       status: "error",
       error: errMsg,
@@ -124,26 +151,46 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
   }
   deps.downloadPortsById[jobId] = port;
 
-  port.onMessage.addListener((message) => {
+  port.onMessage.addListener((raw) => {
+    const message = raw as Record<string, any>;
     if (!message || message.id !== jobId) {
       return;
     }
 
     if (message.type === "started") {
-      deps.updateDownload(jobId, { status: "running", message: "" });
+      // Spec D14 / §4.4. The host names the attempt it is about to make, and a
+      // download can fall through six or more of them before one sticks — without
+      // this, a stall during backend selection is indistinguishable from a hang.
+      // It rides on `message` (spec §4.4: `DownloadJob` gains no field for it), and
+      // `downloadMessageText` is what lets a "Trying …" line past the blanket
+      // suppression it applies to every other message on an active job.
+      // No label ⇒ today's behaviour exactly, blank message and all.
+      const label = String(message.label || "").trim();
+      deps.updateDownload(jobId, { status: "running", message: label ? `Trying ${label}…` : "" });
       return;
     }
 
     if (message.type === "progress") {
-      const patch = {
+      const patch: JobPatch = {
         status: "running",
-        stage: message.stage,
         ...deps.artifactPatchFromMessage(message),
         ...deps.progressDetailPatchFromMessage(message),
       };
+      // `log` is the parser's catch-all for a line it did not classify
+      // (`progress_parser.py`'s final `return {"stage": "log"}`), not a phase —
+      // `ProgressBar.tsx`'s `STAGES` docstring says so. Writing it over a real phase
+      // would blank the row's stage timeline, and it would also reset D7's per-stage
+      // baseline on the *next* frame, which is how a monotone bar would start
+      // walking backwards. So a bare `log` leaves the job's stage alone; only a
+      // recognised phase advances it.
+      const stage = String(message.stage || "");
+      const nextStage = stage === "log" ? "" : stage;
+      if (nextStage) {
+        patch.stage = nextStage;
+      }
       if (typeof message.percent === "number") {
-        patch.percent = deps.normalizeDownloadProgress(jobId, message.percent);
-        patch.message = deps.downloadProgressMessage(patch.percent);
+        patch.percent = deps.normalizeDownloadProgress(jobId, message.percent, nextStage);
+        patch.message = deps.downloadProgressMessage(patch.percent as number);
       }
       deps.updateDownload(jobId, patch);
       return;
@@ -212,7 +259,7 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
     }
 
     if (message.type === "error") {
-      const errorText = message.error || "yt-dlp failed.";
+      const errorText: string = message.error || "yt-dlp failed.";
       finished = true;
       delete deps.downloadPortsById[jobId];
       const artifactPatch = deps.artifactPatchFromMessage(message);
@@ -220,11 +267,11 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
         port.disconnect();
       } catch (_error) {}
 
-      function handleErrorWithFallbacks() {
+      function handleErrorWithFallbacks(): void {
         if (deps.isRetryableSourceError(errorText)) {
           void (async () => {
             if (deps.isHardAccessError(errorText)) {
-              await deps.markVideoUrlUnavailable(tabId, video.url, errorText);
+              await deps.markVideoUrlUnavailable(tabId, video.url as string, errorText);
             }
             const fallbackVideo = await deps.fallbackVideoForDownload(tabId, video, attemptedUrls);
             if (!fallbackVideo) {
@@ -306,6 +353,11 @@ export async function startNativeDownloadFromVideo(deps, tabId, video, formatId 
     musicMode: deps.getSettings().musicMode || false,
     audioFormat: deps.getSettings().audioFormat || "mp3",
     downloadSubtitles: deps.getSettings().downloadSubtitles !== false,
+    // ffmpeg's `-progress` block reports `out_time_ms` but never a total, so the host cannot
+    // derive a percent without one (spec §3.3). It is the only duration source it has, and
+    // without it the ffmpeg path emits a byte count and no bar — which is why it is sent
+    // explicitly rather than left to the host to guess.
+    duration: typeof video.duration === "number" && video.duration > 0 ? video.duration : 0,
   });
 
   deps.updateDownload(jobId, {

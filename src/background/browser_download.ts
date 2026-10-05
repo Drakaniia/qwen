@@ -1,5 +1,3 @@
-"use strict";
-
 /**
  * Browser download utilities for the chrome.downloads API backend.
  *
@@ -7,15 +5,17 @@
  * suitable for browser-based direct download and deriving filenames.
  */
 
+import type { VideoRecord } from "./types.js";
+
 /**
  * Check whether a video format can be downloaded directly via the
  * browser's chrome.downloads API (i.e., it's a direct media URL and
  * not a streaming format like HLS or DASH).
  *
- * @param {string|null|undefined} format - The format string (e.g. "MP4", "M3U8").
- * @returns {boolean} true if the format is suitable for browser download.
+ * @param format - The format string (e.g. "MP4", "M3U8"), or null/undefined.
+ * @returns true if the format is suitable for browser download.
  */
-function isBrowserDownloadableFormat(format) {
+function isBrowserDownloadableFormat(format: string | null | undefined): boolean {
   const f = String(format || "").toUpperCase();
   return f !== "M3U8" && f !== "MPD" && f !== "HLS" && f !== "DASH" && f !== "ISM" && f !== "SMOOTH";
 }
@@ -27,10 +27,10 @@ function isBrowserDownloadableFormat(format) {
  * "video" for the name and "mp4" for the extension. Sanitises the title
  * by removing filesystem-unsafe characters and truncating to 200 chars.
  *
- * @param {Object} video - Video object with `url` and optional `title`.
- * @returns {string} A safe filename with extension.
+ * @param video - Video object with `url` and optional `title`.
+ * @returns A safe filename with extension.
  */
-function filenameFromVideo(video) {
+function filenameFromVideo(video: Pick<VideoRecord, "url" | "title">): string {
   const extMatch = String(video.url || "").match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
   const ext = (extMatch ? extMatch[1].toLowerCase() : "mp4").replace(/[^a-z0-9]/g, "");
   const safeTitle = (video.title || "video").replace(/[<>:"/\\|?*]/g, "_").slice(0, 200);

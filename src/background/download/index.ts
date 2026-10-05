@@ -1,26 +1,43 @@
-"use strict";
-
 import { createOperations } from "../download_operations.js";
 import { startNativeDownloadFromVideo } from "./native.js";
+import type {
+  DownloadOrchestratorDeps,
+  DownloadStartResult,
+  NativeDownloadOptions,
+  TabId,
+  VideoInput,
+  VideoRecord,
+} from "../types.js";
 
 /**
  * Create a download orchestrator with all download-related functions.
  *
- * @param {Object} deps - Dependency object injected by the caller (background.js).
- * @returns {Object} Public API with download control methods.
+ * @param deps - Dependency object injected by the caller (background.ts).
+ * @returns Public API with download control methods.
  */
-function create(deps) {
+function create(deps: DownloadOrchestratorDeps) {
   // ── Operations (download control, file ops, management) ──────────────
   // These receive startNativeDownloadFromVideo as a dep to avoid circular calls.
-  const opsDeps = {
+  const opsDeps: DownloadOrchestratorDeps = {
     ...deps,
-    startNativeDownloadFromVideo: null, // populated after core function definition
+    // Replaced below with the real function once it is in scope. `createOperations`
+    // only reads it lazily — inside resume/retry, which cannot run before
+    // background.ts finishes wiring this module — so the placeholder never fires.
+    startNativeDownloadFromVideo: () => {
+      throw new Error("download/index.ts: startNativeDownloadFromVideo was not wired up.");
+    },
   };
   const ops = createOperations(opsDeps);
 
   // ── Core download flow ───────────────────────────────────────────────
 
-  async function startNativeDownload(tabId, videoId, formatId = "best", variantId = "", backend = "auto") {
+  async function startNativeDownload(
+    tabId: TabId,
+    videoId: string,
+    formatId = "best",
+    variantId = "",
+    backend = "auto",
+  ): Promise<DownloadStartResult> {
     await deps.ensureStateLoaded();
     const videos = await deps.getTabVideos(tabId);
     const video = videos.find(
@@ -59,7 +76,7 @@ function create(deps) {
     );
   }
 
-  async function startNativeDownloadForUrl(tabId, input) {
+  async function startNativeDownloadForUrl(tabId: TabId, input: VideoInput): Promise<DownloadStartResult> {
     const video = await deps.addDetectedVideo(tabId, {
       ...input,
       source: input.source || "overlay",
@@ -71,14 +88,14 @@ function create(deps) {
 
     return startNativeDownload(
       tabId,
-      video.id,
+      video.id as string,
       input.formatId || "best",
       input.variantId || "",
       input.backend || "auto",
     );
   }
 
-  async function getBestDownloadableVideo(tabId) {
+  async function getBestDownloadableVideo(tabId: TabId): Promise<VideoRecord> {
     const videos = await deps.getTabVideos(tabId);
     const video = videos.find((item) => item.downloadable);
     if (!video) {
@@ -87,15 +104,23 @@ function create(deps) {
     return video;
   }
 
-  async function startBestNativeDownload(tabId, formatId = "best", variantId = "") {
+  async function startBestNativeDownload(
+    tabId: TabId,
+    formatId = "best",
+    variantId = "",
+  ): Promise<DownloadStartResult> {
     const video = await getBestDownloadableVideo(tabId);
-    return startNativeDownload(tabId, video.id, formatId, variantId);
+    return startNativeDownload(tabId, video.id as string, formatId, variantId);
   }
 
   // Patch opsDeps (internal closures in createOperations) so that
   // resumeDownload/retryDownload see the real function.
-  const wrappedStartNativeDownloadFromVideo = (tabId, video, formatId, options) =>
-    startNativeDownloadFromVideo(deps, tabId, video, formatId, options);
+  const wrappedStartNativeDownloadFromVideo = (
+    tabId: TabId,
+    video: VideoRecord,
+    formatId: string,
+    options: NativeDownloadOptions,
+  ) => startNativeDownloadFromVideo(deps, tabId, video, formatId, options);
 
   opsDeps.startNativeDownloadFromVideo = wrappedStartNativeDownloadFromVideo;
 

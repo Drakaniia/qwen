@@ -1,30 +1,30 @@
-"use strict";
-
 import { browserApi } from "../shared/browser_api.js";
+import type { HelperStatus, NotifyPopup, PingResult } from "./types.js";
 
 // ── Cached helper status ────────────────────────────────────────────────
 
 export const HELPER_PING_INTERVAL_MS = 30000;
 
-/**
- * @type {{ connected: boolean, version: string, dependencies: Object, lastChecked: number, error: string }}
- */
-export let cachedHelperStatus = {
-  connected: false,
+export let cachedHelperStatus: HelperStatus = {
+  // `null`, not `false`: no probe has answered yet, which is a different fact from
+  // "a probe ran and the helper was unreachable". Both leave `dependencies` empty, so
+  // only the tri-state keeps the UI from calling all five tools missing on first paint.
+  // See native-helper-status-spec.md §2.1.
+  connected: null,
   version: "",
   dependencies: {},
   lastChecked: 0,
   error: "",
 };
-let helperPingTimer = null;
+let helperPingTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Run a ping check and update the cached status.
  * If the status changed from the previous check, broadcast to popups.
- * @param {Function} notifyPopup - Function to send messages to popup
- * @param {string} hostName - Native messaging host name to ping
+ * @param notifyPopup - Function to send messages to popup
+ * @param hostName - Native messaging host name to ping
  */
-export async function refreshCachedHelperStatus(notifyPopup, hostName) {
+export async function refreshCachedHelperStatus(notifyPopup: NotifyPopup, hostName: string): Promise<void> {
   const result = await pingNativeHost(hostName);
   const previousConnected = cachedHelperStatus.connected;
 
@@ -55,38 +55,41 @@ export async function refreshCachedHelperStatus(notifyPopup, hostName) {
 /**
  * Start the periodic helper ping interval.
  * Runs immediately on start, then every HELPER_PING_INTERVAL_MS.
- * @param {Function} notifyPopup - Function to send messages to popup
- * @param {string} hostName - Native messaging host name to ping
+ * @param notifyPopup - Function to send messages to popup
+ * @param hostName - Native messaging host name to ping
  */
-export function startHelperPing(notifyPopup, hostName) {
+export function startHelperPing(notifyPopup: NotifyPopup, hostName: string): void {
   // Clear any existing timer
   if (helperPingTimer !== null) {
     clearInterval(helperPingTimer);
   }
 
   // Run immediately
-  refreshCachedHelperStatus(notifyPopup, hostName);
+  void refreshCachedHelperStatus(notifyPopup, hostName);
 
   // Then run periodically
-  helperPingTimer = setInterval(() => refreshCachedHelperStatus(notifyPopup, hostName), HELPER_PING_INTERVAL_MS);
+  helperPingTimer = setInterval(() => void refreshCachedHelperStatus(notifyPopup, hostName), HELPER_PING_INTERVAL_MS);
 }
 
 // ── Native host ping ─────────────────────────────────────────────────────
 
 /**
  * Ping the native host to check if it's running and get version/dependency info.
- * @param {string} hostName - The native messaging host name
- * @param {Object} [runtimeApi] - The browser.runtime API (falls back to browserApi.raw)
- * @returns {Promise<{ok: boolean, version?: string, dependencies?: Object, error?: string}>}
+ *
+ * No injection seam on purpose: `chrome.runtime.connectNative` is the only way in,
+ * so an optional `runtimeApi` override would be a second, permanently-untested path
+ * to the same port. `tests/js/background/helper_ping.test.ts` spies on the real API
+ * instead.
+ *
+ * @param hostName - The native messaging host name
  */
-export function pingNativeHost(hostName, runtimeApi) {
-  const api = runtimeApi || browserApi.raw;
+export function pingNativeHost(hostName: string): Promise<PingResult> {
   return new Promise((resolve) => {
     const id = `ping_${Date.now()}`;
     let settled = false;
     const port = browserApi.runtime.connectNative(hostName);
 
-    const finish = (result) => {
+    const finish = (result: PingResult) => {
       if (settled) {
         return;
       }
@@ -108,7 +111,8 @@ export function pingNativeHost(hostName, runtimeApi) {
       finish({ ok: false, error: "Native helper did not respond." });
     }, 5000);
 
-    port.onMessage.addListener((message) => {
+    port.onMessage.addListener((raw) => {
+      const message = raw as { id?: string; type?: string; version?: string; dependencies?: Record<string, unknown> };
       if (message && message.id === id && message.type === "pong") {
         clearTimeout(timeout);
         finish({ ok: true, version: message.version, dependencies: message.dependencies || {} });
@@ -117,7 +121,7 @@ export function pingNativeHost(hostName, runtimeApi) {
 
     port.onDisconnect.addListener(() => {
       clearTimeout(timeout);
-      const runtimeError = api.runtime.lastError ? api.runtime.lastError.message : "";
+      const runtimeError = browserApi.raw.runtime.lastError ? browserApi.raw.runtime.lastError.message : "";
       console.warn("[helper-ping] Native messaging port disconnected:", runtimeError || "no error message");
       finish({
         ok: false,
