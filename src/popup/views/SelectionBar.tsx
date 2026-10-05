@@ -22,13 +22,6 @@ const ENTER = { transform: ["translateY(140%)", "translateY(0%)"], opacity: [0, 
 const EXIT = { transform: ["translateY(0%)", "translateY(140%)"], opacity: [1, 0] };
 
 /**
- * Spec §12, quoted in the risk table: *"A visible button that does nothing is worse
- * than no button."* The mitigation is an explicit disabled state carrying the reason, so
- * the copy is user-facing and has to live here rather than in a comment.
- */
-export const BATCH_PENDING_REASON = "Batch download arrives with the native helper update.";
-
-/**
  * Spec §6 (D1): the selection bar shows what is selected, so each selected row gets its
  * tile. At 24px a retry ladder is pointless — this is `videoThumbnailCandidates(video)[0]`
  * and the play/music glyph when that is empty, full stop.
@@ -79,13 +72,7 @@ function SelectedTiles() {
 }
 
 export interface SelectionBarProps {
-  /**
-   * The Phase 2 executor seam.
-   *
-   * §3.2 / §6.9: the sequential dispatcher is Phase 2, so this is wired to a
-   * `disabled` button and never fires. It is kept as a prop rather than deleted so the
-   * Phase 2 change is "remove one attribute", not "re-derive the whole bar".
-   */
+  /** Batch executor: downloads the ordered selection via `downloadMany`. */
   onDownloadAll: () => void;
 }
 
@@ -172,18 +159,7 @@ export function SelectionBar({ onDownloadAll }: SelectionBarProps) {
 
       <span class="nums text-body min-w-0 flex-1 truncate text-text-muted">{count} selected</span>
 
-      {/* Disabled *with its reason attached*, per §12. `title` carries it on hover and
-          `aria-label` carries it to AT — a disabled button is otherwise silent about
-          why, which is the failure mode §12 is warning about. The handler stays wired so
-          Phase 2 is one attribute's deletion. */}
-      <Button
-        variant="primary"
-        size="sm"
-        disabled
-        title={BATCH_PENDING_REASON}
-        aria-label={`Download all — ${BATCH_PENDING_REASON}`}
-        onClick={onDownloadAll}
-      >
+      <Button variant="primary" size="sm" onClick={onDownloadAll}>
         <Icon name="download" size={13} />
         Download all
       </Button>

@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Import prefix from tests/js/popup/ is ../../../src/ (mirrors media_list.test.ts).
 // `enumeratePlaylist` and `downloadMany` are asserted through `toHaveBeenCalledWith`, so
@@ -65,7 +65,7 @@ describe("resolvePastedUrl playlist branch", () => {
 
   it("falls back to single-URL flow on the single-track sentinel", async () => {
     const api = await import("../../../src/shared/popup_api.js");
-    // The host prefixes the marker with prose, so the check has to be a substring match â€”
+    // The host prefixes the marker with prose, so the check has to be a substring match —
     // this is the string the native side actually raises, not a bare marker.
     vi.mocked(api.enumeratePlaylist).mockResolvedValue({
       ok: false,
@@ -97,5 +97,58 @@ describe("resolvePastedUrl playlist branch", () => {
     expect(opened).toBe(false);
     expect(api.getFormatsForUrl).not.toHaveBeenCalled();
     expect(notice.value).toEqual({ text: "Playlist is private.", isError: true });
+  });
+});
+
+describe("batchDownloadSelection (spec §6.9)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sends the ordered selection to downloadMany and clears it", async () => {
+    const api = await import("../../../src/shared/popup_api.js");
+    vi.mocked(api.downloadMany).mockResolvedValue({ ok: true, jobIds: ["j1", "j2"] } as never);
+
+    vi.resetModules();
+    const { batchDownloadSelection } = await import("../../../src/popup/views/PopupFrame.js");
+    const { selection } = await import("../../../src/ui/useStickySelection.js");
+    const { viewMode } = await import("../../../src/popup/state/app.js");
+    // Selection order is what the bar walks, so this seeds a non-alphabetical order: an
+    // implementation that sorted or deduped on the way through would fail here.
+    selection.value = new Set(["v3", "v1", "v2"]);
+
+    const reply = await batchDownloadSelection(7, ["v3", "v1", "v2"], "best");
+
+    expect(api.downloadMany).toHaveBeenCalledWith(7, ["v3", "v1", "v2"], "best");
+    expect(reply.jobIds).toHaveLength(2);
+    expect(selection.value.size).toBe(0);
+    expect(viewMode.value).toBe("downloads");
+  });
+
+  it("defaults to the best format", async () => {
+    const api = await import("../../../src/shared/popup_api.js");
+    vi.mocked(api.downloadMany).mockResolvedValue({ ok: true, jobIds: ["j1"] } as never);
+
+    vi.resetModules();
+    const { batchDownloadSelection } = await import("../../../src/popup/views/PopupFrame.js");
+
+    await batchDownloadSelection(7, ["v1"]);
+
+    expect(api.downloadMany).toHaveBeenCalledWith(7, ["v1"], "best");
+  });
+
+  it("throws the host's message and keeps the selection when the batch does not start", async () => {
+    const api = await import("../../../src/shared/popup_api.js");
+    vi.mocked(api.downloadMany).mockResolvedValue({ ok: false, error: "Helper is not connected." } as never);
+
+    vi.resetModules();
+    const { batchDownloadSelection } = await import("../../../src/popup/views/PopupFrame.js");
+    const { selection } = await import("../../../src/ui/useStickySelection.js");
+    selection.value = new Set(["v1"]);
+
+    await expect(batchDownloadSelection(7, ["v1"])).rejects.toThrow("Helper is not connected.");
+    // Nothing started, so nothing is forgiven — dropping the selection here would make the
+    // retry impossible without re-selecting every row.
+    expect(selection.value.size).toBe(1);
   });
 });

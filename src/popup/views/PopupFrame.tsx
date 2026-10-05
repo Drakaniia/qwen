@@ -6,19 +6,23 @@ import { Logo } from "../../ui/Logo.js";
 import { Segmented } from "../../ui/components/Segmented.js";
 import { Toolbar } from "../../ui/components/Toolbar.js";
 import { useResize } from "../../ui/useResize.js";
+import * as PopupApi from "../../shared/popup_api.js";
 import { DependencyBanner } from "../components/DependencyBanner.js";
 import {
+  activeTabId,
   clearSelection,
   helperStatus,
   popupWidth,
   qualityDialog,
   rescanBusy,
   selectedCount,
+  setNotice,
   setTheme,
   setViewMode,
   theme,
   viewMode,
 } from "../state/app.js";
+import { orderedSelection } from "../../ui/useStickySelection.js";
 import { activeDownloads } from "../state/downloads.js";
 import { mediaStatus, mediaStatusLabel } from "../state/videos.js";
 import { clearActiveTabVideos, rescanActiveTab } from "../popup_helpers.js";
@@ -140,30 +144,54 @@ export function PopupFrame() {
  * a positioning context from, and because it reads the module-level selection signal —
  * so it needs no props from the frame and no shared hook with it.
  *
- * B2 owns the component; the popup owns only the layer it lives in and the executor
- * stub. §6.9 requires the bar to be scrim-free and parallel: `pointer-events: none` on
- * the root so the content underneath stays usable, restored on the bar itself.
+ * B2 owns the component; the popup owns only the layer it lives in and the executor.
+ * §6.9 requires the bar to be scrim-free and parallel: `pointer-events: none` on the
+ * root so the content underneath stays usable, restored on the bar itself.
  */
 export function PopupSelectionLayer() {
   return (
     <div class="pointer-events-none fixed inset-x-0 bottom-0 z-20">
       <div class="pointer-events-auto">
-        <SelectionBar onDownloadAll={batchDownloadStub} />
+        <SelectionBar
+          onDownloadAll={() =>
+            void batchDownloadSelection(activeTabIdOrZero(), orderedSelection.value, "best").catch((error) =>
+              setNotice(error instanceof Error ? error.message : String(error), true),
+            )
+          }
+        />
       </div>
     </div>
   );
 }
 
+/** `0` stands in for "no tab", which reads as falsy and falls back to the sender's own. */
+function activeTabIdOrZero(): number {
+  return activeTabId.value ?? 0;
+}
+
 /**
- * §6.9 / §12: the batch executor is Phase 2. This function exists because the prop is
- * required, not because anything reaches it — `SelectionBar` ships the button *disabled*
- * with its reason ("Batch download arrives with the native helper update"), because
- * "a visible button that does nothing is worse than no button".
+ * §6.9 batch executor: hand the ordered selection to `downloadMany`, which runs three at
+ * a time in the background, then clear the selection and switch to Downloads so the tray
+ * is what the user is looking at next.
  *
- * When the sequential dispatcher lands (spec §3.2, Phase 2 spec item 1) this is the one
- * function that changes: walk `orderedSelection`, resolve a format per id, dispatch.
+ * Throws rather than writing the notice itself — it is called from a click handler with no
+ * return value to write to, so the caller catches and reports. `orderedSelection` is passed
+ * in rather than read here because the signal is a module singleton and the executor is the
+ * one thing worth testing without mounting the frame.
  */
-function batchDownloadStub(): void {}
+export async function batchDownloadSelection(tabId: number, ids: string[], formatId = "best") {
+  const reply = (await PopupApi.downloadMany(tabId, ids, formatId)) as {
+    ok?: boolean;
+    jobIds?: string[];
+    error?: string;
+  } | null;
+  if (!reply || !reply.ok) {
+    throw new Error(reply?.error || "Batch download failed to start.");
+  }
+  clearSelection();
+  setViewMode("downloads");
+  return reply;
+}
 
 /**
  * Whether focus is in something the user types into, where `/` is a character and not a

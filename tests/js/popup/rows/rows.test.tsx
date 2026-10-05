@@ -16,7 +16,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { JobRow } from "../../../../src/popup/views/JobRow.js";
-import { SelectionBar, BATCH_PENDING_REASON } from "../../../../src/popup/views/SelectionBar.js";
+import { SelectionBar } from "../../../../src/popup/views/SelectionBar.js";
 import { VideoRow } from "../../../../src/popup/views/VideoRow.js";
 import { activeTabId } from "../../../../src/popup/state/app.js";
 import { currentDownloads } from "../../../../src/popup/state/downloads.js";
@@ -554,19 +554,22 @@ describe("SelectionBar (spec §6.9, D21)", () => {
     expect(bar?.className).not.toContain("bg-black");
   });
 
-  it("disables the executor with the reason attached, not a silently inert button", async () => {
+  it("enables the executor and fires on click", async () => {
     select(["a", "b"]);
     const onDownloadAll = vi.fn();
     const host = render(<SelectionBar onDownloadAll={onDownloadAll} />).container as HTMLElement;
     const downloadAll = [...host.querySelectorAll("button")].find((b) =>
       (b.textContent || "").includes("Download all"),
     );
-    expect(downloadAll?.disabled).toBe(true);
-    expect(downloadAll?.getAttribute("title")).toBe(BATCH_PENDING_REASON);
-    // WCAG 2.5.3: the accessible name still contains the visible label.
-    expect(downloadAll?.getAttribute("aria-label")).toContain("Download all");
-    await act(async () => downloadAll?.click());
-    expect(onDownloadAll).not.toHaveBeenCalled();
+    expect(downloadAll).toBeDefined();
+    const button = downloadAll as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    // WCAG 2.5.3: the visible label is the accessible name — the disabled-state
+    // `aria-label` override is gone with the disabled state it explained.
+    expect(button.getAttribute("aria-label")).toBeNull();
+    expect(button.textContent).toContain("Download all");
+    await act(async () => button.click());
+    expect(onDownloadAll).toHaveBeenCalledTimes(1);
   });
 
   it("clears the selection", async () => {
