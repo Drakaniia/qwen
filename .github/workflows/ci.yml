@@ -27,17 +27,43 @@ jobs:
       - name: Install Ruff (Python linter)
         run: pip install ruff
 
-      - name: ESLint (JavaScript)
+      - name: ESLint (JavaScript/TypeScript)
         run: npx eslint src/
 
-      - name: Prettier check (JavaScript/CSS/JSON)
-        run: npx prettier --check "src/**/*.{js,css,json}" "*.{json,js}"
+      - name: Prettier check (JavaScript/TypeScript/CSS/JSON)
+        run: npx prettier --check "src/**/*.{js,ts,tsx,css,json}" "*.{json,js}" "tests/**/*.{js,ts,tsx}"
 
       - name: Ruff lint (Python)
         run: python -m ruff check src/native_host/
 
       - name: Ruff format check (Python)
         run: python -m ruff format --check src/native_host/
+
+  test:
+    name: Test (vitest + pytest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Vitest (extension JS/TS)
+        run: npm test
+
+      - name: Pytest (native host)
+        run: npm run test:native
 
   build:
     name: Build extension targets
@@ -52,6 +78,9 @@ jobs:
       - name: Install npm dependencies
         run: npm install
 
-      - name: Build extension targets (chromium, firefox, yandex)
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build extension targets (chromium, yandex)
         shell: pwsh
         run: scripts\build-extension.ps1 -Target all
