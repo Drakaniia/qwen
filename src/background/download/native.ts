@@ -43,6 +43,24 @@ export async function startNativeDownloadFromVideo(
   let port: chrome.runtime.Port;
   let finished = false;
 
+  // The 3-at-a-time gate (`download/queue.ts`) holds a slot until its item SETTLES, and
+  // this is that signal. `finished` already tracked the same edge for `onDisconnect`, so
+  // it is the one flag both paths read; `onSettled` is the outward face of it, fired at
+  // most once. A starter that never settles would strand the whole queue, so every exit
+  // below — including the two pre-port failures — has to call it.
+  let settledNotified = false;
+  function settle(): void {
+    if (settledNotified) {
+      return;
+    }
+    settledNotified = true;
+    try {
+      options.onSettled?.();
+    } catch (_error) {
+      /* A gate callback must never break the port listener that reported the job. */
+    }
+  }
+
   // ── Browser backend shortcut ──────────────────────────────────────
   if (backend === "browser") {
     if (!isBrowserDownloadableFormat(video.format)) {
@@ -52,6 +70,7 @@ export async function startNativeDownloadFromVideo(
           "Browser download does not support streaming formats (HLS, DASH, Smooth Streaming). " +
           'Select "Auto" or "yt-dlp" as the download method.',
       });
+      settle();
       return { jobId };
     }
 
@@ -90,13 +109,20 @@ export async function startNativeDownloadFromVideo(
       createdAt: existingJob.createdAt || Date.now(),
     });
 
-    return browserDownload(deps, tabId, video, formatId, {
-      jobId,
-      pageUrl,
-      requestHeaders,
-      attemptedUrls: Array.from(attemptedUrls),
-      backend,
-    });
+    // The browser path owns no native port, so the transfer outliving this call does not
+    // hold a gate slot: `chrome.downloads` reports its own progress through the
+    // `downloads.onChanged` listener, and the helper subprocess is already done.
+    try {
+      return await browserDownload(deps, tabId, video, formatId, {
+        jobId,
+        pageUrl,
+        requestHeaders,
+        attemptedUrls: Array.from(attemptedUrls),
+        backend,
+      });
+    } finally {
+      settle();
+    }
   }
 
   // Determine the initial total size for the download list.
@@ -147,6 +173,7 @@ export async function startNativeDownloadFromVideo(
       status: "error",
       error: errMsg,
     });
+    settle();
     return { jobId };
   }
   deps.downloadPortsById[jobId] = port;
@@ -224,6 +251,7 @@ export async function startNativeDownloadFromVideo(
     if (message.type === "canceled") {
       finished = true;
       delete deps.downloadPortsById[jobId];
+      settle();
       const cleanupPatch = deps.cleanupPatchFromMessage(message);
       deps.updateDownload(jobId, {
         status: "canceled",
@@ -241,6 +269,7 @@ export async function startNativeDownloadFromVideo(
     if (message.type === "done") {
       finished = true;
       delete deps.downloadPortsById[jobId];
+      settle();
       deps.updateDownload(jobId, {
         status: "done",
         percent: 100,
@@ -262,6 +291,7 @@ export async function startNativeDownloadFromVideo(
       const errorText: string = message.error || "yt-dlp failed.";
       finished = true;
       delete deps.downloadPortsById[jobId];
+      settle();
       const artifactPatch = deps.artifactPatchFromMessage(message);
       try {
         port.disconnect();
@@ -305,6 +335,9 @@ export async function startNativeDownloadFromVideo(
               message: "Source expired; trying another detected source...",
               ...artifactPatch,
             });
+            // No `onSettled` here: the gate already released this job's slot when the
+            // `error` message above settled it, and the retry is the same job id — handing
+            // it a second slot would let one row hold two of the three.
             await startNativeDownloadFromVideo(deps, tabId, fallbackVideo, "best", {
               jobId,
               attemptedUrls: Array.from(attemptedUrls),
@@ -330,6 +363,7 @@ export async function startNativeDownloadFromVideo(
   port.onDisconnect.addListener(() => {
     const runtimeError = deps.api.runtime.lastError ? deps.api.runtime.lastError.message : "";
     delete deps.downloadPortsById[jobId];
+    settle();
     if (!finished) {
       const errMsg = runtimeError || "Native messaging helper disconnected";
       deps.updateDownload(jobId, {

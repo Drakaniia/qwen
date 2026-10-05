@@ -238,6 +238,14 @@ export interface NativeDownloadOptions {
   attemptedUrls?: string[];
   backend?: string;
   resume?: boolean;
+  /**
+   * Called once when the job settles — `done`, `error`, `canceled`, an unsupported
+   * browser format, or the native port disconnecting. `download/queue.ts` releases its
+   * slot here rather than when this call returns, because the transfer runs on a
+   * detached port listener that nothing awaits. Omitted by every caller outside the
+   * batch queue.
+   */
+  onSettled?: () => void;
 }
 
 /** Per-download collaborator bag handed to `download/browser.ts`. */
