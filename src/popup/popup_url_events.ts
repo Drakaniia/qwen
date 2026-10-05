@@ -12,6 +12,7 @@ import {
   showQualityLoading,
 } from "./state/app.js";
 import { refresh, updateActiveTabContext } from "./popup_helpers.js";
+import { select as selectVideos } from "../ui/useStickySelection.js";
 import type { FormatsResponse, PopupResponse } from "./popup_state.js";
 
 /**
@@ -83,7 +84,8 @@ const SINGLE_TRACK_SENTINEL = "__QWIN_SINGLE_TRACK__";
  * quality sheet (spec §6.5), so it expands to rows and Downloads; anything that is not a
  * collection — including a single track, which the native resolver marks with
  * {@link SINGLE_TRACK_SENTINEL} rather than expanding — continues into the original
- * single-URL flow untouched.
+ * single-URL flow untouched. "Is a collection" is the host's own `isCollection` flag, not
+ * a count: `--flat-playlist` reports one entry for an ordinary video URL.
  *
  * @returns whether the paste was handled: rows for a playlist, the quality sheet for a
  *   single link, `false` with a notice on failure.
@@ -99,18 +101,46 @@ export async function resolvePastedUrl(raw: string): Promise<boolean> {
 
   setNotice("");
 
+  // Shown before enumeration, not after: every non-Spotify paste is extracted twice (once
+  // flat for the collection check, once for the real formats), and with the dialog opened
+  // only afterwards the whole first extraction passed with nothing on screen.
+  const token = showQualityLoading("Resolving link...");
+
   // A pasted link is a collection as often as it is a video, and the two want different
   // shapes: a playlist becomes rows plus the Downloads view, a single link becomes the
   // quality sheet below. One extra message buys that split, and the single flow stays the
   // fallback for every answer that is not a collection — including "not a collection".
-  const playlist = asRecord(await PopupApi.enumeratePlaylist(activeTabIdOrZero(), url));
+  let playlist: Record<string, any> = {};
+  try {
+    playlist = asRecord(await PopupApi.enumeratePlaylist(activeTabIdOrZero(), url));
+  } catch (_error) {
+    // A transport-level rejection says nothing about the URL — the helper can be down, the
+    // worker asleep, the native port timed out on a 100-item enumeration. Falling through
+    // to the single-URL flow can only recover; letting it escape would make the paste box
+    // a silent no-op, since nothing above this call has a try/catch.
+  }
 
-  if (playlist.ok && playlist.videoIds?.length) {
+  // `isCollection`, not a length check: `yt-dlp --flat-playlist` answers a plain video URL
+  // with one entry and no playlist title, so a single-item result is indistinguishable
+  // from a one-track album by count alone. The host knows which it was; anything it did
+  // not vouch for goes to the formats flow, which is what a plain link needs.
+  if (playlist.ok && playlist.isCollection === true && playlist.videoIds?.length) {
     // No quality sheet for a playlist: bulk quality is `best` and the per-track picker is
     // explicitly out (spec §6.5), so a dialog here would ask a question with one answer.
     hideQualityDialog();
-    setNotice(`Added ${playlist.videoIds.length} tracks from ${playlist.playlistTitle || "playlist"}.`);
-    setViewMode("downloads");
+    const title = playlist.playlistTitle || "playlist";
+    const added = playlist.videoIds.length;
+    // Rows live in Media, not in Downloads (jobs only) — switching views here hid the
+    // expansion behind the tray and read as "the list appeared, then vanished". Stay put
+    // and pre-select the rows so the selection bar offers Download all in one click.
+    selectVideos(playlist.videoIds);
+    // Spec §4: a capped enumeration has to name what it dropped, or "Added 100 tracks"
+    // reads as the whole playlist.
+    setNotice(
+      playlist.truncated
+        ? `Added ${added} tracks from ${title} — the first ${added} of ${playlist.totalItems}. Press Download all.`
+        : `Added ${added} tracks from ${title}. Press Download all.`,
+    );
     await refresh();
     return true;
   }
@@ -129,7 +159,6 @@ export async function resolvePastedUrl(raw: string): Promise<boolean> {
     await PopupApi.saveSettings({ audioFormat });
   }
 
-  const token = showQualityLoading("Resolving link...");
   const response = (await PopupApi.getFormatsForUrl(activeTabIdOrZero(), {
     url,
     pageUrl: url,

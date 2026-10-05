@@ -1,4 +1,3 @@
-import { hashId } from "./video_utils.js";
 import type { BackgroundContext, TabId } from "./types.js";
 
 /**
@@ -15,12 +14,29 @@ type PlaylistCtx = Pick<BackgroundContext, "nativeRequest" | "addDetectedVideo">
  */
 const ENUMERATE_TIMEOUT_MS = 90000;
 
-/** Expand a playlist URL to tab-scoped video rows sharing one groupId. */
+/**
+ * Expand a playlist URL to tab-scoped video rows.
+ *
+ * `isCollection` is the host's own answer to "was this really a list?", and it is the
+ * only trustworthy one: `yt-dlp --flat-playlist --dump-json` emits exactly one entry for
+ * an ordinary video URL, so a one-item result cannot be read as "small playlist" without
+ * losing the quality sheet for every plain paste. The popup gates on that flag rather
+ * than on a length guess.
+ *
+ * `truncated` / `totalItems` come from the same message (spec §4): a 300-track playlist
+ * is enumerated as its first 100, and the popup has to be able to say so.
+ */
 export async function enumeratePlaylistVideos(
   ctx: PlaylistCtx,
   tabId: TabId,
   url: string,
-): Promise<{ videoIds: string[]; playlistTitle: string; totalItems: number }> {
+): Promise<{
+  videoIds: string[];
+  playlistTitle: string;
+  isCollection: boolean;
+  totalItems: number;
+  truncated: boolean;
+}> {
   const reply = await ctx.nativeRequest(
     { type: "enumeratePlaylist", id: `pl_${Date.now()}`, url, pageUrl: url },
     ENUMERATE_TIMEOUT_MS,
@@ -29,10 +45,6 @@ export async function enumeratePlaylistVideos(
   if (!items.length) {
     throw new Error("That playlist has no playable items.");
   }
-  // One groupId per playlist URL, not per item — the popup groups the rows back together
-  // and "Download all" needs to know they came from the same enumeration. The repo's own
-  // `hashId` rather than a second hash function: two hashes of the same string must agree.
-  const groupId = `playlist_${hashId(url).slice(2)}`;
   const videoIds: string[] = [];
   for (const [index, item] of items.entries()) {
     const entry = item as Record<string, unknown>;
@@ -41,8 +53,6 @@ export async function enumeratePlaylistVideos(
       title: (entry.title || `Track ${index + 1}`) as string,
       pageUrl: url,
       source: "playlist",
-      groupId,
-      downloadable: true,
     });
     // A null means the detector filtered that item (ad, GIF, unsupported URL). Skipping it
     // is the point — the rest of the playlist is still downloadable.
@@ -53,5 +63,11 @@ export async function enumeratePlaylistVideos(
   if (!videoIds.length) {
     throw new Error("That media was filtered as an ad, GIF-style clip, or unsupported URL.");
   }
-  return { videoIds, playlistTitle: String(reply.playlistTitle || "Playlist"), totalItems: items.length };
+  return {
+    videoIds,
+    playlistTitle: String(reply.playlistTitle || "Playlist"),
+    isCollection: reply.isCollection === true,
+    totalItems: Number(reply.totalItems) || items.length,
+    truncated: reply.truncated === true,
+  };
 }
