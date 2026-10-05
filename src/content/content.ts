@@ -1,73 +1,78 @@
-"use strict";
-
 import * as videoFilters from "../shared/video_filters.js";
 import * as pageDetectionModule from "./page_detection.js";
+import { browserApi, isPromiseApi, sendMessage as sendRuntimeMessage } from "../shared/browser_api.js";
+import type { ContentCommand, ProxyFetchMessage } from "../shared/contracts.js";
+import { VIDEO_EXTENSION_RE } from "../shared/media_candidates.js";
 import {
   initOverlay,
   updateQualityLoadingStatus,
   positionAllOverlays,
   updateOverlay,
   setOverlayEnabled,
+  setOverlayTheme,
 } from "./content_overlay.js";
+import type { RuntimeResponse } from "./content_overlay.js";
 import {
   isStreamingUrl,
   isLikelyStreamingUrl,
   extractStreamingUrlsFromText,
   needsBackgroundProxy,
 } from "../shared/streaming_patterns.js";
+import type { VideoCandidate } from "./page_detection.js";
 
-const extensionApi = typeof browser !== "undefined" ? browser : chrome;
-const seenUrls = new Map();
+const extensionApi = browserApi.raw;
+const seenUrls = new Map<string, string>();
+/**
+ * Phase 8 candidate-count instrumentation (spec D12, "measurement first").
+ *
+ * `publishScan` resets `discovered` and logs it against the scan's result. This is
+ * the only place a list size is recorded anywhere in the extension: `logs/downloads.jsonl`
+ * is written by the native host and only holds probe/download events, and the
+ * `debugLog` path that used to produce `logs/debug.log` was deleted in `f38e6de`, so
+ * there is no file logger left to write to. A content script has no filesystem access
+ * in any case — `console.log` is the only sink it has, so the line is emitted in
+ * `logs/debug.log`'s own `[<epochMs>] [LEVEL] message` shape and a human copies it out
+ * of the page's devtools console.
+ *
+ * One line per scan: the 3s interval makes that 20 lines/minute on a page left open,
+ * which is the cost the spec's "counter plus one log line per scan is fine" budget
+ * allows. Nothing here is load-bearing, so delete this and `scanStats` once the p99
+ * list size has been read off a real page range.
+ */
+const scanStats = { discovered: 0 };
 const pageDetection = pageDetectionModule.create({
   document,
   location,
   videoFilters,
   seenUrls,
+  scanStats,
 });
-const watchedVideos = new WeakSet();
+const watchedVideos = new WeakSet<HTMLVideoElement>();
 
-let lastDetectedVideos = [];
+let lastDetectedVideos: VideoCandidate[] = [];
 
-function sendMessage(message) {
-  try {
-    const result = extensionApi.runtime.sendMessage(message);
-    if (result && typeof result.catch === "function") {
-      result.catch(() => {});
-    }
-  } catch (_error) {
+function sendMessage(message: object) {
+  sendRuntimeMessage(message).catch(() => {
     // The extension context can disappear during reloads.
-  }
-}
-
-function sendMessageWithResponse(message) {
-  if (typeof browser !== "undefined") {
-    return extensionApi.runtime.sendMessage(message).catch((error) => ({
-      ok: false,
-      error: error.message || String(error),
-    }));
-  }
-
-  return new Promise((resolve) => {
-    try {
-      extensionApi.runtime.sendMessage(message, (response) => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          resolve({ ok: false, error: error.message });
-          return;
-        }
-        resolve(response || { ok: false, error: "No response from background script." });
-      });
-    } catch (error) {
-      resolve({ ok: false, error: error.message || String(error) });
-    }
   });
 }
 
-function findAllVideos(root = document) {
+/**
+ * `shared/browser_api.js` normalizes every runtime failure to `{ ok: false, error }`
+ * and otherwise answers with whatever the background returned, so the response shape
+ * is only knowable per call site — narrowed once here to the envelope the content
+ * layer reads (`RuntimeResponse`), rather than cast at each of the five sites.
+ */
+function sendMessageWithResponse(message: object): Promise<RuntimeResponse> {
+  return sendRuntimeMessage(message) as Promise<RuntimeResponse>;
+}
+
+function findAllVideos(root: Document | ShadowRoot | Element = document): HTMLVideoElement[] {
   const videos = Array.from(root.querySelectorAll("video"));
   const allElements = root.querySelectorAll("*");
   for (const el of Array.from(allElements)) {
-    if (el.shadowRoot) {
+    // Only elements can host a shadow root, and only HTML elements have one.
+    if (el instanceof HTMLElement && el.shadowRoot) {
       videos.push(...findAllVideos(el.shadowRoot));
     }
   }
@@ -76,17 +81,19 @@ function findAllVideos(root = document) {
 
 // ─── Video scanning ────────────────────────────────────────────────────────
 
-function scanVideoElements() {
-  const candidates = [];
+function scanVideoElements(): VideoCandidate[] {
+  const candidates: VideoCandidate[] = [];
   const videos = findAllVideos();
 
   for (const video of videos) {
-    const videoCandidates = [];
+    const videoCandidates: VideoCandidate[] = [];
     const primary = pageDetection.addCandidate(
       candidates,
       video.currentSrc || video.src,
       "dom-video",
-      video.type || "",
+      // `<video>` has no `type` attribute in the DOM IDL (only `<source>` does), so
+      // this mimeType has always been empty and the URL alone classifies the candidate.
+      "",
       video,
     );
     if (primary) {
@@ -138,8 +145,8 @@ function scanVideoElements() {
   return candidates;
 }
 
-function scanPerformanceEntries() {
-  const candidates = [];
+function scanPerformanceEntries(): VideoCandidate[] {
+  const candidates: VideoCandidate[] = [];
   if (!performance || typeof performance.getEntriesByType !== "function") {
     return candidates;
   }
@@ -150,9 +157,9 @@ function scanPerformanceEntries() {
   return candidates;
 }
 
-function scanInlinePlayerScripts() {
-  const candidates = [];
-  for (const script of Array.from(document.scripts || [])) {
+function scanInlinePlayerScripts(): VideoCandidate[] {
+  const candidates: VideoCandidate[] = [];
+  for (const script of Array.from(document.scripts)) {
     if (script.src) {
       continue;
     }
@@ -161,9 +168,9 @@ function scanInlinePlayerScripts() {
   return candidates;
 }
 
-function scanVisiblePlayerFrames() {
-  const candidates = [];
-  for (const frame of Array.from(document.querySelectorAll("iframe[src]"))) {
+function scanVisiblePlayerFrames(): VideoCandidate[] {
+  const candidates: VideoCandidate[] = [];
+  for (const frame of Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe[src]"))) {
     const src = pageDetection.toAbsoluteUrl(frame.getAttribute("src") || frame.src || "");
     if (!src || !videoFilters.isDownloadableUrl(src, "")) {
       continue;
@@ -188,7 +195,10 @@ function scanVisiblePlayerFrames() {
     // If the iframe URL doesn't have a video extension, treat it as a PAGE
     // format so the native host uses yt-dlp for page extraction rather than
     // attempting a direct download of the (non-video) URL.
-    const hasVideoExt = /(?:\.(?:mp4|m4v|webm|m3u8|mpd)(?:$|[?#])|\.ism(?:\/Manifest)?(?:$|[?#]))/i.test(src);
+    // `VIDEO_EXTENSION_RE` (`shared/media_patterns.ts`, re-exported by
+    // `media_candidates.ts`) is the one definition of "this URL names a video or a
+    // manifest" — it was a fourth verbatim copy of this literal before.
+    const hasVideoExt = VIDEO_EXTENSION_RE.test(src);
 
     pageDetection.addBuiltCandidate(candidates, {
       url: src,
@@ -208,8 +218,8 @@ function scanVisiblePlayerFrames() {
   return candidates;
 }
 
-function scanMusicSources() {
-  const candidates = [];
+function scanMusicSources(): VideoCandidate[] {
+  const candidates: VideoCandidate[] = [];
   const hostname = location.hostname.toLowerCase();
   const pathname = location.pathname;
 
@@ -267,21 +277,21 @@ function scanMusicSources() {
  * through the background worker, we bypass browser CORS checks and can
  * verify Content-Type headers.
  *
- * @param {string} url - The URL to fetch
- * @param {object} [options]
- * @param {string} [options.method="GET"] - HTTP method
- * @param {object} [options.headers] - Additional headers
- * @param {boolean} [options.includeCredentials=false] - Include cookies
- * @returns {Promise<{ok: boolean, body?: string, contentType?: string, status?: number, error?: string}>}
+ * `ok`, `contentType` and `error` are the fields this reads; the rest of the
+ * `RuntimeResponse` envelope is the background's business.
  */
-async function fetchWithBackgroundProxy(url, options = {}) {
-  return sendMessageWithResponse({
+async function fetchWithBackgroundProxy(
+  url: string,
+  options: { method?: string; headers?: Record<string, string>; includeCredentials?: boolean } = {},
+): Promise<RuntimeResponse> {
+  const message: ProxyFetchMessage & { type: "proxyFetch" } = {
     type: "proxyFetch",
     url,
     method: options.method || "GET",
-    headers: options.headers || null,
+    headers: options.headers,
     includeCredentials: options.includeCredentials || false,
-  });
+  };
+  return sendMessageWithResponse(message);
 }
 
 /**
@@ -307,7 +317,7 @@ function verifyStreamingUrlsViaProxy() {
   ];
 
   // Collect existing candidates that need proxy verification
-  const toVerify = [];
+  const toVerify: VideoCandidate[] = [];
   for (const vid of lastDetectedVideos) {
     if (vid.url && needsBackgroundProxy(vid.url) && vid.source !== "proxy-verified") {
       toVerify.push(vid);
@@ -354,13 +364,13 @@ function verifyStreamingUrlsViaProxy() {
  * extensions, this uses the streaming_patterns library to detect URLs
  * from known CDNs, signed URLs, and platform-specific patterns.
  *
- * @returns {Array<object>} Detected video candidates
+ * @returns Detected video candidates
  */
-function scanStreamingUrls() {
-  const candidates = [];
+function scanStreamingUrls(): VideoCandidate[] {
+  const candidates: VideoCandidate[] = [];
 
   // 1. Scan all inline scripts for embedded streaming URLs
-  for (const script of Array.from(document.scripts || [])) {
+  for (const script of Array.from(document.scripts)) {
     if (script.src) continue; // External script — skip (already scanned by webRequest)
     const urls = extractStreamingUrlsFromText(script.textContent || "");
     for (const { url, confidence } of urls) {
@@ -387,7 +397,7 @@ function scanStreamingUrls() {
     "video, source, [data-video], [data-src], [data-url], [data-file], [data-hls], [data-m3u8], [data-mpd]",
   );
   for (const el of Array.from(videoElements)) {
-    for (const attr of el.attributes || []) {
+    for (const attr of Array.from(el.attributes)) {
       if (attr.name.startsWith("data-") && attr.value) {
         const attrUrl = pageDetection.toAbsoluteUrl(attr.value);
         if (attrUrl && (isStreamingUrl(attrUrl) || isLikelyStreamingUrl(attrUrl))) {
@@ -418,7 +428,8 @@ function scanStreamingUrls() {
 }
 
 function publishScan() {
-  const videos = [
+  scanStats.discovered = 0;
+  const videos: VideoCandidate[] = [
     ...scanVideoElements(),
     ...scanPerformanceEntries(),
     ...scanInlinePlayerScripts(),
@@ -427,7 +438,19 @@ function publishScan() {
     ...scanStreamingUrls(),
   ];
   lastDetectedVideos = videos;
+  // `discovered` is every candidate the six scanners produced; `unique` is what is
+  // left after `seenUrls` collapses repeats across and within them — the list this
+  // scan hands to the background, which is what the popup's list size derives from.
+  // NOT logged here: the count surviving `groupUniqueFullVideos`
+  // (`shared/video_sorting.js`), which runs in `background/background.js:94` and so
+  // is only observable from the background or the popup, not from a content script.
+  console.log(
+    `[${Date.now()}] [INFO] candidate-count host=${location.hostname} discovered=${scanStats.discovered} unique=${videos.length}`,
+  );
   if (videos.length > 0) {
+    // `ContentDetectedVideosMessage.videos` is `DetectedVideo[]`, which requires an
+    // `id` that only `background/addDetectedVideo` assigns — a content script has
+    // never known one, so the payload is sent untyped rather than cast into a lie.
     sendMessage({ type: "contentDetectedVideos", videos });
   }
   // Async: try to verify CORS-blocked CDN URLs via background proxy
@@ -443,18 +466,32 @@ function scheduleScan() {
 
 // ─── Video watching ────────────────────────────────────────────────────────
 
-function watchVideoElement(video) {
+function watchVideoElement(video: HTMLVideoElement) {
   if (!video || watchedVideos.has(video)) {
     return;
   }
   watchedVideos.add(video);
-  for (const eventName of ["loadedmetadata", "loadeddata", "play", "playing", "canplay"]) {
+  // `seeked` joined the list for `hls-thumbnail-spec.md` §3.1. It is the only one of the
+  // spec's three "there is a frame now" events these watchers did not already carry,
+  // and the only one a player can reach without ever firing `play` — scrubbing a
+  // `preload="none"` element. `loadeddata` and `playing` were already here, so §3.1's
+  // second listener set would be a duplicate of this one on this same element: media
+  // events do not bubble, so `capture: true` on a listener attached to the target is a
+  // no-op (the spec's "wasted work on a page with dozens of `<video>` elements" argument
+  // is about a delegated document-level listener, which this deliberately is not).
+  //
+  // `scheduleScan` is the whole of §3.1's "push the candidate back through the normal
+  // detection path": its 250ms debounce lands a `publishScan`, which re-runs
+  // `thumbnailCandidatesForVideo` → `captureFrame`, and `candidateMetadataSignature`
+  // (`page_detection.js:446`) sees the changed ladder and re-emits. No new message, no
+  // new state, no second `WeakSet` — `watchedVideos` already makes this once per element.
+  for (const eventName of ["loadedmetadata", "loadeddata", "play", "playing", "canplay", "seeked"]) {
     video.addEventListener(eventName, scheduleScan, { passive: true });
   }
 }
 
-function installVideoWatchers(root = document) {
-  if (root && root.matches && root.matches("video")) {
+function installVideoWatchers(root: Document | Element = document) {
+  if (root instanceof HTMLVideoElement) {
     watchVideoElement(root);
   }
   for (const video of findAllVideos(root)) {
@@ -467,15 +504,16 @@ function installVideoWatchers(root = document) {
 const observer = new MutationObserver((mutations) => {
   let shouldScan = false;
   for (const mutation of mutations) {
-    if (mutation.type === "attributes" && ["src", "type"].includes(mutation.attributeName)) {
+    if (mutation.type === "attributes" && mutation.attributeName && ["src", "type"].includes(mutation.attributeName)) {
       shouldScan = true;
     }
 
-    for (const node of Array.from(mutation.addedNodes || [])) {
-      if (node.nodeType !== Node.ELEMENT_NODE) {
+    for (const node of Array.from(mutation.addedNodes)) {
+      // Element nodes are the only additions that can carry a `<video>` or `<source>`.
+      if (!(node instanceof Element)) {
         continue;
       }
-      if (node.matches && (node.matches("video, source") || node.querySelector("video, source"))) {
+      if (node.matches("video, source") || node.querySelector("video, source")) {
         shouldScan = true;
       }
       installVideoWatchers(node);
@@ -491,7 +529,7 @@ const observer = new MutationObserver((mutations) => {
 
 function start() {
   installVideoWatchers();
-  observer.observe(document.documentElement || document, {
+  observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
     attributes: true,
@@ -509,8 +547,17 @@ function start() {
   // This prevents a flash of overlays when the user has disabled them.
   sendMessageWithResponse({ type: "getSettings" })
     .then(function (response) {
-      if (response && response.ok && response.settings && response.settings.overlayEnabled === false) {
-        setOverlayEnabled(false);
+      if (response && response.ok && response.settings) {
+        if (response.settings.overlayEnabled === false) {
+          setOverlayEnabled(false);
+        }
+        // The overlay's stylesheet lives in a shadow root on a third-party page, so
+        // it cannot see the extension's `<html data-theme>` (spec D6). The settings
+        // response this call already awaits is the channel: mirror the preference
+        // onto the shadow host, which `qwin_overlay.css` keys `:host([data-theme])`
+        // off. Best-effort — an unknown or absent value leaves the media query in
+        // charge.
+        setOverlayTheme(response.settings.theme);
       }
     })
     .catch(function () {
@@ -527,32 +574,47 @@ function start() {
 window.addEventListener("scroll", positionAllOverlays, true);
 window.addEventListener("resize", positionAllOverlays, true);
 
-extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message && message.type === "scanNow") {
-    seenUrls.clear();
-    const videos = publishScan();
+extensionApi.runtime.onMessage.addListener(
+  (message: ContentCommand | undefined, _sender: unknown, sendResponse: (response?: unknown) => void) => {
+    if (message && message.type === "scanNow") {
+      seenUrls.clear();
+      const videos = publishScan();
 
-    // Return scan results synchronously so the background's rescanTab
-    // handler can await tabs.sendMessage and get populated data back.
-    if (typeof browser !== "undefined") {
-      return Promise.resolve({ ok: true, videos });
+      // Return scan results synchronously so the background's rescanTab
+      // handler can await tabs.sendMessage and get populated data back.
+      // `isPromiseApi` is the browser_api shim's own capture of "does this browser
+      // expose the promise-based `browser` namespace".
+      if (isPromiseApi) {
+        return Promise.resolve({ ok: true, videos });
+      }
+      if (sendResponse) {
+        sendResponse({ ok: true, videos });
+      }
+      return true;
+    } else if (message && message.type === "rescanForFrames") {
+      // `hls-thumbnail-spec.md` §3.2, H11 part 2 — the popup-open backstop for a player
+      // that buffered without firing a media event (autoplay-muted ones often never fire
+      // `playing`). Fire-and-forget by design: no `sendResponse`, no promise, so the
+      // popup never waits on it.
+      //
+      // Two lines because the work is already written. `publishScan` re-runs every
+      // scanner, so `thumbnailCandidatesForVideo` calls `captureFrame` on each element
+      // and `captureFrame` no-ops by itself on a video that still has no decoded frame —
+      // an unready tab costs one scan and re-sends the list it already had. Clearing
+      // `seenUrls` is the half that matters: it is what lets a video whose frame has
+      // since arrived re-emit through `candidateMetadataSignature` instead of being
+      // collapsed as "already seen". The same two lines `scanNow` runs, deliberately:
+      // `scanNow` exists to answer, `rescanForFrames` not to.
+      seenUrls.clear();
+      publishScan();
+    } else if (message && message.type === "updateLoadingStatus") {
+      updateQualityLoadingStatus(message.text);
+    } else if (message && message.type === "setOverlayEnabled") {
+      setOverlayEnabled(message.enabled !== false);
     }
-    if (sendResponse) {
-      sendResponse({ ok: true, videos });
-    }
-    return true;
-  } else if (message && message.type === "updateLoadingStatus") {
-    updateQualityLoadingStatus(message.text);
-  } else if (message && message.type === "setOverlayEnabled") {
-    setOverlayEnabled(message.enabled !== false);
-  }
-});
-
-function checkForCloudflareChallenge() {
-  return false;
-}
-
-export { checkForCloudflareChallenge };
+    return undefined;
+  },
+);
 
 window.addEventListener("qwin-video-scan-now", () => {
   seenUrls.clear();
