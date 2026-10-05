@@ -1,5 +1,3 @@
-"use strict";
-
 /**
  * Filter List Loader for Qwin Video Downloader
  *
@@ -7,9 +5,9 @@
  * relevant to video detection and ad filtering.
  *
  * This is the main entry point that orchestrates the sub-modules:
- *   - filter_list_config.js — Constants, domain sets, list definitions
- *   - filter_list_parser.js — Parse adblock filter syntax
- *   - filter_list_cache.js  — chrome.storage.local persistence
+ *   - filter_list_config.ts — Constants, domain sets, list definitions
+ *   - filter_list_parser.ts — Parse adblock filter syntax
+ *   - filter_list_cache.ts  — chrome.storage.local persistence
  *
  * Lifecycle:
  *   1. fetchFilterList(url) — Raw download with HTTP caching
@@ -20,31 +18,47 @@
  *   6. getActivePatterns / refreshAllLists — Orchestration entry points
  */
 
-import { RULE_BLOCK, RULE_EXCEPTION, FILTER_LISTS } from "./filter_list_config.js";
+import { FILTER_LISTS, RULE_BLOCK, RULE_EXCEPTION, type CompiledFilterPatterns } from "./filter_list_config.js";
 
-import { parseFilterList, extractVideoRelevantRules } from "./filter_list_parser.js";
+import { extractVideoRelevantRules, parseFilterList } from "./filter_list_parser.js";
 
 import {
-  loadFromCache,
-  saveToCache,
   deserializeRules,
   loadCompiledPatterns,
+  loadFromCache,
   saveCompiledPatterns,
+  saveToCache,
 } from "./filter_list_cache.js";
 
 // ── fetchFilterList ────────────────────────────────────────────────────────
+
+/** Cached validators for a conditional request. */
+interface CachedHeaders {
+  etag?: string | null;
+  lastModified?: string | null;
+}
+
+/** The outcome of one list fetch. `cached: true` means 304 — the cached copy stands. */
+interface FilterListResponse {
+  ok: boolean;
+  text: string | null;
+  etag: string | null;
+  lastModified: string | null;
+  cached: boolean;
+}
+
+const FAILED_FETCH: FilterListResponse = { ok: false, text: null, etag: null, lastModified: null, cached: false };
 
 /**
  * Download a filter list from a URL with HTTP caching support.
  * Returns the text content and any caching headers.
  *
- * @param {string} url — Filter list URL
- * @param {{ etag?: string, lastModified?: string }} [cachedHeaders] — Previously cached headers
- * @returns {Promise<{ok: boolean, text: string|null, etag: string|null, lastModified: string|null, cached: boolean}>}
+ * @param url — Filter list URL
+ * @param cachedHeaders — Previously cached headers
  */
-async function fetchFilterList(url, cachedHeaders = {}) {
+async function fetchFilterList(url: string, cachedHeaders: CachedHeaders = {}): Promise<FilterListResponse> {
   if (!url) {
-    return { ok: false, text: null, etag: null, lastModified: null, cached: false };
+    return { ...FAILED_FETCH };
   }
 
   try {
@@ -64,7 +78,7 @@ async function fetchFilterList(url, cachedHeaders = {}) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-    let response;
+    let response: Response;
     try {
       response = await fetch(url, {
         method: "GET",
@@ -82,34 +96,19 @@ async function fetchFilterList(url, cachedHeaders = {}) {
     }
 
     if (!response.ok) {
-      return {
-        ok: false,
-        text: null,
-        etag: null,
-        lastModified: null,
-        cached: false,
-      };
+      return { ...FAILED_FETCH };
     }
 
     const text = await response.text();
 
     // Extract caching headers
-    let etag = null;
-    const etagHeader = response.headers.get("etag");
-    if (etagHeader) {
-      etag = etagHeader;
-    }
-
-    let lastModified = null;
-    const lmHeader = response.headers.get("last-modified");
-    if (lmHeader) {
-      lastModified = lmHeader;
-    }
+    const etag = response.headers.get("etag");
+    const lastModified = response.headers.get("last-modified");
 
     return { ok: true, text, etag, lastModified, cached: false };
   } catch (_error) {
     // Network error, timeout, etc.
-    return { ok: false, text: null, etag: null, lastModified: null, cached: false };
+    return { ...FAILED_FETCH };
   }
 }
 
@@ -117,13 +116,11 @@ async function fetchFilterList(url, cachedHeaders = {}) {
 
 /**
  * Compile rules from cached filter lists into Qwin's pattern format.
- *
- * @returns {Promise<{adDomains: string[], exceptionDomains: string[], cdnDomains: string[]}>}
  */
-async function compileActivePatterns() {
-  const adDomains = [];
-  const exceptionDomains = [];
-  const cdnDomains = [];
+async function compileActivePatterns(): Promise<CompiledFilterPatterns> {
+  const adDomains: string[] = [];
+  const exceptionDomains: string[] = [];
+  const cdnDomains: string[] = [];
 
   for (const list of FILTER_LISTS) {
     const cache = await loadFromCache(list.key);
@@ -144,7 +141,7 @@ async function compileActivePatterns() {
   }
 
   // Deduplicate
-  const result = {
+  const result: CompiledFilterPatterns = {
     adDomains: [...new Set(adDomains)],
     exceptionDomains: [...new Set(exceptionDomains)],
     cdnDomains: [...new Set(cdnDomains)],
@@ -161,19 +158,17 @@ async function compileActivePatterns() {
 /**
  * Attempt to refresh all configured filter lists.
  * Returns success/failure for each list.
- *
- * @returns {Promise<Object<string, boolean>>}
  */
-async function refreshAllLists() {
-  const results = {};
+async function refreshAllLists(): Promise<Record<string, boolean>> {
+  const results: Record<string, boolean> = {};
 
   for (const list of FILTER_LISTS) {
     let success = false;
 
     try {
       // Check if we have a cached version with ETag
-      let cachedEtag = null;
-      const cachedLastModified = null;
+      let cachedEtag: string | null = null;
+      const cachedLastModified: string | null = null;
 
       const cache = await loadFromCache(list.key);
       if (cache) {
@@ -211,10 +206,8 @@ async function refreshAllLists() {
 /**
  * Get the current set of active patterns for URL classification.
  * Checks cache first, falls back to compiling if no cached patterns exist.
- *
- * @returns {Promise<{adDomains: string[], exceptionDomains: string[], cdnDomains: string[]}>}
  */
-async function getActivePatterns() {
+async function getActivePatterns(): Promise<CompiledFilterPatterns> {
   // Try loading previously compiled patterns first
   const cached = await loadCompiledPatterns();
   if (cached && cached.adDomains && cached.exceptionDomains) {

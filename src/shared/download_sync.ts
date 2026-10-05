@@ -1,5 +1,3 @@
-"use strict";
-
 /**
  * Download History Sync Module
  *
@@ -12,35 +10,35 @@
  * - Max 200 entries, capped by recency (newest kept)
  * - Deduplication by job ID
  * - sourceHost extracted from URL for filtering / display
+ *
+ * The in-memory list is the whole store: the background loads it from `storage.sync`
+ * at startup and persists it back, so nothing here touches chrome APIs itself.
  */
+
+import type { DownloadJob, SyncedDownloadEntry } from "./contracts.js";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const MAX_SYNCED_ENTRIES = 200;
-const SYNCABLE_STATUSES = new Set(["done", "error", "canceled"]);
+const SYNCABLE_STATUSES: ReadonlySet<string> = new Set(["done", "error", "canceled"]);
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
-/** @type {Array<import("./download_sync").SyncedDownloadEntry>} */
-let syncedHistory = [];
+let syncedHistory: SyncedDownloadEntry[] = [];
 
-/** @type {boolean} */
 let syncEnabled = true;
 
-/** @type {number|null} */
-let lastSyncTimestamp = null;
+let lastSyncTimestamp: number | null = null;
 
-/** @type {boolean} */
+/** Nothing here is concurrent — the flag exists because the state snapshot reports it. */
 const isSyncing = false;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /**
  * Extract the hostname from a URL string.
- * @param {string} url
- * @returns {string}
  */
-function extractHostname(url) {
+function extractHostname(url: string): string {
   if (!url) return "";
   try {
     const parsed = new URL(url);
@@ -52,10 +50,8 @@ function extractHostname(url) {
 
 /**
  * Check if a download status represents a completed/final state.
- * @param {string} status
- * @returns {boolean}
  */
-function isSyncableStatus(status) {
+function isSyncableStatus(status: string | undefined): boolean {
   return SYNCABLE_STATUSES.has(status || "");
 }
 
@@ -63,10 +59,9 @@ function isSyncableStatus(status) {
  * Create a compact synced entry from a download job.
  * Only includes fields needed for history display.
  *
- * @param {Object} job - The download job object from tab state
- * @returns {import("./download_sync").SyncedDownloadEntry|null}
+ * Returns null for a job that is not in a final state or has no id.
  */
-function createSyncedEntry(job) {
+function createSyncedEntry(job: DownloadJob): SyncedDownloadEntry | null {
   if (!job || !job.id || !isSyncableStatus(job.status)) {
     return null;
   }
@@ -76,10 +71,13 @@ function createSyncedEntry(job) {
     url: job.url || "",
     title: job.title || "Unknown",
     format: job.format || "",
-    status: job.status,
+    status: job.status || "",
     filepath: job.filepath || "",
     totalSize: job.totalSize || "",
-    sourceHost: extractHostname(job.url || ""),
+    // `pageUrl` first, not `url`: the media URL is a CDN host per video, so the Source facet
+    // on `downloads.html` used to list `googlevideo.com` instead of the site the user was
+    // actually on. `ui/filter.ts`'s `sourceHostOf` uses the same precedence.
+    sourceHost: extractHostname(job.pageUrl || job.url || ""),
     createdAt: typeof job.createdAt === "number" ? job.createdAt : Date.now(),
     completedAt: typeof job.updatedAt === "number" ? job.updatedAt : Date.now(),
   };
@@ -92,10 +90,9 @@ function createSyncedEntry(job) {
  * Deduplicates by job ID (updates existing entry).
  * Capped to MAX_SYNCED_ENTRIES (newest kept).
  *
- * @param {Object} job - Download job object from tab state
- * @returns {boolean} Whether the entry was added to sync history
+ * @returns Whether the entry was added to sync history
  */
-function addSyncedDownload(job) {
+function addSyncedDownload(job: DownloadJob): boolean {
   if (!syncEnabled) {
     return false;
   }
@@ -128,27 +125,31 @@ function addSyncedDownload(job) {
 /**
  * Get all synced download history entries.
  * Returns a shallow copy sorted newest-first.
- *
- * @returns {Array<import("./download_sync").SyncedDownloadEntry>}
  */
-function getSyncedHistory() {
+function getSyncedHistory(): SyncedDownloadEntry[] {
   return [...syncedHistory];
 }
 
 /**
  * Clear all synced download history.
  */
-function clearSyncedHistory() {
+function clearSyncedHistory(): void {
   syncedHistory = [];
   lastSyncTimestamp = null;
 }
 
+/** Counts and flags for the Downloads page's "history is off" line. */
+interface SyncInfo {
+  totalCount: number;
+  lastSyncTimestamp: number | null;
+  isSyncing: boolean;
+  syncEnabled: boolean;
+}
+
 /**
  * Get information about the current sync state.
- *
- * @returns {{ totalCount: number, lastSyncTimestamp: number|null, isSyncing: boolean, syncEnabled: boolean }}
  */
-function getSyncInfo() {
+function getSyncInfo(): SyncInfo {
   return {
     totalCount: syncedHistory.length,
     lastSyncTimestamp,
@@ -161,16 +162,20 @@ function getSyncInfo() {
  * Load synced history from a JSON string (deserialized from storage).
  * Replaces the current in-memory state.
  *
- * @param {string} json - JSON string of synced download entries
+ * @param json — JSON string of synced download entries
  */
-function loadSyncHistory(json) {
+function loadSyncHistory(json: string): void {
   try {
-    const parsed = JSON.parse(json);
+    const parsed: unknown = JSON.parse(json);
     if (Array.isArray(parsed)) {
       syncedHistory = parsed
         .filter(
-          (entry) =>
-            entry && typeof entry.id === "string" && typeof entry.url === "string" && typeof entry.status === "string",
+          (entry): entry is SyncedDownloadEntry =>
+            Boolean(entry) &&
+            typeof entry === "object" &&
+            typeof (entry as SyncedDownloadEntry).id === "string" &&
+            typeof (entry as SyncedDownloadEntry).url === "string" &&
+            typeof (entry as SyncedDownloadEntry).status === "string",
         )
         .sort((a, b) => b.completedAt - a.completedAt)
         .slice(0, MAX_SYNCED_ENTRIES);
@@ -182,67 +187,24 @@ function loadSyncHistory(json) {
 
 /**
  * Serialize the current synced history to a JSON string.
- *
- * @returns {string}
  */
-function persistSyncHistory() {
+function persistSyncHistory(): string {
   return JSON.stringify(syncedHistory);
 }
 
 /**
- * Merge external synced history (from another browser instance) with local state.
- * External entries with the same ID overwrite local entries.
- * Result is capped to MAX_SYNCED_ENTRIES and sorted by completedAt descending.
- *
- * @param {string} json - JSON string of external synced download entries
- */
-function mergeSyncedHistory(json) {
-  let externalEntries;
-  try {
-    const parsed = JSON.parse(json);
-    if (!Array.isArray(parsed)) return;
-    externalEntries = parsed;
-  } catch (_error) {
-    return;
-  }
-
-  // Build a map of existing entries by ID
-  const mergedMap = new Map();
-  for (const entry of syncedHistory) {
-    if (entry && entry.id) {
-      mergedMap.set(entry.id, entry);
-    }
-  }
-
-  // External entries overwrite local entries with same ID
-  for (const entry of externalEntries) {
-    if (entry && entry.id && typeof entry.id === "string") {
-      mergedMap.set(entry.id, entry);
-    }
-  }
-
-  syncedHistory = Array.from(mergedMap.values())
-    .sort((a, b) => b.completedAt - a.completedAt)
-    .slice(0, MAX_SYNCED_ENTRIES);
-
-  lastSyncTimestamp = Date.now();
-}
-
-/**
  * Check whether sync is currently enabled.
- *
- * @returns {boolean}
  */
-function isSyncEnabled() {
+function isSyncEnabled(): boolean {
   return syncEnabled;
 }
 
 /**
  * Enable or disable download history sync.
  *
- * @param {boolean} enabled
+ * @param enabled
  */
-function setSyncEnabled(enabled) {
+function setSyncEnabled(enabled: boolean): void {
   syncEnabled = Boolean(enabled);
   if (!syncEnabled) {
     // When disabling, clear the in-memory state so disabled-sync entries
@@ -259,7 +221,8 @@ export {
   getSyncInfo,
   isSyncEnabled,
   loadSyncHistory,
-  mergeSyncedHistory,
   persistSyncHistory,
   setSyncEnabled,
 };
+
+export type { SyncInfo };

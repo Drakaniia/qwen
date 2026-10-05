@@ -1,12 +1,22 @@
-"use strict";
+/**
+ * Video identity: when two detections are the same video.
+ *
+ * The content script sees the same stream three ways (a `<video>` element, a network
+ * capture, an SSR config blob) and `video_sorting` needs to collapse them. That means
+ * normalizing URLs, titles and file stems into comparable keys, and deciding when
+ * "same page + compatible title" is enough to call two candidates one video.
+ */
 
-import { classifyVideoUrl, isDownloadableUrl, lower, finiteNumber, textForVideoSignals } from "./video_filters.js";
+import type { MediaCandidateLike } from "./media_rules.js";
+import { classifyVideoUrl, finiteNumber, isDownloadableUrl, lower, textForVideoSignals } from "./video_filters.js";
 
 // ── Regex constants (shared with video_filters.js) ─────────────────────
 
+/** `1080p`, `4k`, `fhd`… — stripped from titles so `movie 1080p` and `movie` match. */
 const QUALITY_WORD_RE =
   /\b(?:144|240|360|480|540|576|720|900|1080|1440|2160|4320)p\b|\b(?:8k|4k|uhd|qhd|fhd|hd|sd|low|medium|high|best|source|copy)\b/gi;
 
+/** `mp4`, `hls`, `dash`… — same reason as {@link QUALITY_WORD_RE}. */
 const FORMAT_WORD_RE = /\b(?:mp4|m4v|webm|m3u8|mpd|hls|dash)\b/gi;
 
 const RESOLUTION_RE = /(?:^|[^\d])([1-9]\d{2,3})p(?:[^\d]|$)/i;
@@ -19,6 +29,7 @@ const KBPS_RE = /(?:^|[^\d])(\d{3,6})\s?kbps?(?:[^\d]|$)/i;
 
 // ── Generic title detection ──────────────────────────────────────────
 
+/** Words a page uses to name "the thing that is playing" rather than the video itself. */
 const GENERIC_WORDS = [
   "video",
   "videos",
@@ -65,7 +76,8 @@ const GENERIC_TITLE_RE = new RegExp(
 
 // ── URL normalization ──────────────────────────────────────────────────
 
-function normalizeComparableUrl(url) {
+/** The URL without its fragment — two candidates differing only by `#t=30` are one video. */
+function normalizeComparableUrl(url: string): string {
   try {
     const parsed = new URL(url);
     parsed.hash = "";
@@ -75,7 +87,8 @@ function normalizeComparableUrl(url) {
   }
 }
 
-function normalizeIdentityText(value) {
+/** Lowercase, minus the extension, dimensions, quality words and format words. */
+function normalizeIdentityText(value: unknown): string {
   return lower(value)
     .replace(/\.(?:mp4|m4v|webm|m3u8|mpd)$/i, " ")
     .replace(/\b\d{3,4}x\d{3,4}\b/g, " ")
@@ -88,14 +101,16 @@ function normalizeIdentityText(value) {
     .trim();
 }
 
-function normalizeTitleKey(value) {
+/** {@link normalizeIdentityText} minus the page-chrome words (`watch`, `online`, `video`). */
+function normalizeTitleKey(value: unknown): string {
   return normalizeIdentityText(value)
     .replace(/\b(?:watch|online|video)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function normalizeVideoStem(url) {
+/** The normalized file name of a URL — the strongest cheap identity signal. */
+function normalizeVideoStem(url: string): string {
   try {
     const parsed = new URL(url);
     const parts = parsed.pathname.split("/").filter(Boolean);
@@ -110,7 +125,8 @@ function normalizeVideoStem(url) {
   }
 }
 
-function normalizePageKey(url) {
+/** The URL without fragment *or* query — "which page is this on". */
+function normalizePageKey(url: string): string {
   try {
     const parsed = new URL(url);
     parsed.hash = "";
@@ -123,11 +139,12 @@ function normalizePageKey(url) {
 
 // ── Generic title / stem detection ─────────────────────────────────────
 
-function isGenericStem(stem) {
+function isGenericStem(stem: string): boolean {
   return GENERIC_STEM_RE.test(stem || "");
 }
 
-function isGenericTitle(value) {
+/** Whether a title says nothing about which video this is. */
+function isGenericTitle(value: unknown): boolean {
   const text = String(value || "").trim();
   if (!text) {
     return true;
@@ -147,7 +164,15 @@ function isGenericTitle(value) {
 
 // ── Video identity ────────────────────────────────────────────────────
 
-function videoIdentityParts(video) {
+interface VideoIdentityParts {
+  urlKey: string;
+  pageKey: string;
+  titleKey: string;
+  stemKey: string;
+  genericStem: boolean;
+}
+
+function videoIdentityParts(video: MediaCandidateLike): VideoIdentityParts {
   const stemKey = normalizeVideoStem(video.url || "");
   return {
     urlKey: normalizeComparableUrl(video.url || ""),
@@ -158,7 +183,15 @@ function videoIdentityParts(video) {
   };
 }
 
-function isSameFullVideo(left, right) {
+/**
+ * Whether two candidates are the same video.
+ *
+ * Same URL wins outright. Otherwise they must share a page, and then either the
+ * same file stem, or a same title — the last case only when one side's stem is
+ * generic ("video.mp4"), because a generic stem carries no information and two
+ * different videos on one page would otherwise collapse into one row.
+ */
+function isSameFullVideo(left: MediaCandidateLike, right: MediaCandidateLike): boolean {
   const leftParts = videoIdentityParts(left);
   const rightParts = videoIdentityParts(right);
 
@@ -189,7 +222,8 @@ function isSameFullVideo(left, right) {
 
 // ── Resolution / bitrate inference ─────────────────────────────────────
 
-function inferResolutionFromText(value) {
+/** `1920x1080` or `1080p` in any signal text, as `{width, height}`. */
+function inferResolutionFromText(value: unknown): { width: number; height: number } {
   const text = String(value || "");
   const dimensions = text.match(DIMENSION_RE);
   if (dimensions) {
@@ -207,7 +241,8 @@ function inferResolutionFromText(value) {
   return { width: 0, height: 0 };
 }
 
-function inferBitrateFromText(value) {
+/** `5 mbps` / `2500 kbps` in any signal text, as kbps. */
+function inferBitrateFromText(value: unknown): number {
   const text = String(value || "");
   const mbps = text.match(MBPS_RE);
   if (mbps) {
@@ -224,7 +259,24 @@ function inferBitrateFromText(value) {
 
 // ── Variant enrichment ─────────────────────────────────────────────────
 
-function enrichVideoVariant(video) {
+/** A variant with its dimensions, bitrate, format and downloadability filled in from its own signals. */
+export type EnrichedVideoVariant<T extends MediaCandidateLike> = T & {
+  format: string;
+  width: number | null;
+  height: number | null;
+  bitrate: number | null;
+  tbr: number | null;
+  downloadable: boolean;
+};
+
+/**
+ * Fill in what the detection missed by reading it back out of its own text.
+ *
+ * A URL called `movie_1080p_5mbps.mp4` on a page titled `movie 720p` carries both a
+ * resolution and a bitrate; the metadata block may have neither. Inference is
+ * last-resort — a reported value always wins.
+ */
+function enrichVideoVariant<T extends MediaCandidateLike>(video: T): EnrichedVideoVariant<T> {
   const signalText = textForVideoSignals(video);
   const inferredResolution = inferResolutionFromText(signalText);
   const inferredBitrate = inferBitrateFromText(signalText);

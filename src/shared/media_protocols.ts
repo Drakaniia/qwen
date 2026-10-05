@@ -1,5 +1,3 @@
-"use strict";
-
 /**
  * Shared Media Protocol Detection Patterns
  *
@@ -17,15 +15,15 @@
 /** Match any media-related content type. */
 const MEDIA_CONTENT_TYPE_RE = /^(video\/|audio\/|application\/(x-mpegURL|vnd\.apple\.mpegURL|dash\+xml)|text\/vtt)/i;
 
-/** Check if a Content-Type header value indicates media content. */
-function hasMediaContentType(contentType) {
+/**
+ * Check if a Content-Type header value indicates media content.
+ *
+ * `unknown` rather than `string`: the value comes straight off a response header or a
+ * DOM attribute, and the guard below is what has always rejected a missing one.
+ */
+function hasMediaContentType(contentType: unknown): boolean {
   if (!contentType || typeof contentType !== "string") return false;
   return MEDIA_CONTENT_TYPE_RE.test(contentType.trim());
 }
 
-// ─── URL Patterns ─────────────────────────────────────────────────────────
-
-/** Detect transferMode: "stream" patterns in fetch intercept code. */
-const TRANSFER_MODE_RE = /transferMode\s*[:=]\s*['"]stream['"]/i;
-
-export { TRANSFER_MODE_RE, hasMediaContentType };
+export { hasMediaContentType };

@@ -1,159 +1,425 @@
-:root {
-  --qwin-bg: #f7f8fa;
-  --qwin-surface: #ffffff;
-  --qwin-text: #171b22;
-  --qwin-muted: #687386;
-  --qwin-line: #dce1e8;
-  --qwin-accent: #0f766e;
-  --qwin-accent-strong: #0b5e58;
-  --qwin-danger: #b42318;
-  --qwin-warning: #9a6700;
-  --qwin-ok: #12643f;
-}
+/*
+ * In-page overlay stylesheet.
+ *
+ * This file is NOT registered in the manifest `content_scripts[0].css` any more.
+ * It ships as a string (esbuild reads it via the `?inline` import in
+ * `content_overlay.js`) and is installed on a <style> element *inside the
+ * overlay's shadow root*. Shadow scoping is what makes it structurally impossible
+ * for this stylesheet — or for Tailwind's global preflight — to touch the host
+ * page (spec §7 R5).
+ *
+ * ─── Why the tokens are copied rather than imported (spec §9) ────────────────────
+ *
+ * `src/ui/theme.css` starts with `@import "tailwindcss"`, and importing it here
+ * would drag a global reset into the shadow tree — the exact failure R5 exists to
+ * prevent. So the token *values* are copied verbatim from `theme.css` and only the
+ * ones this stylesheet actually consumes are declared. Every block below carries the
+ * name of the token it came from, so a change in `theme.css` that is not mirrored
+ * here is visible in a diff rather than invisible in a screenshot.
+ *
+ * The shadow root sees neither `theme.css` nor `:root`: its only ancestor is the
+ * overlay host `<div>` in the page's DOM. That is why the values are restated at
+ * `:host` rather than inherited.
+ */
 
-#qwin-video-overlay {
+:host {
+  /* `all: initial` strips whatever the host page set on this element, then the
+   * declarations below re-establish what the overlay needs. Shadow-DOM `:host`
+   * rules lose to the outer tree at equal specificity, so this is best-effort
+   * defence against an aggressive `* { ... }` on the page — the alternative
+   * (!important) would mean shipping a stylesheet into the host page, which is the
+   * thing this move exists to prevent. */
+  all: initial;
   position: fixed;
   inset: 0;
   z-index: 2147483647;
+  pointer-events: none;
+  color: var(--color-text);
+  /* Native controls and scrollbars inside the dialog track the resolved scheme,
+   * exactly as `theme.css` sets `color-scheme` on `:root`. */
+  color-scheme: light;
+  /* `--font-app`, copied verbatim. `font-sans` is banned (spec §4.3): on Windows it
+   * resolves through a generic and the fallback chain diverges from macOS. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  /* `--text-body` — the fallback size for anything a rule below does not size. */
+  font-size: 12px;
+  line-height: 1.45;
+
+  /* ─── Palette (spec §4.2) ────────────────────────────────────────────────────
+   * Verbatim from `theme.css`'s `@theme` light block. Apple's system colours.
+   */
+  --color-accent: #007aff;
+  --color-accent-fg: #ffffff;
+  --color-critical: #ff3b30;
+  --color-surface: #ffffff;
+  --color-raised: #f2f2f7;
+  --color-chrome: rgba(255, 255, 255, 0.62);
+  --color-sheet: rgba(255, 255, 255, 0.78);
+  --color-border: #d1d1d6;
+  --color-border-strong: #8e8e93;
+  --color-text: #000000;
+  --color-text-muted: rgba(0, 0, 0, 0.6);
+  --color-text-tertiary: rgba(0, 0, 0, 0.3);
+  /* Denser in light than in dark — see the note on `--color-scrim` in `theme.css`. */
+  --color-scrim: rgba(0, 0, 0, 0.32);
+
+  /* ─── Radius (spec §5.3) ─────────────────────────────────────────────────────
+   * Only the steps this stylesheet uses: 6 badges/chips, 10 rows + inputs, 20
+   * dialogs. `--radius-card` / `--radius-sheet` (14) are not declared because
+   * nothing here lands on that step — an unused token is a value that can drift.
+   */
+  --radius-badge: 6px;
+  --radius-row: 10px;
+  --radius-input: 10px;
+  --radius-dialog: 20px;
+
+  /* ─── Type scale (spec §4.3) ──────────────────────────────────────────────────
+   * Tracking is per-role and not uniform: negative at display sizes, positive for
+   * the uppercase micro-labels, zero for body.
+   */
+  --text-title: 13px;
+  --text-section: 11px;
+  --text-row: 13px;
+  --text-body: 12px;
+  --text-caption: 11px;
+  --text-numeric: 12px;
+
+  /* ─── Materials (spec §4.1) ──────────────────────────────────────────────────
+   * The overlay is Sheet weight, not Chrome (spec §9): it floats over arbitrary
+   * host pages, so it needs more separation than the popup's chrome bars. Hence
+   * blur 32 — the same literal `.material-sheet` uses — and the sheet drop shadow
+   * rather than chrome's 0.5px inset highlight. `--material-chrome-blur` and
+   * `--material-chrome-highlight` are deliberately absent: the overlay uses one
+   * material and ships no chrome.
+   */
+  --material-sheet-blur: 32px;
+  --material-sheet-shadow: 0 24px 48px rgba(0, 0, 0, 0.18);
+
+  /* `--control-height-md` — the one control height off the spacing scale, because
+   * the 4/8/12/16/20/24 ladder has no hit-target size. */
+  --control-height-md: 34px;
+}
+
+/* ─── Theme channel (spec D6) ────────────────────────────────────────────────────
+ *
+ * The overlay host is an element in the *page's* DOM, so it cannot see the
+ * extension's `<html data-theme>` — there is no such element in scope from inside a
+ * shadow root on a third-party page. It does have a usable channel:
+ * `content_overlay.ts` reads `settings.theme` off the `getSettings` response the
+ * content script already fetches and mirrors it onto this attribute, which is the
+ * same three-state keying `theme.css` uses on `:root`.
+ *
+ * `system` is represented by *not* pinning the attribute, so the media block below
+ * keeps ownership — exactly as in `theme.css`.
+ */
+:host([data-theme="light"]) {
+  color-scheme: light;
+}
+
+:host([data-theme="dark"]) {
+  color-scheme: dark;
+
+  --color-accent: #0a84ff;
+  --color-accent-fg: #ffffff;
+  --color-critical: #ff453a;
+  --color-surface: #1c1c1e;
+  --color-raised: #2c2c2e;
+  --color-chrome: rgba(22, 24, 30, 0.66);
+  --color-sheet: rgba(30, 32, 38, 0.8);
+  --color-border: #38383a;
+  --color-border-strong: #98989f;
+  --color-text: #ffffff;
+  --color-text-muted: rgba(255, 255, 255, 0.62);
+  --color-text-tertiary: rgba(255, 255, 255, 0.32);
+  --color-scrim: rgba(0, 0, 0, 0.48);
+}
+
+@media (prefers-color-scheme: dark) {
+  :host(:not([data-theme="light"])) {
+    color-scheme: dark;
+
+    --color-accent: #0a84ff;
+    --color-accent-fg: #ffffff;
+    --color-critical: #ff453a;
+    --color-surface: #1c1c1e;
+    --color-raised: #2c2c2e;
+    --color-chrome: rgba(22, 24, 30, 0.66);
+    --color-sheet: rgba(30, 32, 38, 0.8);
+    --color-border: #38383a;
+    --color-border-strong: #98989f;
+    --color-text: #ffffff;
+    --color-text-muted: rgba(255, 255, 255, 0.62);
+    --color-text-tertiary: rgba(255, 255, 255, 0.32);
+    --color-scrim: rgba(0, 0, 0, 0.48);
+  }
+}
+
+/* ─── Material (spec §4.1) ─────────────────────────────────────────────────────────
+ *
+ * A class rather than a Tailwind utility, for the reason `theme.css` gives: a
+ * material is three coordinated declarations with a vendor-prefixed twin, and a
+ * utility bag lets a caller apply the blur without the shadow that makes it read as
+ * a floating surface. Only blur + shadow live here; each element sets its own
+ * background, because the button is accent-tinted and the card is sheet-white.
+ */
+.qwin-material-sheet {
+  -webkit-backdrop-filter: blur(var(--material-sheet-blur)) saturate(180%);
+  backdrop-filter: blur(var(--material-sheet-blur)) saturate(180%);
+  box-shadow: var(--material-sheet-shadow);
+}
+
+/* ─── Per-video trigger button ───────────────────────────────────────────────────── */
+
+/* Position comes from the caller as custom properties; appearance comes from here.
+ * No inline `style` beyond the two variables. */
+.qwin-overlay-btn {
+  position: fixed;
+  left: var(--qwin-x, 8px);
+  top: var(--qwin-y, 8px);
+  z-index: 1;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  height: var(--control-height-md);
+  padding: 0 12px;
+  /* A pill is §5.3's `full` step; `999px` is what `rounded-full` computes to. */
+  border: 0;
+  border-radius: 999px;
+  /* 88% accent rather than the sheet's 78% white: a white-translucent control over
+   * an arbitrary host page loses the affordance entirely, while a near-solid accent
+   * keeps the label legible everywhere and still lets the blur do its work. */
+  background-color: color-mix(in srgb, var(--color-accent) 88%, transparent);
+  color: var(--color-accent-fg);
+  /* `--text-row` */
+  font-size: 13px;
+  font-weight: 590;
+  letter-spacing: -0.005em;
+  line-height: 1.35;
+  cursor: pointer;
+  pointer-events: auto;
+  /* Resting state is the transform origin for both the hover lift and the press. */
+  transform: translateY(0);
+  transition:
+    transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 150ms ease-out;
+}
+
+/* Hover lift. Gated on `hover: hover` so a touch tap does not leave the button stuck
+ * in a lifted state between touches, and only after the host signals a real pointer. */
+@media (hover: hover) {
+  .qwin-overlay-btn:hover {
+    transform: translateY(-1px);
+  }
+}
+
+/* Press feedback (spec §4.5): `scale(0.97)`, 100ms ease-out — the same declaration
+ * `.pressable:active` carries in `theme.css`. CSS, not a spring: a press is not a
+ * gesture, and nothing gesture-driven is allowed to use a CSS transition. The
+ * shorter duration on the way in is what makes it read as a press rather than a
+ * lag, and the lift is dropped so the button does not press away from its target. */
+.qwin-overlay-btn:active {
+  transform: translateY(0) scale(0.97);
+  transition: transform 100ms ease-out;
+}
+
+.qwin-overlay-btn:focus-visible {
+  outline: 2px solid var(--color-accent-fg);
+  outline-offset: 2px;
+}
+
+.qwin-overlay-btn[hidden],
+.qwin-overlay-back[hidden],
+.qwin-overlay[hidden] {
+  display: none;
+}
+
+/* The glyph is a real SVG from `ui/Icon.tsx`, not a text character: §4.4's whole
+ * argument is that font-substituted glyphs do not hold their metrics still, and this
+ * button sits over whatever the host page's font stack happens to be. */
+.qwin-overlay-btn svg {
+  flex: none;
+}
+
+/* ─── Dialog shell ───────────────────────────────────────────────────────────────── */
+
+.qwin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgba(23, 27, 34, 0.42);
-  font:
-    13px/1.4 system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-  color: var(--qwin-text);
+  background: var(--color-scrim);
+  pointer-events: auto;
 }
 
-#qwin-video-overlay[hidden] {
-  display: none !important;
-}
-
-#qwin-video-overlay .qwin-overlay-card {
+.qwin-overlay-card {
+  display: grid;
+  gap: 12px;
   width: min(520px, calc(100vw - 32px));
   max-height: min(360px, calc(100vh - 32px));
   overflow: auto;
   padding: 12px;
-  border: 1px solid var(--qwin-line);
-  border-radius: 8px;
-  background: var(--qwin-surface);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+  /* `--radius-dialog` — §5.3's 20px step, because this is a dialog, not a card. */
+  border: 0;
+  border-radius: var(--radius-dialog);
+  background-color: var(--color-sheet);
+  color: var(--color-text);
 }
 
-#qwin-video-overlay .qwin-overlay-header {
+.qwin-overlay-header {
   display: flex;
-  align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  align-items: center;
 }
 
-#qwin-video-overlay .qwin-overlay-title {
+.qwin-overlay-title {
   flex: 1;
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0;
+  color: var(--color-text);
+  /* `--text-title` */
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#qwin-video-overlay .qwin-overlay-back,
-#qwin-video-overlay .qwin-overlay-cancel {
-  min-height: 32px;
+.qwin-overlay-back,
+.qwin-overlay-cancel {
+  min-height: var(--control-height-md);
   padding: 6px 10px;
-  border: 1px solid var(--qwin-line);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--qwin-text);
+  /* `--radius-input` */
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  background: var(--color-surface);
+  color: var(--color-text);
   font: inherit;
-  font-weight: 650;
+  font-weight: 600;
   cursor: pointer;
+  transition: background-color 150ms ease-out;
 }
 
-#qwin-video-overlay .qwin-overlay-back[hidden] {
-  display: none !important;
+.qwin-overlay-back:hover,
+.qwin-overlay-cancel:hover {
+  border-color: var(--color-border-strong);
 }
 
-#qwin-video-overlay .qwin-overlay-list {
+.qwin-overlay-back:active,
+.qwin-overlay-cancel:active {
+  background: var(--color-raised);
+}
+
+.qwin-overlay-back:focus-visible,
+.qwin-overlay-cancel:focus-visible,
+.video-item:focus-visible,
+.quality-option:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.qwin-overlay-cancel {
+  width: 100%;
+}
+
+.qwin-overlay-list {
   display: grid;
   gap: 8px;
 }
 
-#qwin-video-overlay .qwin-overlay-cancel {
-  width: 100%;
-  margin-top: 10px;
-}
-
-#qwin-video-overlay .qwin-overlay-empty {
-  color: var(--qwin-muted);
+.qwin-overlay-empty {
+  color: var(--color-text-muted);
+  /* `--text-body` */
   font-size: 12px;
+  line-height: 1.45;
 }
 
-.video-item,
-.video-picker-item {
-  padding: 10px;
-  border: 1px solid var(--qwin-line);
-  border-radius: 8px;
-  background: var(--qwin-surface);
-}
+/* ─── Video picker list ─────────────────────────────────────────────────────────── */
 
-button.video-picker-item {
+/* Content material: opaque on purpose (§4.1). Rows are the densest thing in the app
+ * and a blurred row behind other blurred rows is unreadable — which is also why the
+ * rows sit on the translucent card and the card never sits on another material. */
+.video-item {
   width: 100%;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  /* `--radius-row` */
+  border-radius: var(--radius-row);
+  background: var(--color-surface);
+  color: var(--color-text);
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: border-color 150ms ease-out;
 }
 
-button.video-picker-item:hover {
-  border-color: #b8c2cf;
+.video-item:hover {
+  border-color: var(--color-border-strong);
 }
 
-.video-picker-item .video-content {
+.video-content {
   min-width: 0;
 }
 
 .video-title {
   overflow-wrap: anywhere;
-  color: var(--qwin-text);
+  color: var(--color-text);
+  /* `--text-row` */
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 590;
+  letter-spacing: -0.005em;
+  line-height: 1.35;
 }
 
+/* Metadata is body-adjacent, not a micro-label: §4.3's uppercase role is for
+ * section headers, and uppercasing a "128 MB · 9:56" line loses the digits' shape. */
 .video-picker-item .meta {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 7px;
-  color: var(--qwin-muted);
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  /* `--text-caption`, plus the tracking bump §4.2 asks for on a translucent
+   * material: grey-on-glass loses more contrast than grey-on-white. */
   font-size: 11px;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
-  min-height: 20px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: #dff1ee;
-  color: #075c55;
-  font-weight: 750;
+  min-height: 18px;
+  padding: 0 6px;
+  /* `--radius-badge` */
+  border-radius: var(--radius-badge);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
 }
 
 .video-size {
-  color: var(--qwin-text);
-  font-weight: 750;
+  color: var(--color-text);
+  font-weight: 600;
+  /* `.nums` in `theme.css`: size / speed / ETA are numeric columns and must not
+   * jitter as the digits change. */
+  font-variant-numeric: tabular-nums;
 }
+
+/* ─── Quality chooser ───────────────────────────────────────────────────────────── */
 
 .quality-list {
   display: grid;
-  gap: 7px;
+  gap: 8px;
   overflow-x: auto;
 }
 
@@ -166,58 +432,158 @@ button.video-picker-item:hover {
 .quality-row {
   display: grid;
   grid-template-columns: 1fr 0.78fr 0.68fr 0.82fr 1.18fr;
-  gap: 7px;
+  gap: 8px;
   align-items: center;
 }
 
+/* `--text-section` plus the uppercase half of that role, which `theme.css` carries
+ * in `.section-label` because `text-transform` is not a Tailwind theme modifier. */
 .quality-header {
-  padding: 0 8px;
-  color: var(--qwin-muted);
-  font-size: 10px;
-  font-weight: 800;
+  padding: 0 10px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
   text-transform: uppercase;
 }
 
 .quality-option {
   width: 100%;
-  min-height: 36px;
-  padding: 7px 8px;
+  min-height: var(--control-height-md);
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  /* `--radius-row` — the options are rows, so they get the row step. */
+  border-radius: var(--radius-row);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
   text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease-out;
+}
+
+.quality-option:hover {
+  border-color: var(--color-border-strong);
 }
 
 .quality-cell {
-  overflow-wrap: anywhere;
   min-width: 0;
+  overflow-wrap: anywhere;
+  /* `--text-caption` */
   font-size: 11px;
-  line-height: 1.25;
+  line-height: 1.4;
+  /* Four of the five columns are numbers. */
+  font-variant-numeric: tabular-nums;
 }
 
 .quality-cell.primary-cell {
-  color: var(--qwin-text);
-  font-weight: 800;
+  color: var(--color-text);
+  font-weight: 600;
 }
 
 .quality-note {
-  color: var(--qwin-danger);
+  color: var(--color-critical);
   font-size: 11px;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
+/* Loading state, not a spinner (spec §6.5: skeletons, not spinners). The tint is the
+ * accent at 8% — a `caution`-tinted band here would read as a warning about the
+ * helper, which is a different failure. */
 .quality-loading {
-  min-height: 48px;
   display: grid;
-  place-items: center;
+  min-height: 48px;
   padding: 12px;
-  border: 1px solid var(--qwin-line);
-  border-radius: 6px;
-  background: #eef7f5;
-  color: var(--qwin-accent-strong);
+  place-items: center;
+  border: 1px solid var(--color-border);
+  /* `--radius-row` */
+  border-radius: var(--radius-row);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--color-text-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
+  line-height: 1.45;
 }
 
-.quality-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 10px;
+/* ─── Material fallbacks (spec §4.1, §4.6) ───────────────────────────────────────── */
+
+/* No backdrop-filter at all: swap to the opaque equivalent rather than shipping a
+ * translucent panel that renders as unreadable mud. */
+@supports not (backdrop-filter: blur(1px)) {
+  .qwin-material-sheet {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .qwin-overlay-btn {
+    background-color: var(--color-accent);
+  }
+
+  .qwin-overlay-card {
+    background-color: var(--color-raised);
+  }
+}
+
+/* A glass design that ignores this is unreadable for exactly the users it should
+ * help (§4.6), and the host page behind the overlay can be anything (§9). */
+@media (prefers-reduced-transparency: reduce) {
+  .qwin-material-sheet {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .qwin-overlay-btn {
+    background-color: var(--color-accent);
+  }
+
+  .qwin-overlay-card {
+    background-color: var(--color-raised);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .qwin-material-sheet {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .qwin-overlay-btn {
+    background-color: var(--color-accent);
+  }
+
+  /* The card goes solid, so the rows need an edge of their own or the two collapse
+   * into one field — the opposite failure from the translucency it replaced. */
+  .qwin-overlay-card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+  }
+
+  .video-item,
+  .quality-option {
+    border-color: var(--color-border-strong);
+  }
+
+  .quality-note {
+    color: var(--color-critical);
+    font-weight: 600;
+  }
+}
+
+/* ─── Reduced motion (spec §4.6) ─────────────────────────────────────────────────────
+ *
+ * Copied from `theme.css` verbatim. Reduced motion is NOT no feedback: only durations
+ * are clamped, so the press scale, the progress movement and every status change still
+ * register as opacity or colour. 150ms rather than 1ms, because a colour change that
+ * snaps is a flicker, not feedback.
+ *
+ * `*` here matches shadow-tree elements only — this selector cannot reach the host
+ * page, which is the whole point of the shadow root.
+ */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 1ms !important;
+    transition-duration: 150ms !important;
+  }
 }

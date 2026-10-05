@@ -1,40 +1,37 @@
-"use strict";
-
 /**
  * Filter List Parser — Parse Adblock/uBO filter syntax and extract video-relevant rules.
  *
  * Extracted from filter_list_loader.js for modularity.
+ *
+ * The domain tables this filters against are data ({@link KNOWN_AD_DOMAINS} and
+ * friends in `filter_list_config.ts`), so adding a platform is adding a hostname
+ * there, not editing a branch here.
  */
 
 import {
+  KNOWN_AD_DOMAINS,
+  KNOWN_STREAMING_DOMAINS,
+  KNOWN_VIDEO_CDN_DOMAINS,
   RULE_BLOCK,
   RULE_EXCEPTION,
   RULE_REGEX,
-  KNOWN_AD_DOMAINS,
-  KNOWN_VIDEO_CDN_DOMAINS,
-  KNOWN_STREAMING_DOMAINS,
+  type FilterRule,
 } from "./filter_list_config.js";
+
+export type { FilterRule } from "./filter_list_config.js";
 
 // ── parseFilterList ────────────────────────────────────────────────────────
 
 /**
  * Parse raw Adblock/uBO filter syntax into structured FilterRule objects.
  *
- * @param {string} text — Raw filter list content
- * @returns {Array<object>} Array of FilterRule objects
- *
- * Each FilterRule:
- *   { type: 'block'|'exception'|'regex',
- *     raw: string,
- *     domain: string|null,
- *     path: string|null,
- *     options: string|null,
- *     optionTags: Set<string>,
- *     scopeDomains: Set<string>|null,
- *     compiled: RegExp|null }
+ * Skips what cannot affect video detection: comments, section headers, cosmetic
+ * filters (`##`) and blank lines. Regex rules (`/…/`) are compiled here; everything
+ * else keeps `compiled: null` because only domain/path/option fields are read
+ * downstream.
  */
-function parseFilterList(text) {
-  const rules = [];
+function parseFilterList(text: string): FilterRule[] {
+  const rules: FilterRule[] = [];
   const lines = String(text || "").split(/\r?\n/);
 
   for (const line of lines) {
@@ -77,9 +74,9 @@ function parseFilterList(text) {
     let ruleText = isException ? trimmed.slice(2) : trimmed;
 
     // Extract $options suffix
-    let options = null;
-    let optionTags = new Set();
-    let scopeDomains = null;
+    let options: string | null = null;
+    let optionTags = new Set<string>();
+    let scopeDomains: Set<string> | null = null;
     const dollarIndex = ruleText.indexOf("$");
     if (dollarIndex >= 0) {
       options = ruleText.slice(dollarIndex);
@@ -91,8 +88,8 @@ function parseFilterList(text) {
     }
 
     // Detect domain pattern (starts with ||)
-    let domain = null;
-    let path = null;
+    let domain: string | null = null;
+    let path: string | null = null;
     if (ruleText.startsWith("||")) {
       const afterPrefix = ruleText.slice(2);
       // Remove trailing ^ (separator character)
@@ -132,15 +129,20 @@ function parseFilterList(text) {
   return rules;
 }
 
+/** The `$options` suffix split into its tags and its `$domain=` scope. */
+interface ParsedOptions {
+  tags: Set<string>;
+  scopeDomains: Set<string> | null;
+}
+
 /**
  * Parse the $options portion of an adblock filter rule.
  *
- * @param {string} optionsStr — e.g. "$script,domain=twitch.tv|youtube.com"
- * @returns {{ tags: Set<string>, scopeDomains: Set<string>|null }}
+ * @param optionsStr — e.g. "$script,domain=twitch.tv|youtube.com"
  */
-function parseOptions(optionsStr) {
-  const tags = new Set();
-  let scopeDomains = null;
+function parseOptions(optionsStr: string): ParsedOptions {
+  const tags = new Set<string>();
+  let scopeDomains: Set<string> | null = null;
 
   if (!optionsStr || !optionsStr.startsWith("$")) {
     return { tags, scopeDomains };
@@ -187,11 +189,12 @@ function parseOptions(optionsStr) {
  * - Are exception rules (@@) on known video CDN domains
  * - Are blocking rules for known ad domains
  * - Are domain-scoped ($domain=) to known streaming platforms
+ * - Are regex rules (they're specific enough to be relevant by construction)
  *
- * @param {Array<object>} rules — Parsed FilterRule objects
- * @returns {Array<object>} — Filtered subset of rules
+ * The whole point is to shrink a ~1 MB list down to a few hundred domains, so the
+ * order matters: `$media` short-circuits before the three table lookups.
  */
-function extractVideoRelevantRules(rules) {
+function extractVideoRelevantRules(rules: FilterRule[]): FilterRule[] {
   if (!Array.isArray(rules)) {
     return [];
   }
@@ -246,10 +249,10 @@ function extractVideoRelevantRules(rules) {
   });
 }
 
-/** Check if a domain matches a known ad domain (exact or suffix). */
-function isKnownAdDomain(domain) {
-  const lower = String(domain || "").toLowerCase();
-  for (const known of KNOWN_AD_DOMAINS) {
+/** Match `domain` against one of `domains`, exact or as a subdomain. */
+function matchesDomainTable(domains: ReadonlySet<string>, domain: string): boolean {
+  const lower = domain.toLowerCase();
+  for (const known of domains) {
     if (lower === known || lower.endsWith("." + known)) {
       return true;
     }
@@ -257,34 +260,26 @@ function isKnownAdDomain(domain) {
   return false;
 }
 
-/** Check if a domain matches a known video CDN domain. */
-function isKnownVideoDomain(domain) {
-  const lower = String(domain || "").toLowerCase();
-  for (const known of KNOWN_VIDEO_CDN_DOMAINS) {
-    if (lower === known || lower.endsWith("." + known)) {
-      return true;
-    }
-  }
-  // Also check CDN_HINT_RE-like patterns
-  return /(?:akamaihd|akamaized|cloudfront|fastly|edgesuite|edgekey)/i.test(lower);
+/** Check if a domain matches a known ad domain (exact or suffix). */
+function isKnownAdDomain(domain: string): boolean {
+  return matchesDomainTable(KNOWN_AD_DOMAINS, String(domain || ""));
+}
+
+/**
+ * Check if a domain matches a known video CDN domain.
+ *
+ * No "CDN hint" regex fallback here: `matchesDomainTable` already matches all six table
+ * entries exactly or as a `.suffix`, and each of their stems (`akamaihd`, `fastly` and
+ * the other four) is a substring of its own entry, so such a regex could never be true
+ * where this is false. Add a CDN by adding a hostname to `KNOWN_VIDEO_CDN_DOMAINS`.
+ */
+function isKnownVideoDomain(domain: string): boolean {
+  return matchesDomainTable(KNOWN_VIDEO_CDN_DOMAINS, String(domain || ""));
 }
 
 /** Check if a domain matches a known streaming platform. */
-function isKnownStreamingDomain(domain) {
-  const lower = String(domain || "").toLowerCase();
-  for (const known of KNOWN_STREAMING_DOMAINS) {
-    if (lower === known || lower.endsWith("." + known)) {
-      return true;
-    }
-  }
-  return false;
+function isKnownStreamingDomain(domain: string): boolean {
+  return matchesDomainTable(KNOWN_STREAMING_DOMAINS, String(domain || ""));
 }
 
-export {
-  parseFilterList,
-  parseOptions,
-  extractVideoRelevantRules,
-  isKnownAdDomain,
-  isKnownVideoDomain,
-  isKnownStreamingDomain,
-};
+export { parseFilterList, parseOptions, extractVideoRelevantRules };
