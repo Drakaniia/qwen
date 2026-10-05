@@ -1,0 +1,383 @@
+@import "tailwindcss";
+
+/*
+ * `../` is the whole of `src/`, registered explicitly.
+ *
+ * Tailwind v4 derives its automatic content-detection base from the Vite `root`, which
+ * `vite.config.ts` sets to `src/popup`. That silently dropped `src/ui/**` — and every
+ * class used *only* by the design system (`sr-only`, `size-2`, `size-16`, `rounded-full`,
+ * `bg-current`, `gap-1.5`) was never emitted. The failure is invisible in review because
+ * such a class always looks correct in a component that also uses a `src/popup` one, and
+ * the symptom only surfaces as a mystery: `StatusDot`'s `sr-only` label rendered as
+ * visible red text in the popup header.
+ *
+ * Relative to this file, so `../` is `src/` — ui, popup, shared, background, content.
+ * `tests/js/ui/tailwind_sources.test.ts` asserts the built CSS contains a ui-only class,
+ * because nothing else about this regresses loudly.
+ */
+@source "../";
+
+/*
+ * Design system - the single source of truth for palette, type, radius, materials and
+ * accessibility media queries (spec §4.1-§4.6, §5.3, §10). Every other stylesheet in
+ * `src/` is meant to be either Tailwind utilities over the tokens declared here or a
+ * component-owned class; nothing else defines a colour.
+ *
+ * ─── Theme switching (spec D6) ─────────────────────────────────────────────────────
+ *
+ * `data-theme` on <html> is `"light"`, `"dark"`, or absent for System (the default).
+ * Three states, three selectors, no script involvement:
+ *
+ *   :root                                 light - the @theme defaults below
+ *   :root[data-theme="dark"]              dark  - explicit choice, specificity 0,2,0
+ *   @media … :root:not([data-theme=…])    dark  - System-dark, same specificity
+ *
+ * The two dark blocks carry identical values and MUST be edited together.
+ *
+ * Why plain `:root` rules and not Tailwind's `dark:` variant: Tailwind v4 emits theme
+ * tokens into `@layer theme` as `:root, :host { --color-*: … }` and then emits every
+ * colour utility as `background-color: var(--color-accent)` - it references the
+ * variable, it does not inline the value. Unlayered CSS outranks any `@layer`, so a
+ * bare `:root[data-theme="dark"] { --color-accent: … }` is what actually recolours the
+ * utilities. (Verified against the pinned tailwindcss 4.3.3: see the report.)
+ *
+ * Note one consequence: an alpha utility such as `bg-accent/20` compiles to
+ * `color-mix(in oklab, var(--color-accent) 20%, transparent)` inside a
+ * `@supports (color: color-mix(in lab, …))` block, which Chromium 148 satisfies - so
+ * alpha variants recolour in dark mode too.
+ */
+
+/* Native form controls and scrollbars track the resolved scheme (D6: an explicit
+   three-way control replaces D4's media-only scheme). */
+:root {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+  }
+}
+
+@theme {
+  /* ─── Typeface (spec §4.3) ───────────────────────────────────────────────────────
+   *
+   * Explicit Apple's stack. `font-sans` is banned: on Windows it resolves to
+   * Segoe UI via a generic, but the fallback chain then differs from macOS, so the
+   * same markup lands on a different face per OS. `--default-font-family` is what
+   * Tailwind's preflight reads for `html, :host`, so setting it here means even a
+   * bare `<span>` inherits Apple's stack - the single-source requirement in §4.3.
+   */
+  --font-app: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --default-font-family: var(--font-app);
+
+  /* ─── Type scale (spec §4.3) ──────────────────────────────────────────────────────
+   *
+   * The `--text-<role>--{line-height,letter-spacing,font-weight}` modifiers are
+   * Tailwind v4's compound form: one `text-title` utility carries all four axes, so a
+   * role cannot be half-applied. Tracking is deliberately per-role - negative at
+   * display sizes, positive for the uppercase micro-labels, zero for body (§4.3).
+   *
+   * `text-section` is NOT uppercased by the token: `text-transform` is not a
+   * Tailwind theme modifier, so `.section-label` supplies it.
+   */
+  --text-title: 13px;
+  --text-title--font-weight: 600;
+  --text-title--letter-spacing: -0.01em;
+  --text-title--line-height: 1.2;
+
+  --text-section: 11px;
+  --text-section--font-weight: 600;
+  --text-section--letter-spacing: 0.06em;
+  --text-section--line-height: 1.3;
+
+  --text-row: 13px;
+  --text-row--font-weight: 590;
+  --text-row--letter-spacing: -0.005em;
+  --text-row--line-height: 1.35;
+
+  --text-body: 12px;
+  --text-body--font-weight: 400;
+  --text-body--letter-spacing: 0em;
+  --text-body--line-height: 1.45;
+
+  --text-caption: 11px;
+  --text-caption--font-weight: 400;
+  --text-caption--letter-spacing: 0em;
+  --text-caption--line-height: 1.4;
+
+  /* Numeric columns: size / speed / ETA (spec §4.3). The tabular figures live in
+     `.nums` rather than here, because `font-variant-numeric` is not a theme
+     modifier either - `text-numeric` would silently drop it. */
+  --text-numeric: 12px;
+  --text-numeric--font-weight: 400;
+  --text-numeric--letter-spacing: 0em;
+  --text-numeric--line-height: 1.4;
+
+  /* ─── Radius scale (spec §5.3) ───────────────────────────────────────────────────
+   *
+   * 6 badges / chips, 10 rows + inputs, 14 cards + sheets, 20 dialogs.
+   */
+  --radius-badge: 6px;
+  --radius-row: 10px;
+  --radius-input: 10px;
+  --radius-card: 14px;
+  --radius-sheet: 14px;
+  --radius-dialog: 20px;
+
+  /* ─── Palette (spec §4.2) ───────────────────────────────────────────────────────
+   *
+   * Apple's system colours. These values replace three palettes at once: the
+   * `--bg/--surface/--text/--muted/--line/--danger/--warning/--ok` block in
+   * `popup-base.css`, the `data-status` hexes in `popup/styles/layout.css`, and the
+   * slate pair this file used to own. `--danger/--warning/--ok` were *two* values for
+   * one meaning each (a saturated fill for the dot, a dark readable text for the
+   * label); `--critical/--caution/--success` are one value per meaning, and the
+   * readable-on-accent text case is handled by `--color-text` over a solid fill.
+   *
+   * The eight names the un-migrated tree still reads (`bg-surface`, `bg-raised`,
+   * `text-text`, `text-text-muted`, `border-border`, `border-border-strong`,
+   * `bg-accent`, `text-accent-fg`) survive unchanged so the tree keeps building.
+   */
+  --color-accent: #007aff;
+  --color-accent-fg: #ffffff;
+  --color-critical: #ff3b30;
+  --color-caution: #ff9500;
+  --color-success: #34c759;
+  --color-purple: #af52de;
+  --color-separator: rgba(60, 60, 67, 0.18);
+
+  /* Apple's system greys, not the `#f8fafc` / `#0b0f19` slate pair §4.2 calls out as
+     reading as generic-web. */
+  --color-surface: #ffffff;
+  --color-raised: #f2f2f7;
+  --color-chrome: rgba(255, 255, 255, 0.62);
+  --color-sheet: rgba(255, 255, 255, 0.78);
+  --color-border: #d1d1d6;
+  --color-border-strong: #8e8e93;
+  --color-text: #000000;
+  --color-text-muted: rgba(0, 0, 0, 0.6);
+  --color-text-tertiary: rgba(0, 0, 0, 0.3);
+
+  /* Scrim behind a `Sheet`. Denser in light than in dark: black-on-white reads as a
+     harder edge, so the same alpha looks like a lighter touch in dark mode. */
+  --color-scrim: rgba(0, 0, 0, 0.32);
+
+  /* The one control height that is not on the spacing scale. `--spacing`'s 4/8/12/
+     16/20/24 ladder has no 34, and a hit target needs it - 32 is under the 44px iOS
+     minimum once padding is counted, 36 starts colliding with the row grid. */
+  --control-height-md: 34px;
+}
+
+/*
+ * ─── Spacing (spec §5.3) ─────────────────────────────────────────────────────────
+ *
+ * The scale is 4 / 8 / 12 / 16 / 20 / 24px and nothing else. Tailwind's `--spacing`
+ * base of 0.25rem already produces exactly `p-1 … p-6`, so no token is added here.
+ *
+ * `[7px]`, `[5px]`, `[3px]`, `2.5`, `1.5` and `0.5` in markup are DEFECTS, not
+ * deliberate choices - "arbitrary because nobody chose" is the disease §5.3 exists to
+ * stop. If a layout genuinely needs 28px, the scale is what should change.
+ */
+
+/*
+ * ─── Materials (spec §4.1) ───────────────────────────────────────────────────────
+ *
+ * Plain classes, not Tailwind utilities, because each material is three coordinated
+ * declarations (backdrop-filter + inset highlight + shadow) with a vendor-prefixed
+ * twin; a utility bag would let a component apply the blur without the highlight that
+ * makes it read as glass.
+ *
+ * Never stack a translucent material on a translucent one (§4.1): light-on-light
+ * collapses legibility. Content is always opaque.
+ *
+ * Non-token variables, so the `@theme` namespace stays reserved for things Tailwind
+ * should turn into utilities.
+ */
+:root {
+  --material-chrome-blur: 20px;
+  --material-chrome-highlight: rgba(255, 255, 255, 0.5);
+  --material-sheet-shadow: 0 24px 48px rgba(0, 0, 0, 0.18);
+}
+
+.material-chrome {
+  background-color: var(--color-chrome);
+  -webkit-backdrop-filter: blur(var(--material-chrome-blur)) saturate(180%);
+  backdrop-filter: blur(var(--material-chrome-blur)) saturate(180%);
+  /* The bright line where light catches the material. Load-bearing, not decoration:
+     it is the difference between "glass" and "gray paint" (§4.1). */
+  box-shadow: inset 0 0.5px 0 var(--material-chrome-highlight);
+}
+
+.material-sheet {
+  background-color: var(--color-sheet);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  backdrop-filter: blur(32px) saturate(180%);
+  box-shadow: var(--material-sheet-shadow);
+}
+
+/* Opaque on purpose: rows are the densest thing in the app and a blurred row behind
+   other blurred rows is unreadable (§4.1). */
+.material-content {
+  background-color: var(--color-surface);
+}
+
+/* ─── Material fallbacks (spec §4.1, §4.6) ───────────────────────────────────────── */
+
+/* No backdrop-filter at all: swap to the opaque equivalent rather than shipping a
+   translucent panel that renders as unreadable mud. */
+@supports not (backdrop-filter: blur(1px)) {
+  .material-chrome {
+    background-color: var(--color-surface);
+    box-shadow: inset 0 0.5px 0 var(--color-border);
+  }
+
+  .material-sheet {
+    background-color: var(--color-raised);
+    box-shadow: var(--material-sheet-shadow);
+  }
+}
+
+/* A glass design that ignores this is unreadable for exactly the users it should
+   help (§4.6), so alpha goes to 1 and blur to none. */
+@media (prefers-reduced-transparency: reduce) {
+  .material-chrome,
+  .material-sheet {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .material-chrome {
+    background-color: var(--color-surface);
+  }
+
+  .material-sheet {
+    background-color: var(--color-raised);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .material-chrome,
+  .material-sheet {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+  }
+}
+
+/* ─── Motion + accessibility utilities (spec §4.5, §4.6, §10) ───────────────────── */
+
+/*
+ * Reduced motion is NOT no feedback. Only durations are clamped; opacity and colour
+ * transitions survive untouched, so press states, progress movement and status
+ * changes all still register (§4.6). 150ms is deliberately not 1ms: a colour change
+ * that snaps is a flicker, not feedback.
+ */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 1ms !important;
+    transition-duration: 150ms !important;
+  }
+}
+
+/* Press feedback is CSS, not a component - `motion` is reserved for the springs in
+   §4.5 that genuinely need a runtime. Nothing gesture-driven may use a CSS
+   transition, and a press is not a gesture. */
+.pressable:active {
+  transform: scale(0.97);
+  transition: transform 100ms ease-out;
+}
+
+/* Tab order must always show where focus is (§10). `outline` rather than `box-shadow`
+   because an outline follows border-radius and does not overwrite the element's own
+   shadow. Never removed without a stronger replacement. */
+.ring-focus:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Uppercase half of the `--text-section` role - `text-transform` is not a Tailwind
+   theme modifier, so it has to be a class. */
+.section-label {
+  text-transform: uppercase;
+}
+
+/* Tabular figures, so a progress readout does not jitter as digits change (§4.3). */
+.nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Tertiary text on a translucent material (§4.2): grey-on-glass loses more contrast
+ * than grey-on-white, so the role earns a tracking bump to stay legible. Apply
+ * alongside `text-text-tertiary`.
+ */
+.vibrancy-tertiary {
+  letter-spacing: 0.01em;
+}
+
+/*
+ * ─── Dark palette (spec §4.2) ──────────────────────────────────────────────────────
+ *
+ * Apple darkens its saturated colours (a #FF3B30 red on #000 is neon) and lifts its
+ * greys. Keep the token set identical to the light block above - a token defined in
+ * only one of the two is a bug.
+ */
+:root[data-theme="dark"] {
+  --color-accent: #0a84ff;
+  --color-accent-fg: #ffffff;
+  --color-critical: #ff453a;
+  --color-caution: #ff9f0a;
+  --color-success: #30d158;
+  --color-purple: #bf5af2;
+  --color-separator: rgba(235, 235, 245, 0.16);
+
+  --color-surface: #1c1c1e;
+  --color-raised: #2c2c2e;
+  --color-chrome: rgba(22, 24, 30, 0.66);
+  --color-sheet: rgba(30, 32, 38, 0.8);
+  --color-border: #38383a;
+  --color-border-strong: #98989f;
+  --color-text: #ffffff;
+  --color-text-muted: rgba(255, 255, 255, 0.62);
+  --color-text-tertiary: rgba(255, 255, 255, 0.32);
+
+  --color-scrim: rgba(0, 0, 0, 0.48);
+
+  --material-chrome-blur: 24px;
+  /* The top highlight is white-on-white; in dark it has to become a dark edge or the
+     bar reads as beveled plastic. */
+  --material-chrome-highlight: rgba(255, 255, 255, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-accent: #0a84ff;
+    --color-accent-fg: #ffffff;
+    --color-critical: #ff453a;
+    --color-caution: #ff9f0a;
+    --color-success: #30d158;
+    --color-purple: #bf5af2;
+    --color-separator: rgba(235, 235, 245, 0.16);
+
+    --color-surface: #1c1c1e;
+    --color-raised: #2c2c2e;
+    --color-chrome: rgba(22, 24, 30, 0.66);
+    --color-sheet: rgba(30, 32, 38, 0.8);
+    --color-border: #38383a;
+    --color-border-strong: #98989f;
+    --color-text: #ffffff;
+    --color-text-muted: rgba(255, 255, 255, 0.62);
+    --color-text-tertiary: rgba(255, 255, 255, 0.32);
+
+    --color-scrim: rgba(0, 0, 0, 0.48);
+
+    --material-chrome-blur: 24px;
+    --material-chrome-highlight: rgba(255, 255, 255, 0.12);
+  }
+}
