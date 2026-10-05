@@ -116,3 +116,23 @@ def resolve_spotify_formats(url, yt_dlp_command=None, ffmpeg_location=None):
         "spotifyMetadata": metadata,
         "formats": choices,
     }
+
+
+def resolve_spotify_playlist(url, yt_dlp_command=None, ffmpeg_location=None):
+    """Playlist/album URL → {playlistTitle, items, totalItems} for the popup's expand-to-rows flow."""
+    from spotify_metadata import PLAYLIST_ITEM_LIMIT, fetch_spotify_collection_tracks
+
+    content_type, collection_id = parse_spotify_url(url)
+    if content_type == "track":
+        raise HostError("__QWIN_SINGLE_TRACK__ Use the formats flow for individual tracks.")
+    if content_type not in ("playlist", "album"):
+        raise HostError(
+            f"Qwin can only resolve Spotify tracks, playlists and albums. {content_type}s are not yet supported."
+        )
+    title, tracks = fetch_spotify_collection_tracks(collection_id, content_type)
+    return {
+        "playlistTitle": title,
+        "items": tracks,
+        "totalItems": len(tracks),
+        "truncated": len(tracks) >= PLAYLIST_ITEM_LIMIT,
+    }

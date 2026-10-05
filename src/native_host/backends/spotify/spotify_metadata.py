@@ -93,3 +93,53 @@ def fetch_spotify_track_metadata(track_id):
         "cover_url": cover_url,
         "release_date": entity.get("releaseDate", {}).get("isoString", ""),
     }
+
+
+PLAYLIST_ITEM_LIMIT = 100
+
+
+def _normalize_collection_track(entry, index):
+    artists = [a.get("name", "") for a in entry.get("artists", []) if isinstance(a, dict)]
+    artist = ", ".join(a for a in artists if a) or "Unknown Artist"
+    title = entry.get("name") or entry.get("title") or f"Track {index + 1}"
+    track_id = entry.get("id") or ""
+    url = f"https://open.spotify.com/track/{track_id}" if track_id else ""
+    return {"artist": artist, "title": title, "spotifyUrl": url, "url": url}
+
+
+def _extract_track_list(entity):
+    """Spotify's embed JSON shape drifts; try known nests, else scan one level."""
+    tracks = entity.get("tracks") or {}
+    if isinstance(tracks, dict) and isinstance(tracks.get("items"), list):
+        return tracks["items"], entity.get("name") or entity.get("title") or "Spotify playlist"
+    if isinstance(tracks, list):
+        return tracks, entity.get("name") or entity.get("title") or "Spotify playlist"
+    for value in entity.values():
+        if isinstance(value, dict) and isinstance(value.get("items"), list):
+            return value["items"], entity.get("name") or entity.get("title") or "Spotify playlist"
+    raise HostError("Could not find a track list on this Spotify page. Spotify may have changed their page layout.")
+
+
+def fetch_spotify_collection_tracks(collection_id, kind):
+    """Fetch (title, tracks) for a playlist/album embed page. Tracks capped at PLAYLIST_ITEM_LIMIT."""
+    embed_url = f"https://open.spotify.com/embed/{kind}/{collection_id}"
+    req = urllib.request.Request(embed_url, headers={"User-Agent": _YOUR_USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8")
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
+        raise HostError(f"Could not reach Spotify embed page: {exc}")
+    match = re.search(r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+    if not match:
+        raise HostError("Could not extract playlist info from this Spotify page. Spotify may have changed its layout.")
+    try:
+        data = json.loads(match.group(1))
+        entity = data["props"]["pageProps"]["state"]["data"]["entity"]
+    except (KeyError, json.JSONDecodeError) as exc:
+        raise HostError(f"Failed to parse Spotify metadata: {exc}")
+    raw_items, title = _extract_track_list(entity)
+    usable = raw_items[:PLAYLIST_ITEM_LIMIT]
+    tracks = [_normalize_collection_track(e, i) for i, e in enumerate(usable) if isinstance(e, dict)]
+    if not tracks:
+        raise HostError("This Spotify playlist has no playable tracks.")
+    return title, tracks
