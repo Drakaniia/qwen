@@ -5,166 +5,189 @@
 Run the installer again, then restart the browser:
 
 ```bash
-cd /d C:\Users\Qwenzy\Desktop\qwin
-scripts/install.sh
+npm run setup
 ```
 
-If Chrome is used, confirm the loaded extension ID is `dbjddokdmkodnkiaccmbjagfalmmmkmi`.
+Confirm the loaded extension ID is `dbjddokdmkodnkiaccmbjagfalmmmkmi` in
+`browser://extensions` (Yandex) or `chrome://extensions` (Chrome). If it differs, the native
+host's `allowed_origins` will not match and every request is rejected.
 
-If Yandex Browser is used, confirm the loaded extension ID is `dbjddokdmkodnkiaccmbjagfalmmmkmi`.
+`Access to native host is forbidden` in the service worker log is the same problem: the
+extension is running under a different ID.
 
-If Firefox is used, confirm the manifest add-on ID is `qwin-video-downloader@example.com`.
+> **Firefox is not supported** and is not a possible cause — there is no Firefox manifest,
+> build target or registry registration.
 
-## Missing yt-dlp Or ffmpeg
+## Missing yt-dlp, ffmpeg or aria2c
 
-Run `scripts/install.sh` again and make sure Python and `pip` are available.
+Run `npm run setup` again and make sure Python and `pip` are on `PATH`. The installer tries
+to provide:
 
-The installer tries to install:
+- `yt-dlp` (with the `curl-cffi` extra), `imageio-ffmpeg`, `certifi`, `streamlink` via `pip`
+- system `ffmpeg` via `winget`, when available
+- `tools\aria2\aria2c.exe` from the aria2 GitHub release
+- `tools\n_m3u8dl-re\N_m3u8DL-RE.exe` from its GitHub release
 
-- `yt-dlp` with `curl-cffi` impersonation support
-- `imageio-ffmpeg`
-- `streamlink`
-- system `ffmpeg` through `winget`, when available
-- portable `N_m3u8DL-RE.exe`
+If `winget` is unavailable the helper falls back to the `imageio-ffmpeg` binary that `pip`
+installed.
 
-If `winget` is unavailable, the helper should still use the `imageio-ffmpeg` binary installed by `pip`.
+The **Options** page → Native helper section lists all five tools individually, so you can
+tell exactly which one is missing rather than guessing from the popup banner.
 
 ## Missing Stream Fallbacks
 
-If the popup says `yt-dlp only`, run `scripts/install.sh` again. Check:
+If the popup says `yt-dlp only`, the N_m3u8DL-RE and Streamlink fallbacks are unavailable.
+Downloads still work — these only add best-effort fallbacks for accessible HLS, DASH and
+Smooth Streaming manifests that `yt-dlp` cannot use.
 
-- `tools\n_m3u8dl-re\N_m3u8DL-RE.exe` exists, or set `QWIN_N_M3U8DL_RE` to a valid executable path.
-- `streamlink` is installed for the Python used by the native host.
+Check:
 
-Downloads can still work without these tools. They only add best-effort fallbacks for accessible HLS, DASH, and Smooth Streaming manifests.
+- `tools\n_m3u8dl-re\N_m3u8DL-RE.exe` exists, or that `QWIN_N_M3U8DL_RE` points at a valid
+  executable.
+- `streamlink` is installed for the _same_ Python the native host runs under.
 
 ## Fast Mode Not Available
 
-If the popup does not show `fast mode`, `aria2c` was not found. All downloads require aria2c for fast segmented mode.
+Fast mode means `aria2c` was found. Without it every download is slower and direct-media
+downloads lose their segmented transfer.
 
-To fix it:
-
-1. Run `scripts/install.sh` again.
+1. Run `npm run setup` again.
 2. Check that `tools\aria2\aria2c.exe` exists.
 3. Or set `QWIN_ARIA2C` to a valid `aria2c.exe` path before starting the browser.
 
-## Access To Native Host Is Forbidden
-
-Reload the extension and re-run `scripts/install.sh`.
-
-The native host only allows:
-
-- Chrome extension ID `dbjddokdmkodnkiaccmbjagfalmmmkmi`
-- Yandex Browser extension ID `dbjddokdmkodnkiaccmbjagfalmmmkmi`
-- Firefox extension ID `qwin-video-downloader@example.com`
-
-If the loaded browser extension has a different ID, native messaging will be blocked.
+The resolver order is: `QWIN_ARIA2C` → `aria2c` on `PATH` → `tools\aria2\aria2c.exe`.
 
 ## Browser-Only Or Blob URLs
 
-If the popup only shows `blob:`, `data:`, or local URLs, start playback and wait a few seconds so the extension can see the underlying media requests or a supported extractor page. On YouTube watch/embed/shorts pages, Qwin should list the YouTube page itself instead of the temporary `googlevideo.com` playback URL.
+If the popup only shows `blob:`, `data:`, or local file URLs, start playback and wait a few
+seconds so the extension can see the underlying media requests. On YouTube watch / embed /
+shorts pages, Qwin should list the YouTube page itself rather than the temporary
+`googlevideo.com` playback URL.
 
-Some pages never expose a reusable media URL. In that case the helper cannot download it.
+Some pages never expose a reusable media URL. In that case the helper cannot download it, and
+pasting the URL into **Download from link** is worth trying.
 
 ## Manual Link Fails
 
-The settings-panel link box sends the pasted URL to `yt-dlp` first, then may use stream fallbacks for supported manifest URLs. If all tools fail, the most common causes are:
+The link box sends the pasted URL to `yt-dlp` first, then may use the stream fallbacks for
+supported manifest URLs. If everything fails, the usual causes are:
 
 - The installed `yt-dlp` version does not support that site or URL shape.
-- The video needs login, age, region, app-only, or bot-check access that the helper cannot reproduce.
+- The video needs login, age, region, app-only, or bot-check access the helper cannot
+  reproduce.
 - The video is DRM-protected or otherwise encrypted.
-- The site blocked the request from the helper even though browser playback still works.
+- The site blocked the request from the helper even though playback in the browser works.
 
-For YouTube, Qwin enables yt-dlp's EJS challenge helper with `--remote-components ejs:github`. The first YouTube extraction may download yt-dlp's solver script from GitHub. If GitHub or the JavaScript runtime is blocked on the machine, YouTube may still return only storyboard/image formats.
+For YouTube, Qwin enables yt-dlp's EJS challenge helper with `--remote-components ejs:github`.
+The first YouTube extraction may download yt-dlp's solver script from GitHub. If GitHub or the
+JavaScript runtime is blocked on the machine, YouTube may return only storyboard/image
+formats.
+
+## Zero Formats Returned
+
+If the popup shows no quality options for a video it did detect, the native host answered but
+returned no usable formats. `src/logs/downloads.jsonl` records the reason
+(`ATTEMPT_END` / `DOWNLOAD_ERROR` entries), and the common ones are:
+
+- `yt-dlp returned response but no formats found` — the site was reached but nothing
+  extractable came back. Usually the URL was not the media URL (a segment, a token-only URL,
+  or a page that requires a session).
+- `Format enumeration complete: 0 native + 0 detected format(s)` — both the native path and
+  the detected-candidate path came up empty.
+
+Check the URL in the log line directly: paste it into **Download from link** and see whether
+`yt-dlp` alone can handle it. If it cannot, the extension's classification is not the problem.
 
 ## Cloudflare / WAF Anti-Bot Challenges
 
-### curl_cffi Impersonation Architecture
+### What Qwin actually does
 
-Qwin uses `curl_cffi` at two levels to bypass CDN/WAF bot-detection:
+Every `yt-dlp` command Qwin builds passes `--extractor-args generic:impersonate`
+(`GENERIC_EXTRACTOR_ARGS` in `src/native_host/backends/yt_dlp/yt_dlp_command.py`). For generic
+site extraction this makes yt-dlp use its bundled `curl_cffi` to match a real browser's TLS and
+HTTP/2 fingerprint. The native host only builds the command — `curl_cffi` comes from the
+`curl-cffi` extra of `yt-dlp[default,curl-cffi]` and the host does not probe it.
 
-1. **Inside yt-dlp** — every yt-dlp command passes `--extractor-args generic:impersonate`, enabling curl-cffi's TLS impersonation for generic/unknown site extraction.
-2. **Standalone adapter** — if yt-dlp fails, the `curl_cffi_adapter.py` module tries a direct download with full Chrome TLS fingerprint matching.
+There is **no** separate curl_cffi downloader. There is no `curl_cffi_adapter.py`. If a
+document or a log line claims otherwise, it is stale.
 
 ### Diagnosing curl_cffi Issues
 
-**1. Check if curl_cffi is installed:**
+**1. Check it is installed:**
+
 ```bat
 python -c "from curl_cffi import requests; print('curl_cffi OK')"
 ```
-If this fails with `ModuleNotFoundError`, re-run the installer:
+
+If that raises `ModuleNotFoundError`, re-run the installer — it installs
+`yt-dlp[default,curl-cffi]`, which pulls `curl_cffi` in as a dependency:
+
+```bash
+npm run setup
+```
+
+**2. Check the fingerprint is really being sent:**
+
 ```bat
-scripts/install.sh
+python -c "from curl_cffi import requests; d = requests.get('https://tls.browserleaks.com/json', impersonate='chrome').json(); print('JA3:', d['ja3_hash']); print('UA:', d['user_agent'])"
 ```
-The installer installs `yt-dlp[default,curl-cffi]` which includes curl_cffi as a dependency.
 
-**2. Verify TLS impersonation is actually working:**
+Expect a JA3 hash and a Chrome User-Agent. A network error here means DNS or connectivity,
+not curl_cffi.
+
+**3. Compare impersonated against the default fingerprint:**
+
 ```bat
-python -c "
-from curl_cffi import requests
-r = requests.get('https://tls.browserleaks.com/json', impersonate='chrome')
-data = r.json()
-print('JA3:', data['ja3_hash'])
-print('UA:', data['user_agent'])
-"
-```
-Expected: a JA3 fingerprint and a Chrome User-Agent string. If this fails with a network error, the issue is likely DNS or network connectivity, not curl_cffi.
-
-**3. Compare impersonated vs non-impersonated fingerprints:**
-```bat
-python -c "
-from curl_cffi import requests
-# With impersonation (browser-like)
-r1 = requests.get('https://tls.browserleaks.com/json', impersonate='chrome')
-# Without impersonation (default curl fingerprint)
-r2 = requests.get('https://tls.browserleaks.com/json')
-print('With Chrome:', r1.json()['ja3_hash'])
-print('Default:    ', r2.json()['ja3_hash'])
-print('Different?', r1.json()['ja3_hash'] != r2.json()['ja3_hash'])
-"
-```
-If both hashes are the same, curl_cffi's impersonation is NOT working.
-
-**4. Check the fallback chain in progress output:**
-
-When a download fails with yt-dlp and falls through to curl_cffi, you'll see this label in the progress:
-```
-Trying: curl-cffi (direct download)
+python -c "from curl_cffi import requests; a = requests.get('https://tls.browserleaks.com/json', impersonate='chrome').json()['ja3_hash']; b = requests.get('https://tls.browserleaks.com/json').json()['ja3_hash']; print(a, b, a != b)"
 ```
 
-### What curl_cffi Can and Cannot Do
+If both hashes match, impersonation is not taking effect.
 
-| Can Bypass | Cannot Bypass |
-|---|---|
-| TLS fingerprint checks (JA3/JA4) | JavaScript challenges (turnstile, captcha) |
-| HTTP/2 fingerprint checks | Behavioral detection |
-| SSL/TLS-level bot detection | Login / session-based access |
-| Some Cloudflare generic challenges | DRM (PlayReady) |
-| Akamai fingerprint blocking | Region blocking (needs proxy/VPN) |
-| Simple CDN/WAF referrer checks | Short-lived token security |
+### What impersonation can and cannot do
+
+| Can help with                      | Cannot help with                            |
+| ---------------------------------- | ------------------------------------------- |
+| TLS fingerprint checks (JA3/JA4)   | JavaScript challenges (Turnstile, hCaptcha) |
+| HTTP/2 fingerprint checks          | Behavioural detection                       |
+| SSL/TLS-level bot detection        | Login- or session-based access              |
+| Some Cloudflare generic challenges | DRM (PlayReady / Widevine)                  |
+| Akamai fingerprint blocking        | Region blocking (needs a different network) |
+
+When a site layers on top of TLS fingerprinting — a JavaScript challenge, behavioural
+detection, or a short-lived signed URL that must be generated by a prior page load — no
+static HTTP client gets through. The download then fails, or the video is simply not offered.
+
+### Backend Fallback Chain
+
+When the primary `yt-dlp` attempt fails, the helper tries labelled alternatives. These labels
+appear in the download log (`src/logs/downloads.jsonl`) and are useful for diagnosing which
+stage gave up:
+
+```
+yt-dlp (no SSL check)
+yt-dlp (geo bypass)
+yt-dlp (no impersonate)
+yt-dlp (max retries)
+yt-dlp (single fragment)
+yt-dlp (generic extractor)
+yt-dlp (throttle detect)
+```
+
+For stream manifests it also offers `N_m3u8DL-RE`, `Streamlink`, and a direct
+`ffmpeg -c copy` of the manifest. For format enumeration it uses `yt-dlp (skip-download)`.
 
 ### Common Error Messages
 
-| Error | Likely Cause | Fix |
-|---|---|---|
-| `curl: (6) Could not resolve host` | DNS failure in libcurl | Check network connectivity, try `nslookup <host>` |
-| `curl: (28) Connection timed out` | Host unreachable or firewall | Check if the site is accessible in a browser |
-| `curl: (35) SSL connect error` | TLS handshake rejected | The site may require a specific browser version — try `impersonate="chrome124"` |
-| `curl: (56) Failure when receiving data` | Connection reset by server | The server may have detected non-browser behavior despite impersonation |
-
-### When Impersonation Alone Is Not Enough
-
-If curl_cffi impersonation does not resolve the issue, the site may be using additional protection layers:
-
-- **JavaScript challenges** (Cloudflare Turnstile, hCaptcha) — these require a real browser with JavaScript execution, which curl_cffi cannot provide. The extension's existing capture/CDP path may handle these.
-- **Behavioral fingerprinting** — mouse movements, scroll patterns, and page interaction timing. These cannot be mimicked by a static HTTP client.
-- **Token-based access** — short-lived signed URLs that require a previous page visit or API call to generate. These are typically handled earlier in the pipeline (during page scanning in `media_resolver.py`).
-
-In these cases, the download still falls through to other backends (N_m3u8DL-RE, Streamlink, yt-dlp variants) or requires the extension's interactive capture mode.
+| Error                                    | Likely cause                   | Fix                                             |
+| ---------------------------------------- | ------------------------------ | ----------------------------------------------- |
+| `curl: (6) Could not resolve host`       | DNS failure                    | Check connectivity, `nslookup <host>`           |
+| `curl: (28) Connection timed out`        | Host unreachable or firewalled | Check the site in a browser                     |
+| `curl: (35) SSL connect error`           | TLS handshake rejected         | The site may pin a specific browser version     |
+| `curl: (56) Failure when receiving data` | Connection reset               | Often the server detected non-browser behaviour |
 
 ## Helper Download Errors
 
-`yt-dlp`, N_m3u8DL-RE, or Streamlink may fail when the site requires:
+`yt-dlp`, N_m3u8DL-RE or Streamlink can all fail when the site requires:
 
 - DRM decryption.
 - A login session the helper cannot reproduce.
@@ -172,27 +195,49 @@ In these cases, the download still falls through to other backends (N_m3u8DL-RE,
 - Site-specific extraction that is not available from the detected URL alone.
 - Headers or cookies that were not captured by the extension.
 
+The popup translates the raw error into a readable sentence (`src/background/download_fallbacks.ts`);
+if the message is unhelpful, the raw text is in that job's `ATTEMPT_END` /
+`DOWNLOAD_ERROR` entries in `src/logs/downloads.jsonl`.
+
 ## Filter List Refresh Failed
 
-The extension downloads uBlock Origin filter lists every 5 days. If the lists fail to download (network error, timeout, GitHub unavailable):
+The extension downloads uBO and EasyList filter lists every 5 days (1 day for the EasyList
+feeds). If a download fails — network error, timeout, GitHub unreachable:
 
-- The extension continues using cached patterns from `chrome.storage.local`.
-- Patterns from the first successful download persist across service worker restarts.
-- The next refresh attempt happens 5 days later.
-- This is non-critical — the built-in `AD_RE` and `CDN_HINT_RE` patterns still apply.
+- Cached patterns from `chrome.storage.local` keep being used.
+- The last successful download persists across service worker restarts.
+- The next attempt is on the normal schedule.
+- This is not critical: the built-in `AD_RE` and `CDN_HINT_RE` patterns in
+  `src/shared/media_candidates.js` still apply.
+
+Options → Filter list sources shows when each list was last fetched.
 
 ## Slow Downloads
 
-Slow downloads usually mean one of these is the bottleneck:
+Usually one of these is the bottleneck:
 
 - The video host or CDN is throttling.
 - The server does not allow multiple connections.
-- The stream format cannot resume or segment efficiently.
-- VPN, Wi-Fi, or routing is slowing the connection.
+- The stream format cannot be segmented or resumed.
+- VPN, Wi-Fi or routing.
 - Disk writes are slow or the destination drive is nearly full.
 
-Fast mode can help only when the source server allows it.
+Fast mode can only help when the origin server permits it. If `aria2c` is missing, segmented
+transfer is not available at all.
 
 ## Many Short Clips In The Popup
 
-Reload the extension and reload the webpage. The current build cleans old stored fragment detections on startup and filters new HLS/DASH segment URLs.
+Reload the extension and reload the page. The build cleans stale stored fragment detections on
+startup and filters new HLS/DASH segment URLs (`.ts`, `.m4s`, `segment-*`, `chunk-*`,
+`frag-*`). If a page genuinely hosts many distinct small clips, that is legitimate — use the
+search box and the sort control in the popup's video list.
+
+## Overlay Missing On A Video
+
+- Check Options → Page integration → **Show a download button on detected video players** is
+  enabled.
+- The overlay is only attached to `<video>` elements that look like real players; short,
+  hidden, muted-looping or GIF-like clips are deliberately skipped.
+- The overlay lives in a Shadow DOM, so it is invisible to page CSS — if a hostile page's
+  `* { ... !important }` rules seem to break it, that is a real bug worth reporting, not
+  expected behaviour.

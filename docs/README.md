@@ -1,27 +1,44 @@
 # Qwin Documentation
 
-This directory contains the full documentation for Qwin Video Downloader.
+This directory contains the documentation for Qwin Video Downloader.
 
 ## Documentation Map
 
-- [Installation and browser setup](guides/installation.md) — native helper install, Chrome/Firefox/Yandex setup, and what the installer changes.
-- [Usage, supported detection, and speed behavior](guides/usage.md) — how to download, what the extension can detect, download management, output folders, fast mode limits, and uBlock Origin filter integration.
-- [Troubleshooting](guides/troubleshooting.md) — common helper, dependency, browser, URL, download-speed problems, and filter list issues.
-- [Project structure and tests](reference/project-structure.md) — repo layout, new modules, and test commands.
-- [uBlock Origin integration specification](reference/uBlock-integration-spec.md) — detailed spec for ad-filter integration with uBO patterns and filter lists.
+- [Installation and browser setup](guides/installation.md) — installing the native helper, loading
+  the unpacked extension into Yandex or Chrome, and what the installer changes on disk.
+- [Usage, detection and download behavior](guides/usage.md) — what the extension can detect, how
+  to download from a page or a pasted link, the Downloads and Options pages, download
+  management, output folders and fast mode.
+- [Download backends](guides/downloaders.md) — which external tools Qwin shells out to, what each
+  one is for, how the winning backend is picked, and why the rest of the ecosystem is excluded.
+- [Troubleshooting](guides/troubleshooting.md) — helper, dependency, browser, URL, speed and
+  filter-list problems.
+- [Release notes template](guides/release-notes.md) — the skeleton used for GitHub releases.
 
-## Legal
+## In short
 
-- [Terms of Service](legal/terms-of-service.md) — License terms, acceptable use, and user responsibilities
-- [Privacy Policy](legal/privacy-policy.md) — Data collection and storage practices
-- [DMCA Notice](legal/dmca-notice.md) — Copyright infringement takedown procedure
-- [Disclaimer](legal/disclaimer.md) — Warranty disclaimer and limitation of liability
-- [Fair Use Notice](legal/fair-use-notice.md) — Guidance on copyright and fair use
-
-## Short Summary
-
-Qwin Video Downloader detects playable MP4/WebM, HLS M3U8, DASH MPD, Smooth Streaming ISM, supported video page URLs, and manually pasted video page links, then sends supported URLs to a native Python helper. The helper uses `yt-dlp` and `ffmpeg` to save videos, uses `aria2c` for segmented fast downloads, and can use N_m3u8DL-RE or Streamlink as stream fallbacks when available.
+Qwin Video Downloader detects MP4/WebM/M4V media, HLS M3U8, DASH MPD and Smooth Streaming ISM
+manifests, and recognised video page URLs such as YouTube watch / embed / shorts / live pages.
+Detected URLs go to a local Python helper, which uses `yt-dlp` to enumerate formats and to
+download, `aria2c` for segmented parallel transfers and `ffmpeg` for merging. `N_m3u8DL-RE` and
+Streamlink act as best-effort fallbacks for HLS / DASH manifests when they are installed.
 
 Qwin also supports:
-- **`curl_cffi` TLS impersonation** — two levels of browser fingerprint matching to bypass Cloudflare, Akamai, and other WAF/CDN bot-detection: inside `yt-dlp` via `--extractor-args generic:impersonate`, and as a standalone direct-download adapter (`curl_cffi_adapter.py`) when yt-dlp fails.
-- **uBlock Origin filter integration** — loads and parses uBO filter lists (Unbreak, EasyList, EasyPrivacy) to block ad URLs while whitelisting known video CDN domains, with automatic background refresh every 5 days.
+
+- **A Shadow-DOM on-page overlay** — a download button on each detected `<video>`, isolated
+  from the host page's CSS.
+- **TLS impersonation inside yt-dlp** — every yt-dlp command passes
+  `--extractor-args generic:impersonate`, which lets yt-dlp's bundled curl_cffi match a real
+  browser's TLS fingerprint for generic-site extraction. This helps with some Cloudflare and
+  CDN blocks. It is not a JS-challenge solver, and there is no separate curl_cffi downloader.
+- **uBlock Origin filter integration** — uBO filter lists (including Unbreak) plus EasyList and
+  EasyPrivacy are downloaded and parsed to block ad URLs while whitelisting known video CDN
+  domains, refreshed in the background every 5 days (1 day for the EasyList feeds).
+
+## Not supported
+
+These were removed from the codebase and are not planned. Do not look for them:
+
+magnet links and `.torrent` files, screen recording, CDM / DRM capture, and the
+lux / you-get / gallery-dl / gopeed fallback backends. See
+[Download backends](guides/downloaders.md) for the full evaluation of what was considered.

@@ -4,229 +4,186 @@
 
 Qwin can detect:
 
-- Direct MP4, M4V, and WebM URLs seen in network requests.
-- HLS M3U8 playlists and DASH MPD manifests seen in network requests.
-- HTML5 `<video>` and `<source>` elements in the page DOM.
-- Video URLs loaded in iframes where the extension is allowed to inject content scripts.
-- Reusable MP4/WebM/M3U8/MPD/ISM URLs embedded in visible player pages or inline player configuration scripts.
-- Video-like media requests based on response `Content-Type` and common video CDN URL patterns.
-- Real HTML5 video players on the page. A small in-player Download overlay appears when the video area looks like a real player instead of a tiny clip or GIF-style animation.
-- Real YouTube video pages from the visible YouTube player. Qwin sends the YouTube watch/embed/shorts/live page URL to `yt-dlp`, then the helper saves the selected version as MP4.
-- Manual video page links pasted in settings. This is a fallback for extractor-supported sites such as YouTube, Instagram, TikTok, X, Threads, and other URLs the helper tools can access.
-- Video titles from page metadata, video element labels, `yt-dlp` metadata, or filename fallback.
+- Direct `MP4`, `M4V` and `WebM` URLs seen in network requests.
+- HLS `M3U8` playlists, DASH `MPD` manifests and Smooth Streaming `ISM` manifests seen in
+  network requests.
+- HTML5 `<video>` and `<source>` elements in the page DOM, including inside iframes and
+  inside other elements' shadow roots where the content script can reach.
+- Reusable MP4/WebM/M3U8/MPD/ISM URLs embedded in visible player markup or inline player
+  configuration scripts.
+- Video-like media requests matched by response `Content-Type` or by CDN URL patterns.
+- Recognised video page URLs. For YouTube, Qwin sends the watch / embed / shorts / live page
+  URL to `yt-dlp` rather than the temporary `googlevideo.com` playback URL, so the whole
+  format list is available.
+- Video titles from page metadata, `<video>` labels, `yt-dlp` metadata, or the filename.
 
-The extension filters obvious ad/tracker media URLs, GIF/GIFV previews, common GIF-preview hosts such as Giphy and Tenor, tiny hidden media, short muted looping autoplay clips, and HLS/DASH fragment URLs such as `.ts`, `.m4s`, `segment-*`, `chunk-*`, and `frag-*`. Download the M3U8/MPD playlist or master URL, not individual segment URLs.
+An on-page download button appears over each `<video>` that looks like a real player rather
+than a GIF or a tiny clip. It is rendered inside a Shadow DOM, so the page's CSS cannot reach
+it and Qwin's cannot reach the page.
+
+The extension filters obvious ad/tracker media URLs, GIF and GIFV previews (including the
+Giphy and Tenor preview hosts), tiny hidden media, short muted looping autoplay clips, and
+HLS/DASH fragment URLs such as `.ts`, `.m4s`, `segment-*`, `chunk-*` and `frag-*`. Download
+the playlist or master manifest URL, not individual segment URLs.
 
 ## uBlock Origin Filter Integration
 
-Qwin integrates with uBlock Origin's community-maintained filter lists to improve ad URL blocking and video CDN whitelisting.
+Qwin integrates with uBlock Origin's community-maintained filter lists to improve ad URL
+blocking and video CDN whitelisting.
 
 ### How It Works
 
 1. **At startup**, the extension loads cached filter patterns from `chrome.storage.local`.
-2. **Exception domains** from filter lists (especially uBO's Unbreak list) are applied to `isBlockedMediaUrlWithExceptions()` — URLs from known video CDNs that match ad patterns are unblocked.
-3. **Every 5 days**, the extension downloads fresh filter lists from uBO's GitHub repository and EasyList/EasyPrivacy and extracts video-relevant domain patterns.
-4. **Ad domains** discovered from filter lists are added to the blocking set alongside the built-in `AD_RE` regex.
+2. **Exception domains** from filter lists (especially uBO's Unbreak list) are passed to
+   `isBlockedMediaUrlWithExceptions()` — a URL from a known video CDN that matches an ad
+   pattern is not blocked.
+3. **Every 5 days** the service worker re-downloads the lists and recompiles the video-relevant
+   domain patterns.
+4. **Ad domains** discovered from the lists are added to the blocking set alongside the
+   built-in `AD_RE` regex in `src/shared/media_candidates.ts`.
+
+If the cache is empty (first install) an immediate refresh is triggered, so the exception
+rules are available without waiting five days.
 
 ### Supported Filter Lists
 
-| List | URL | Refresh |
-|---|---|---|
-| uBlock filters | `filters.txt` | 5 days |
-| uBlock Unbreak | `unbreak.txt` | 5 days |
-| uBlock Resource abuse | `resource-abuse.txt` | 5 days |
-| uBlock Privacy | `privacy.txt` | 5 days |
-| EasyList | `easylist.txt` | 1 day |
-| EasyPrivacy | `easyprivacy.txt` | 1 day |
+| List                  | Source                                                | Refresh |
+| --------------------- | ----------------------------------------------------- | ------- |
+| uBlock filters        | `uBlockOrigin/uAssets` → `filters/filters.txt`        | 5 days  |
+| uBlock Unbreak        | `uBlockOrigin/uAssets` → `filters/unbreak.txt`        | 5 days  |
+| uBlock Resource abuse | `uBlockOrigin/uAssets` → `filters/resource-abuse.txt` | 5 days  |
+| uBlock Privacy        | `uBlockOrigin/uAssets` → `filters/privacy.txt`        | 5 days  |
+| EasyList              | `easylist.to` → `easylist.txt`                        | 1 day   |
+| EasyPrivacy           | `easylist.to` → `easyprivacy.txt`                     | 1 day   |
 
-The **Unbreak** list is the most valuable — it contains exception rules that restore video player functionality on sites where aggressive blocking would break playback.
+The **Unbreak** list is the most valuable — it holds the exception rules that restore player
+functionality on sites where aggressive blocking would break playback.
+
+The **Options** page shows each list with its expected size, its refresh interval, and when it
+was last fetched. Nothing there is configurable: the list set is fixed.
 
 ### Exception-Aware Blocking
 
-When a URL matches both ad patterns and an exception domain (e.g., `akamaihd.net` is both a known ad CDN but also essential for streaming), the exception takes priority. This prevents false positives on legitimate video CDNs.
+When a URL matches both an ad pattern and an exception domain (`akamaihd.net` is both a common
+ad CDN _and_ essential for streaming), the exception wins. That is what prevents false
+positives on legitimate video CDNs.
 
-### Recompiling Patterns
+## TLS Impersonation Inside yt-dlp
 
-If patterns are empty at startup (first install), the extension triggers an immediate refresh so filter-based exceptions are available right away.
-
-## CDP-Based Video Extraction
-
-Qwin uses Chrome DevTools Protocol (CDP) to extract video sources from players that don't expose them through standard DOM or network APIs.
-
-### Extraction Methods
-
-1. **Runtime.evaluate** — Executes JavaScript in the page context to find video elements, sources, and player configurations.
-2. **Network instrumentation** — Captures license exchanges for key extraction.
-
-## TLS Impersonation with curl_cffi
-
-Qwin uses the [`curl_cffi`](https://github.com/yifeikong/curl_cffi) Python library to **impersonate real web browsers' TLS/SSL and HTTP/2 fingerprints**. This helps bypass Cloudflare, Akamai, and other WAF/CDN bot-detection systems that would otherwise block standard HTTP clients (like Python's `urllib` or raw `curl`).
-
-### How It Works
-
-When `curl_cffi` makes an HTTPS request, it mimics the exact TLS handshake characteristics of a real browser:
-
-- **Cipher suites** — matches Chrome's supported cipher list
-- **TLS extensions** — order and values match Chrome's actual negotiation
-- **HTTP/2 frames** — SETTINGS, WINDOW_UPDATE, and priority framing match browser behavior
-- **User-Agent** — automatically sent with the correct browser version string
-
-The result: the remote server sees a connection that looks identical to one from a real Chrome browser.
-
-### Two Levels of Integration
-
-curl_cffi is integrated at **two levels** in the native host:
-
-#### 1. Inside yt-dlp (primary path)
-
-Every yt-dlp command includes `--extractor-args generic:impersonate`, which tells yt-dlp to use its bundled curl_cffi for TLS impersonation when extracting from generic/unknown sites. This is the **primary download path** — most downloads go through yt-dlp + aria2c with impersonation active.
+Qwin's `yt-dlp` commands carry `--extractor-args generic:impersonate`, which tells yt-dlp to
+use its bundled `curl_cffi` for TLS/HTTP2 fingerprint matching when extracting from generic
+(unknown) sites. A site that rejects a plain HTTP client on the basis of its TLS fingerprint
+may then behave as it does for a real browser.
 
 ```python
-# src/native_host/yt_dlp_command.py
+# src/native_host/backends/yt_dlp/yt_dlp_command.py
 GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
-# Applied to every yt-dlp command:
-command.extend(["--extractor-args", "generic:impersonate"])
 ```
 
-#### 2. Standalone adapter (fallback path)
+This is one lever inside one step of one pipeline. It is **not** a general WAF bypass: it
+cannot solve JavaScript challenges (Cloudflare Turnstile, hCaptcha), behavioural detection, or
+login/session requirements. `curl_cffi` itself arrives as the `curl-cffi` extra of
+`yt-dlp[default,curl-cffi]`; the native host does not probe or import it itself, it only hands
+yt-dlp the flag above and lets yt-dlp do the impersonation.
 
-If yt-dlp fails entirely (site not supported, extraction error, etc.), a standalone `curl_cffi_adapter.py` module tries a direct HTTP download with full Chrome TLS impersonation. This catches URLs that yt-dlp's generic extractor cannot parse but that are accessible via direct download.
-
-```
-Primary:   yt-dlp + aria2c + impersonation (via --extractor-args generic:impersonate)
-               │
-               ▼ (if yt-dlp fails)
-Fallback:  curl_cffi direct download (standalone adapter, impersonate="chrome")
-               │
-               ▼ (if curl_cffi fails)
-More:      yt-dlp variants (no SSL, geo bypass, no impersonate, max retries, etc.)
-```
-
-### Download Flow with Impersonation
-
-```
-Media URL from extension
-         │
-         ├── YouTube?                   ──→ yt-dlp dedicated extractor (YouTube's own TLS)
-         ├── HLS/DASH manifest (.m3u8, .mpd)? → N_m3u8DL-RE or Streamlink
-         ├── Magnet link / .torrent?    ──→ aria2c BitTorrent engine
-         └── Direct media URL (.mp4, .webm, etc.)
-                   │
-         ┌─────────┴─────────┐
-         ▼                   ▼
-  yt-dlp + aria2c      yt-dlp + aria2c
-  impersonation ON     impersonation ON
-  (generic:impersonate)
-         │
-         ▼ (if primary fails)
-  curl_cffi direct download
-  impersonate="chrome"
-         │
-         ▼ (if curl_cffi fails)
-  yt-dlp fallback variants
-  (no SSL, geo bypass,
-   no impersonate, retries,
-   generic extractor, throttle detect)
-```
-
-### When curl_cffi Is Skipped
-
-| URL Type | curl_cffi Used? | Reason |
-|---|---|---|
-| Direct `.mp4` / `.webm` / `.mkv` | **Yes** (standalone fallback) | Streams to disk with full browser impersonation |
-| `.m3u8` (HLS) | **No** (standalone) | Needs specialized HLS downloader (N_m3u8DL-RE / ffmpeg) — yt-dlp handles it |
-| `.mpd` (DASH) | **No** (standalone) | Needs specialized DASH downloader |
-| YouTube | **No** (standalone) | yt-dlp has dedicated extractor + fine-grained format selection |
-| Generic video page | **Yes** (inside yt-dlp) | yt-dlp's generic extractor uses `--extractor-args generic:impersonate` |
-| Magnet / torrent | **No** | BitTorrent protocol, not HTTP |
-| CDN behind Cloudflare | **Yes** | Primary use case — bypasses TLS fingerprint blocking |
-
-### Verifying curl_cffi Is Working
-
-The installer checks that curl_cffi is importable:
-```
-Verifying curl_cffi impersonation library...
-curl_cffi version: <version>
-```
-
-If curl_cffi is missing, the installer shows a warning and the standalone fallback degrades to standard HTTP (less effective behind WAFs). The in-yt-dlp path also degrades but may still work for sites yt-dlp supports natively.
-
-### Verifying with Live TLS Fingerprint
-
-You can manually verify that curl_cffi is sending browser-matching fingerprints:
+You can check the fingerprint yourself from a Python shell:
 
 ```bash
-python -c "
-from curl_cffi import requests
-r = requests.get('https://tls.browserleaks.com/json', impersonate='chrome')
-data = r.json()
-print('JA3:', data.get('ja3_hash'))
-print('User-Agent:', data.get('user_agent'))
-"
+python -c "from curl_cffi import requests; print(requests.get('https://tls.browserleaks.com/json', impersonate='chrome').json()['ja3_hash'])"
 ```
-
-Expected output:
-```
-JA3: <32-char hex string>
-User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ... Chrome/146...
-```
-
-The impersonated fingerprint will differ from standard curl's fingerprint (confirmed by running without `impersonate="chrome"`).
 
 ## Download A Video
 
 1. Visit a page with a playing video.
-2. Open the Qwin Video Downloader toolbar popup.
-3. Wait for detected full videos to appear. Duplicate source URLs and quality variants are grouped into one video entry.
-4. Click the Download overlay on the video player, or click Download next to a detected item in the popup.
-5. Compare the available versions by resolution, size, format, bitrate, and source.
-6. Choose the version to download. `Best available MP4` is recommended when you are unsure.
-7. Open the Downloads view in the popup to watch progress and manage jobs.
+2. Open the Qwin toolbar popup and stay on the **Media** view.
+3. Wait for the scan to finish. Duplicate source URLs and quality variants are grouped into
+   one entry per video; use the search box, the sort control and the size filter to narrow
+   the list down.
+4. Click the download button on the video itself, or Download on a detected row in the popup.
+5. Compare the available versions by resolution, size, format, bitrate and source.
+6. Pick one. `Best available MP4` is the safe choice when you are unsure.
+7. Watch progress in the popup's **Downloads** view, or on the full **Downloads** page.
 
 ## Download From A Link
 
-1. Open the Qwin settings panel.
-2. Paste a public or otherwise accessible video page URL into `Download from link`.
-3. Click `Download link`.
-4. Choose a quality when `yt-dlp` returns available versions.
+1. Open the popup to the **Media** view.
+2. Paste a URL into the **Paste a link** box at the top.
+3. Click **Download** (or press Enter in the box).
+4. Choose a quality when `yt-dlp` returns versions.
 
-This fallback sends the pasted URL to `yt-dlp` first. For stream manifest URLs, the helper can also try N_m3u8DL-RE or Streamlink when those tools are installed. It does not make unsupported, private, DRM-protected, or blocked videos downloadable.
+This is the fallback for pages the detector cannot read. The URL goes to `yt-dlp` first; for
+stream manifests the helper may then try N_m3u8DL-RE or Streamlink if they are installed. It
+does not make unsupported, private or DRM-protected videos downloadable.
 
-## Download From A Magnet Link
-
-1. Open the Qwin settings panel.
-2. Paste a magnet link (starting with `magnet:?xt=urn:btih:...`) into `Download from magnet link`.
-3. Click `Download magnet`.
-4. Confirm in the quality dialog to start the BitTorrent download.
-
-Magnet links are BitTorrent downloads that the native helper runs directly through `aria2c`. Progress is reported in the Downloads view just like video downloads.
-
-## Download From A .torrent File
-
-1. Open the Qwin settings panel.
-2. Click `Download .torrent file`.
-3. Select a local `.torrent` file using the native Windows file picker.
-4. The download starts immediately using `aria2c`.
-
-The native helper opens a Windows file picker (PowerShell `OpenFileDialog` with `.torrent` filter, falling back to Tk) to select a local `.torrent` file. The file path is validated to ensure it exists and has a `.torrent` extension before the download begins.
+There is one box for every kind of link. Qwin does not guess video vs audio from the URL —
+the native helper resolves the link, and the returned dialog already knows which it is. For
+audio links (Spotify, YouTube Music, SoundCloud, Deezer, Bandcamp) the audio candidate appears
+in **Media** with a purple badge; the output container comes from Options → Audio format.
 
 ## Download Management
 
-The Downloads view supports:
+Both the popup's **Downloads** view and the full **Downloads** page support:
 
-- Pause active downloads.
-- Resume paused downloads.
-- Cancel active or paused downloads.
-- Retry failed or canceled downloads.
-- Redownload finished downloads.
-- Remove jobs from history.
-- Open saved files in File Explorer when a saved file path is available.
+- Pause and resume an active download.
+- Cancel an active or paused download.
+- Retry a failed or cancelled download.
+- Redownload a finished one.
+- Remove a job from the list.
+- Open the saved file, or reveal it in File Explorer, when a path is known.
 
-Pause/resume is handled by stopping `yt-dlp` and restarting the same job later. `yt-dlp` will continue from partial files when the site and file format support resuming. Some streams may restart from the beginning.
+The Downloads page adds free-text search over titles, faceted filters by status / format /
+source, and the bulk actions **Retry failed**, **Clear all** and **Reveal newest**.
+**Clear all** drops every finished job *and* the synced history behind it, so a cleared
+list stays cleared; active downloads are left running.
+
+Pause/resume stops `yt-dlp` and restarts the same job later. `yt-dlp` resumes from its
+partial files when the site and format allow it; some streams start over.
+
+Completed downloads are appended to the synced history when that option is on. History lives
+in the browser profile's sync storage and is capped at 200 entries; Options shows the current
+count and can clear it.
+
+## Options
+
+Open Options from the popup's header gear, or from the browser's extension options entry. It
+holds everything durable, in five sections with a search field at the top:
+
+**Downloads**
+
+- **Download folder** — a Windows path, or **Browse...** for the folder picker. Blank means
+  the Windows Downloads folder.
+- **Audio format** — used when a download is audio only.
+- **Hide videos smaller than** — the starting value for the popup's size filter.
+- **Download subtitles by default** — whether `yt-dlp` fetches subtitles without being asked.
+
+**Appearance**
+
+- **Theme** — System / Light / Dark. System follows your operating system. The choice applies
+  immediately and survives a restart. The popup header carries the same control.
+
+**Page integration**
+
+- **Show a download button on detected video players** — turn the per-video overlay off and on.
+- **Sync completed downloads across browsers** — see the entry count and clear it.
+
+**Native helper**
+
+- Connection state, a per-dependency checklist, **Check again**, and a
+  **Copy install command** button.
+
+**Advanced**
+
+- **Filter list sources** — read-only status for each list.
+- **Synced history** — the entry count and a **Clear synced history** button.
+
+The popup itself carries only per-session controls: the paste box, the search/sort/size
+filter row and the per-row download button. Everything durable is in Options, which writes to
+the same `qwinSettings` key, so a change there is reflected the next time the popup opens.
 
 ## Download Folder
 
-By default, videos save under the Windows Downloads folder. Use the settings button in the popup, then click `Browse` to choose a custom folder in the Windows folder picker.
+By default, videos save under the Windows Downloads folder. Choose a custom one in Options →
+Download folder → **Browse...**.
 
 Each download is saved inside a title folder:
 
@@ -234,24 +191,18 @@ Each download is saved inside a title folder:
 Downloads\Video Title\Video Title [id].mp4
 ```
 
-Leaving the folder setting blank uses the default Downloads folder.
+Leaving the setting blank uses the default Downloads folder.
 
 ## Download Speed
 
-The native helper uses:
+The helper uses:
 
-- Concurrent HLS/DASH fragments through `yt-dlp --concurrent-fragments`.
-- `aria2c` segmented external downloads for parallel byte-range connections.
-- N_m3u8DL-RE or Streamlink fallback downloads for accessible HLS, DASH, or Smooth Streaming manifests when `yt-dlp` cannot use a stream source.
+- Concurrent HLS/DASH fragments via `yt-dlp --concurrent-fragments`.
+- `aria2c` as the external downloader for parallel byte-range connections.
+- `ffmpeg` for merging video and audio and remuxing to MP4.
+- `N_m3u8DL-RE` or Streamlink as best-effort fallbacks for accessible HLS, DASH or Smooth
+  Streaming manifests when `yt-dlp` cannot handle the stream.
 
-Fast mode uses up to 32 yt-dlp fragments and up to 16 `aria2c` byte-range connections by default. For direct MP4/WebM downloads, `aria2c` splits the file into byte ranges and downloads those ranges in parallel before assembling the final file.
-
-## BitTorrent Download Behavior
-
-Both magnet links and .torrent files use `aria2c`'s built-in BitTorrent engine. The download behaves like a standard BitTorrent download:
-
-- **Seeding is disabled** by default (`--seed-time=0`). After the download completes, `aria2c` stops seeding immediately.
-- **File allocation** is set to `none` to start writing immediately without pre-allocating space.
-- **Parallel connections** are made to up to 50 BitTorrent peers by default.
-- **Progress reporting** shows the same percent/speed/ETA display as video downloads.
-- **Output folder** follows the same download folder setting. Files are saved directly into the chosen folder (not inside a subfolder).
+For direct MP4/WebM downloads, `aria2c` splits the file into byte ranges, fetches them in
+parallel and reassembles the output. Fast mode only helps when the origin server permits
+multiple connections — see [Troubleshooting](troubleshooting.md) if downloads are slow.
