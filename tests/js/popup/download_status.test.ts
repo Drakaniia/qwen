@@ -9,6 +9,7 @@ import {
   downloadProgressValue,
   hasDownloadPercent,
   isProcessingStage,
+  pausableDownloadJobs,
 } from "../../../src/popup/download_status.js";
 import type { DownloadJob } from "../../../src/popup/state/downloads.js";
 
@@ -387,5 +388,32 @@ describe("downloadActions", () => {
   it("stamps every action with a dispatcher key", () => {
     const actions = downloadActions({ id: "a", status: "done", filepath: "C:/a.mp4" });
     expect(actions.map((a) => a.action)).toEqual(["retry", "open-file", "show-folder", "remove"]);
+  });
+});
+
+describe("pausableDownloadJobs — the tray's Pause all", () => {
+  const idsOf = (statuses: string[]) =>
+    pausableDownloadJobs(statuses.map((status, i) => ({ id: `j${i}`, status }))).map((j) => j.id);
+
+  it("takes the jobs that are actually moving", () => {
+    expect(idsOf(["connecting", "running"])).toEqual(["j0", "j1"]);
+  });
+
+  it("leaves the queue, the paused jobs and everything terminal alone", () => {
+    // Narrower than `PAUSABLE_DOWNLOAD_STATUSES`, which includes "queued" because a
+    // per-row Pause is honest there. A bulk pause is not: a queued job is waiting for a
+    // slot, not stalled, and it starts on its own as soon as one frees. Pausing the
+    // queue would convert "not started yet" into "stopped" and cost N clicks to undo.
+    expect(idsOf(["queued", "paused", "pausing", "canceling", "done", "error", "canceled"])).toEqual([]);
+  });
+
+  it("defaults a missing status to queued, so it is not-yet-started and untouched", () => {
+    expect(pausableDownloadJobs([{ id: "j" }])).toEqual([]);
+  });
+
+  it("keeps input order and does not mutate the array it was given", () => {
+    const jobs = [{ id: "b", status: "running" }, { id: "a", status: "connecting" }] as DownloadJob[];
+    expect(pausableDownloadJobs(jobs).map((j) => j.id)).toEqual(["b", "a"]);
+    expect(jobs).toHaveLength(2);
   });
 });

@@ -1,10 +1,15 @@
+import { useState } from "preact/hooks";
+
 import { Button } from "../../ui/components/Button.js";
 import { EmptyState } from "../../ui/components/EmptyState.js";
 import { SkeletonRow } from "../../ui/components/Skeleton.js";
+import { Icon } from "../../ui/Icon.js";
+import { pausableDownloadJobs } from "../download_status.js";
 import { activeTabId, helperStatus, setViewMode } from "../state/app.js";
 import { activeDownloads, currentDownloads, type DownloadJob } from "../state/downloads.js";
 import { isActiveDownload } from "../../shared/download_statuses.js";
 import * as PopupApi from "../../shared/popup_api.js";
+import { runDownloadAction } from "../popup_actions.js";
 import { copyInstallCommand, INSTALL_COMMAND, refresh } from "../popup_helpers.js";
 import type { PopupResponse } from "../popup_state.js";
 import { JobRow } from "./JobRow.js";
@@ -38,6 +43,7 @@ export function DownloadsView() {
   const active = activeDownloads.value;
   const finished = jobs.filter((job) => !isActiveDownload(job));
   const connected = helperStatus.value.connected;
+  const bulk = bulkControlFor(active);
 
   // Nothing known yet: `currentDownloads` starts empty and `helperStatus` starts null, so
   // on the first paint *every* branch below would be a guess. Skeletos, not a sentence.
@@ -84,6 +90,8 @@ export function DownloadsView() {
           tabindex would take every one of them out of the tab order — the whole row
           would become one tab stop whose buttons a keyboard user could never reach. So
           the tray keeps ordinary per-control focus and only Media gets `useListKeys`. */}
+      {bulk ? <BulkVerb jobs={bulk.jobs} verb={bulk.verb} /> : null}
+
       {active.length ? (
         <ul role="list" aria-label="Active downloads" class="flex flex-col gap-2 p-4">
           {active.map((job) => (
@@ -98,6 +106,57 @@ export function DownloadsView() {
 
       {finished.length ? <ClearFinished /> : null}
     </>
+  );
+}
+
+/**
+ * Which bulk verb the tray offers over its active list, and over which jobs — or
+ * `null` for neither.
+ *
+ * **One toggle, not two buttons.** "Pause all" and "Resume all" are the same control
+ * pointed at the other end of the set, and a tray is in practice one or the other:
+ * either something is moving or the user just stopped it. Rendering both would mean
+ * picking which one is *disabled* whenever the tray holds a running job and a paused
+ * one, and a permanently disabled button is the noise this control exists to avoid —
+ * so it disappears entirely instead, and only the actionable direction shows.
+ */
+function bulkControlFor(active: DownloadJob[]): { jobs: DownloadJob[]; verb: "pause" | "resume" } | null {
+  const moving = pausableDownloadJobs(active);
+  if (moving.length) {
+    return { jobs: moving, verb: "pause" };
+  }
+  const paused = active.filter((job) => job.status === "paused");
+  return paused.length ? { jobs: paused, verb: "resume" } : null;
+}
+
+/**
+ * The tray's bulk verb, sitting in the toolbar region above "Active downloads" and
+ * hidden outright when there is nothing for it to do.
+ *
+ * No `pauseAll` message exists, by design: `runDownloadAction` already maps a per-job
+ * `pause` onto `{type:"pauseDownload"}`, and pausing N downloads *is* N requests. The
+ * icon reuses `JobRow`'s `ACTION_ICON` convention (pause → `pause`, resume → `play`) so
+ * the tray control and the per-row buttons read as one system.
+ */
+function BulkVerb({ jobs, verb }: { jobs: DownloadJob[]; verb: "pause" | "resume" }) {
+  const [pending, setPending] = useState(false);
+
+  async function run() {
+    setPending(true);
+    // ponytail: one refresh per job, because `runDownloadAction` refreshes on every
+    // success and that is its contract. A real `pauseAll` handler would make this one
+    // message and one refresh; add it if a 20-job batch is ever measurably slow.
+    await Promise.all(jobs.map((job) => runDownloadAction(verb, job.id)));
+    setPending(false);
+  }
+
+  return (
+    <div class="flex justify-end px-4 pt-2">
+      <Button size="sm" variant="secondary" disabled={pending} onClick={() => void run()}>
+        <Icon name={verb === "pause" ? "pause" : "play"} size={13} />
+        {verb === "pause" ? "Pause all" : "Resume all"}
+      </Button>
+    </div>
   );
 }
 

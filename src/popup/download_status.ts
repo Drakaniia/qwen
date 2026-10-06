@@ -342,6 +342,22 @@ export function downloadActions(job: DownloadJob, downloadFolder = ""): Download
   return actions;
 }
 
+/**
+ * Statuses a tray-wide **Pause all** should act on: the ones that are moving right now.
+ *
+ * Deliberately narrower than `PAUSABLE_DOWNLOAD_STATUSES`, which includes `queued`
+ * because a *per-row* Pause is honest there. A bulk pause is a different claim — "stop
+ * what is transferring" — and `queued` is not that: a queued job is waiting for a slot,
+ * not stalled, and it starts on its own the moment one frees. Pausing the queue wholesale
+ * would rewrite "not started yet" as "stopped" and cost one click per job to undo.
+ */
+const MOVING_DOWNLOAD_STATUSES: ReadonlySet<string> = new Set(["connecting", "running"]);
+
+/** The jobs a tray-level "Pause all" loops over, in the order the list drew them. */
+export function pausableDownloadJobs(jobs: DownloadJob[]): DownloadJob[] {
+  return jobs.filter((job) => MOVING_DOWNLOAD_STATUSES.has(String(job.status || "queued")));
+}
+
 /** A job's title, with the canonical fallbacks (URL, then Music/Video). */
 export function downloadTitle(job: DownloadJob | null | undefined): string {
   return videoTitle(job);
