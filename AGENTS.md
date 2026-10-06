@@ -63,11 +63,11 @@ qwin/
 │   ├── content/                 # content.ts + content_overlay.ts + page_detection.ts
 │   ├── popup/                   # All three pages
 │   │   ├── popup.html           #   a 37-line shell: 3 mount roots, no form controls
-│   │   ├── views/               #   PopupFrame, MediaView, DownloadsView, VideoRow, JobRow, SelectionBar
+│   │   ├── views/               # PopupFrame, MediaView, DownloadsView, VideoRow, JobRow, SelectionBar, PlaylistRow
 │   │   ├── components/          #   PasteBox, DependencyBanner, QualityDialogMount
 │   │   ├── downloads/           #   DownloadsPage, FacetPopover, HistoryRow, state.ts
 │   │   ├── options/             #   OptionsPage, sections, diagnostics, Saved, state.ts
-│   │   ├── state/               #   app.ts, videos.ts, downloads.ts, filters.ts, compat.ts
+│   │   ├── state/               #   app.ts, videos.ts, downloads.ts, filters.ts, playlists.ts, compat.ts
 │   │   └── popup*.ts            #   the imperative half still boots (popup.ts, popup_actions.ts, …)
 │   ├── shared/                  # Contracts shared across background/content/popup (.ts)
 │   │   ├── contracts.ts         #   Settings, DetectedVideo, ThemeMode — both sides stay in sync
@@ -157,6 +157,7 @@ spring here is a bug" — so `useResize` writes `document.body.style.width` dire
 | **Icons**                   | `src/ui/Icon.tsx`                                                     | The only icon set, plus `StatusDot`. 24×24, `stroke-width: 1.6`. No emoji anywhere in `src/`.                                        |
 | **Popup resize**            | `src/ui/useResize.ts`                                                 | 400–720px, default 460, rubber-banded at both bounds, persisted                                                                      |
 | **Selection set**           | `src/ui/useStickySelection.ts`                                        | Module-level signal. **No download dispatch** — the batch executor is Phase 2.                                                       |
+| **Playlist folders**        | `src/popup/state/playlists.ts`, `src/popup/views/PlaylistRow.tsx`    | `mediaRows` folds *consecutive* runs of `playlistId` into one collapsed folder. `displayedVideos` is untouched, so search/facets still run on songs. |
 | **Keyboard model**          | `src/ui/useListKeys.ts`                                               | Roving tabindex, `/` search, Enter, Space, Esc, Home/End                                                                             |
 | **Native host entry**       | `src/native_host/host.py`                                             | stdio loop + `match` dispatch table                                                                                                  |
 | **yt-dlp commands**         | `src/native_host/backends/yt_dlp/yt_dlp_command.py`                   | Command building, variant fallbacks                                                                                                  |
@@ -371,6 +372,23 @@ Chrome:
 
 ## NOTES
 
+- **`playlistId` is not `groupId`.** A pasted playlist collapses into a folder keyed on
+  `DetectedVideo.playlistId` (the playlist URL, un-hashed — nothing displays it, it is
+  only compared for equality by `state/playlists.ts`). `groupId` is the tempting reuse
+  and it is **wrong**: `download/native.ts` reads it as the primary candidate of a
+  variant (`videoId: video.groupId || video.id`, `variantId: video.id`), so a playlist id
+  stamped there sends bad ids to the helper for every row of the playlist. The comment
+  above `addDetectedVideo`'s `groupId` line used to claim playlist enumeration already
+  stamped it; that was stale and is now corrected.
+- A Spotify collection embed page carries **one** image, so it cannot be the source of
+  per-track art — `spotify_metadata.apply_track_covers` upgrades each row through
+  `open.spotify.com/oembed` (8 threads, no retry, no memo) and leaves the collection art
+  in place whenever a lookup fails. yt-dlp's flat enumeration has no such gap: each
+  entry already carries its own `thumbnails`, read by `format_list._entry_artwork`. The
+  *playlist's own* cover is a separate value (`playlistThumbnailUrl`) because a
+  `--flat-playlist` dump describes entries and carries nothing for the collection — for
+  yt-dlp that costs one best-effort `_playlist_cover` probe, `ponytail:`-marked, whose
+  deletion path is documented on the function.
 - `DownloadJob.tabId` is **provenance, not a filter** (`global-downloads-spec.md` §4). It rides
   on the record and on every `downloadUpdated` broadcast so the tray row's site chip and the
   background's resume/retry can read it. **Do not delete the field and do not stop stamping

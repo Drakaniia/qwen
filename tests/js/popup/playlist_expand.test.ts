@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render } from "@testing-library/preact";
+import { h } from "preact";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Import prefix from tests/js/popup/ is ../../../src/ (mirrors media_list.test.ts).
 vi.mock("../../../src/shared/popup_api.js", () => ({
@@ -16,7 +18,27 @@ import * as PopupApi from "../../../src/shared/popup_api.js";
 import { hideQualityDialog, notice, qualityDialog, viewMode } from "../../../src/popup/state/app.js";
 import { resolvePastedUrl } from "../../../src/popup/popup_url_events.js";
 import { batchDownloadSelection } from "../../../src/popup/views/PopupFrame.js";
+import { PlaylistRow } from "../../../src/popup/views/PlaylistRow.js";
+import { DEFAULT_FILTER } from "../../../src/ui/filter.js";
 import { selection } from "../../../src/ui/useStickySelection.js";
+import {
+  expandedPlaylists,
+  isPlaylistExpanded,
+  mediaRows,
+  playlistSelectionState,
+  setPlaylistChildrenSelected,
+  togglePlaylist,
+  type MediaRow,
+  type PlaylistGroup,
+} from "../../../src/popup/state/playlists.js";
+import {
+  currentVideos,
+  displayedVideos,
+  setScanStatus,
+  sizeThreshold,
+  videoFilter,
+  type VideoCandidate,
+} from "../../../src/popup/state/videos.js";
 
 const PLAYLIST_URL = "https://open.spotify.com/playlist/abc123";
 
@@ -219,5 +241,206 @@ describe("batchDownloadSelection (spec §6.9)", () => {
     // Nothing started, so nothing is forgiven — dropping the selection here would make the
     // retry impossible without re-selecting every row.
     expect(selection.value.size).toBe(1);
+  });
+});
+
+// ── The folder the rows render in (`popup/state/playlists.ts`) ──────────────────
+
+const FOLDER = "https://open.spotify.com/playlist/abc123";
+const FOLDER_COVER = "https://i.scdn.co/image/folder";
+
+/** One track of `folder`. `lastSeen` keeps the default recency sort in input order. */
+function song(id: string, lastSeen: number, folder: string | null = FOLDER): VideoCandidate {
+  return {
+    id,
+    url: `https://open.spotify.com/track/${id}`,
+    title: `Track ${id}`,
+    source: "playlist",
+    lastSeen,
+    downloadable: true,
+    ...(folder
+      ? { playlistId: folder, playlistTitle: "My Mix", playlistThumbnailUrl: FOLDER_COVER }
+      : { pageUrl: "https://example.com/watch" }),
+  };
+}
+
+const header = (rows: MediaRow[]) => rows.filter((row) => row.kind === "playlist");
+
+beforeEach(() => {
+  currentVideos.value = [];
+  videoFilter.value = { ...DEFAULT_FILTER };
+  sizeThreshold.value = null;
+  setScanStatus("ready");
+  expandedPlaylists.value = new Set();
+  selection.value = new Set();
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+describe("mediaRows: a playlist collapses into one folder", () => {
+  it("turns forty rows into one header, and the header carries the cover and the count", () => {
+    // This is the feature: a pasted playlist used to be 100 rows with no indication they
+    // belonged together.
+    currentVideos.value = Array.from({ length: 40 }, (_v, i) => song(`t${i}`, 40 - i));
+
+    const rows = mediaRows.value;
+    const folders = header(rows);
+
+    expect(rows).toHaveLength(1);
+    expect(folders[0]).toMatchObject({ id: FOLDER, title: "My Mix", thumbnailUrl: FOLDER_COVER, count: 40 });
+    // Collapsed means collapsed: the header alone, no children on screen.
+    expect((folders[0] as PlaylistGroup).children).toHaveLength(40);
+  });
+
+  it("reveals the songs when it is expanded, and hides them again when it closes", () => {
+    currentVideos.value = [song("a", 3), song("b", 2), song("c", 1)];
+    expect(mediaRows.value).toHaveLength(1);
+
+    togglePlaylist(FOLDER);
+    expect(isPlaylistExpanded(FOLDER)).toBe(true);
+    expect(mediaRows.value.map((row) => (row.kind === "video" ? row.video.id : "folder"))).toEqual([
+      "folder",
+      "a",
+      "b",
+      "c",
+    ]);
+
+    togglePlaylist(FOLDER);
+    expect(mediaRows.value).toHaveLength(1);
+  });
+
+  it("keeps a bare candidate in place, and splits a playlist that a page row interrupts", () => {
+    // Consecutive runs, not one folder per playlist id: `a` and `b` are the same playlist
+    // but the page candidate sits between them, so they are two runs and therefore two
+    // folders. Bucketing by id instead would silently merge rows the user cannot see are
+    // adjacent any more.
+    currentVideos.value = [song("a", 4), song("page", 3, null), song("b", 2)];
+
+    expect(mediaRows.value.map((row) => (row.kind === "video" ? row.video.id : "folder"))).toEqual([
+      "folder",
+      "page",
+      "folder",
+    ]);
+
+    togglePlaylist(FOLDER);
+    expect(mediaRows.value.map((row) => (row.kind === "video" ? row.video.id : "folder"))).toEqual([
+      "folder",
+      "a",
+      "page",
+      "folder",
+      "b",
+    ]);
+  });
+
+  it("keeps search operating on the songs, so one track is findable inside a folder", () => {
+    // The point of not touching `displayedVideos`: the filter still sees songs, and the
+    // one match is still reachable — it is only its *rendering* that is a folder.
+    currentVideos.value = [song("a", 3), song("needle", 2), song("c", 1)];
+    videoFilter.value = { ...DEFAULT_FILTER, query: "needle" };
+
+    expect(displayedVideos.value.map((video) => video.id)).toEqual(["needle"]);
+
+    togglePlaylist(FOLDER);
+    expect(mediaRows.value.map((row) => (row.kind === "video" ? row.video.id : "folder"))).toEqual([
+      "folder",
+      "needle",
+    ]);
+  });
+
+  it("starts collapsed and forgets nothing that was not asked for", () => {
+    currentVideos.value = [song("a", 1)];
+    expect(isPlaylistExpanded(FOLDER)).toBe(false);
+    expect(mediaRows.value).toHaveLength(1);
+  });
+});
+
+describe("selecting a folder's tracks", () => {
+  beforeEach(() => {
+    currentVideos.value = [song("a", 3), song("b", 2), song("c", 1)];
+  });
+
+  it("selects and clears every child, and reads indeterminate in between", () => {
+    const folder = header(mediaRows.value)[0] as PlaylistGroup;
+
+    setPlaylistChildrenSelected(folder.children, true);
+    expect([...selection.value]).toEqual(["a", "b", "c"]);
+    expect(playlistSelectionState(folder.children)).toBe("all");
+
+    // The middle state is the reason the box is three-state: two of three is neither
+    // "select this" nor "done".
+    selection.value = new Set(["a", "b"]);
+    expect(playlistSelectionState(folder.children)).toBe("some");
+
+    setPlaylistChildrenSelected(folder.children, false);
+    expect(selection.value.size).toBe(0);
+    expect(playlistSelectionState(folder.children)).toBe("none");
+  });
+
+  it("clears the folder without clearing a page candidate selected beside it", () => {
+    // "Clear this folder" is a question about the folder. Replacing the whole set would
+    // silently forgive an unrelated selection the user cannot see any more.
+    const folder = header(mediaRows.value)[0] as PlaylistGroup;
+    selection.value = new Set(["a", "b", "page"]);
+
+    setPlaylistChildrenSelected(folder.children, false);
+
+    expect([...selection.value]).toEqual(["page"]);
+  });
+
+  it("never claims an all-selected folder with nothing in it", () => {
+    expect(playlistSelectionState([])).toBe("none");
+  });
+});
+
+describe("the folder row", () => {
+  function header_(): HTMLElement {
+    currentVideos.value = [song("a", 3), song("b", 2)];
+    const folder = header(mediaRows.value)[0] as PlaylistGroup;
+    return render(h(PlaylistRow, { row: folder, active: false, onToggle: () => togglePlaylist(folder.id) }))
+      .container as HTMLElement;
+  }
+
+  it("shows the cover, the name and the count", () => {
+    const host = header_();
+    expect(host.querySelector("img")?.getAttribute("src")).toBe(FOLDER_COVER);
+    expect(host.textContent).toContain("My Mix");
+    expect(host.textContent).toContain("2 tracks");
+  });
+
+  it("reports itself collapsed and opens on a click anywhere in the row", async () => {
+    const host = header_();
+    const row = host.querySelector("li");
+    expect(row?.getAttribute("aria-expanded")).toBe("false");
+
+    await act(async () => row?.click());
+
+    expect(isPlaylistExpanded(FOLDER)).toBe(true);
+  });
+
+  it("selects every track from its checkbox without opening the folder", async () => {
+    // The two are different questions, and a checkbox click that also unfolded the folder
+    // would be an action the user could not undo from the same control.
+    const host = header_();
+    const box = host.querySelector('input[type="checkbox"]') as HTMLInputElement;
+
+    await act(async () => box.click());
+
+    expect([...selection.value]).toEqual(["a", "b"]);
+    expect(isPlaylistExpanded(FOLDER)).toBe(false);
+  });
+
+  it("shows a partially selected folder as indeterminate", async () => {
+    selection.value = new Set(["a"]);
+    const host = header_();
+    const box = host.querySelector('input[type="checkbox"]') as HTMLInputElement;
+
+    await act(async () => {});
+
+    // `indeterminate` is a DOM property with no attribute — the same reason `Checkbox`
+    // sets it in an effect.
+    expect(box.indeterminate).toBe(true);
+    expect(host.querySelector("li")?.getAttribute("aria-selected")).toBe("false");
   });
 });

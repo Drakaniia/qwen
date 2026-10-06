@@ -9,8 +9,14 @@ import { useListKeys } from "../../ui/useListKeys.js";
 import { focusPasteBox, PasteBox } from "../components/PasteBox.js";
 import { isSelected, notice, toggle } from "../state/app.js";
 import {
+  mediaRows,
+  playlistSelectionState,
+  setPlaylistChildrenSelected,
+  togglePlaylist,
+  type MediaRow,
+} from "../state/playlists.js";
+import {
   currentVideos,
-  displayedVideos,
   filterSummary,
   hasCandidates,
   scanStatus,
@@ -18,9 +24,11 @@ import {
   videoFilter,
   videoFormatFacet,
   videoSourceFacet,
+  type VideoCandidate,
 } from "../state/videos.js";
 import { rescanActiveTab } from "../popup_helpers.js";
 import { startVideoDownload } from "../popup_actions.js";
+import { PlaylistRow } from "./PlaylistRow.js";
 import { VideoRow } from "./VideoRow.js";
 
 const SELECT_CLASS =
@@ -130,30 +138,64 @@ function MediaBody({ searchRef }: { searchRef: Ref<HTMLInputElement> }) {
  * The listbox itself.
  *
  * `useListKeys` owns the whole of §10's key model, so this is mostly plumbing: the two
- * callbacks it needs are closures over the same `displayedVideos` array the rows render
- * from, so the index it reports is the index on screen. `idFor` is what makes
- * `aria-activedescendant` resolve — without it the hook would name
- * `qwin-list-row-<n>` and no element would carry that id.
+ * callbacks it needs are closures over the same `mediaRows` array the rows render from,
+ * so the index it reports is the index on screen. `idFor` is what makes
+ * `aria-activedescendant` resolve — without it the hook would name `qwin-list-row-<n>`
+ * and no element would carry that id.
+ *
+ * ## Playlist folders, in one flat listbox
+ *
+ * `mediaRows` (`state/playlists.ts`) has already folded each playlist's songs into one
+ * `{kind:"playlist"}` header, so this component's whole job is to branch on `row.kind`:
+ * a track downloads on `Enter`, a folder *opens* on `Enter`. A folder has no download
+ * button of its own — `Download all` in the sticky bar is the batch path, and a folder
+ * that downloaded itself would be a second answer to the same question.
+ *
+ * The children stay siblings in the one `<ul role="listbox">`. The obvious alternative —
+ * a nested `<ul role="group">` under the header — is what §10's `aria-activedescendant`
+ * cannot survive: the active row has to be owned by the element carrying the composite
+ * role, so rows inside a nested list are not reachable by arrow keys. So the indentation
+ * and its hairline come from a presentational wrapper around the run of `<li>`s instead,
+ * which keeps every row a direct-ish descendant the hook can still name.
  */
 function MediaList() {
-  const rows = displayedVideos.value;
+  const rows = mediaRows.value;
   const keys = useListKeys({
     count: rows.length,
-    // `Enter`: the same flow the row's own button runs, so there is one download path.
+    // `Enter`: a track downloads through the same flow its own button runs, so there is
+    // one download path; a folder opens.
     onDownload: (index) => {
       const row = rows[index];
-      if (row?.downloadable) {
-        void startVideoDownload(row.id);
+      if (!row) {
+        return;
+      }
+      if (row.kind === "playlist") {
+        togglePlaylist(row.id);
+        return;
+      }
+      if (row.video.downloadable) {
+        void startVideoDownload(row.video.id);
       }
     },
-    // `Space`: §6.9's selection is module state, so this is one call.
+    // `Space`: §6.9's selection is module state, so this is one call. On a folder it is
+    // the whole track list, and the checkbox on the header answers the same question.
     onToggleSelect: (index) => {
       const row = rows[index];
-      if (row) {
-        toggle(row.id);
+      if (!row) {
+        return;
       }
+      if (row.kind === "playlist") {
+        setPlaylistChildrenSelected(row.children, playlistSelectionState(row.children) !== "all");
+        return;
+      }
+      toggle(row.video.id);
     },
-    idFor: (index) => `qwin-media-${rows[index]?.id || index}`,
+    idFor: (index) => {
+      const row = rows[index];
+      // A folder is named by its position, not by its `playlistId` — the id is a URL, and
+      // `aria-activedescendant` needs a token, not a query string.
+      return row?.kind === "playlist" ? `qwin-media-folder-${index}` : `qwin-media-${row?.video.id || index}`;
+    },
   });
 
   return (
@@ -165,17 +207,96 @@ function MediaList() {
       aria-label="Detected media"
       class="flex flex-col gap-2 p-4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
     >
-      {rows.map((video, index) => (
-        <VideoRow
-          key={video.id}
-          video={video}
-          active={index === keys.activeIndex}
-          selected={isSelected(video.id)}
-          id={keys.rowId(index)}
-        />
-      ))}
+      {renderBlocks(rows).map((block) => {
+        if (block.kind === "children") {
+          return (
+            <div
+              key={`folder-${block.id}`}
+              // `role="presentation"` says this div is not a widget of its own — its
+              // children still are. `border-l` is the folder's rail; `pl-3` is the
+              // indent. Both on the wrapper rather than on each `<li>` because
+              // `VideoRow` renders its own row element and takes no class.
+              role="presentation"
+              class="flex flex-col gap-2 border-l border-separator pl-3"
+            >
+              {block.entries.map(({ index, video }) => (
+                <VideoRow
+                  key={video.id}
+                  video={video}
+                  active={index === keys.activeIndex}
+                  selected={isSelected(video.id)}
+                  id={keys.rowId(index)}
+                />
+              ))}
+            </div>
+          );
+        }
+        const row = rows[block.index];
+        if (row.kind === "playlist") {
+          return (
+            <PlaylistRow
+              key={row.id}
+              row={row}
+              active={block.index === keys.activeIndex}
+              id={keys.rowId(block.index)}
+              onToggle={() => togglePlaylist(row.id)}
+            />
+          );
+        }
+        return (
+          <VideoRow
+            key={row.video.id}
+            video={row.video}
+            active={block.index === keys.activeIndex}
+            selected={isSelected(row.video.id)}
+            id={keys.rowId(block.index)}
+          />
+        );
+      })}
     </ul>
   );
+}
+
+/**
+ * `mediaRows` back into render blocks.
+ *
+ * A folder's children are flat rows with no parent marker, so the one thing this has to
+ * recover is "which run of rows belongs to which open folder" — enough to emit them as
+ * one indented block instead of N separately-indented rows with a broken rail between
+ * each. Membership is read off `PlaylistGroup.children` rather than assumed from
+ * adjacency, because a sorted list can interleave a page candidate between two tracks.
+ */
+type RenderBlock =
+  | { kind: "row"; index: number }
+  | { kind: "children"; id: string; entries: { index: number; video: VideoCandidate }[] };
+
+function renderBlocks(rows: MediaRow[]): RenderBlock[] {
+  const owner = new Map<string, string>();
+  for (const row of rows) {
+    if (row.kind === "playlist") {
+      for (const child of row.children) {
+        owner.set(child.id, row.id);
+      }
+    }
+  }
+
+  const blocks: RenderBlock[] = [];
+  for (const [index, row] of rows.entries()) {
+    const last = blocks[blocks.length - 1];
+    if (row.kind !== "video") {
+      blocks.push({ kind: "row", index });
+      continue;
+    }
+    const folder = owner.get(row.video.id);
+    if (folder && last && last.kind === "children" && last.id === folder) {
+      last.entries.push({ index, video: row.video });
+      continue;
+    }
+    blocks.push(
+      folder ? { kind: "children", id: folder, entries: [{ index, video: row.video }] } : { kind: "row", index },
+    );
+  }
+  return blocks;
 }
 
 /**

@@ -9,51 +9,33 @@
  */
 import { computed, signal } from "@preact/signals";
 
+import type { DetectedVideo } from "../../shared/contracts.js";
 import type { StatusDotState } from "../../ui/Icon.js";
 import { DEFAULT_FILTER, facetValues, filterAndSort, sourceHostOf, type FilterState } from "../../ui/filter.js";
 
 export const AUDIO_FORMAT = "AUDIO";
 
 /**
- * The subset of a detected candidate the popup renders.
+ * The popup's view of a candidate **is** the wire record, plus the render-only extras.
  *
- * `width`/`height`/`duration`/`bitrate`/`tbr` were missing here and that is what
- * acceptance #4 was about (spec §3.1): `shared/contracts.ts`'s `DetectedVideo` carries
- * all five, the background sends them, and the render type refused them, so the
- * resolution ladder and the duration were unavailable *after* they had already crossed
- * the wire. `null` rather than `number` because the background's own record is
- * `number | null` and narrowing it here would put the cast back at every read.
+ * `DetectedVideo` already declares every field here — including the `width`/`height`/
+ * `duration`/`bitrate`/`tbr` set whose absence was acceptance #4 (spec §3.1) — so this
+ * extends it rather than restating it. A field missing from this type is a field the
+ * render layer silently drops *after* it has already crossed the wire, which is the
+ * failure mode a hand-maintained copy kept re-introducing.
  */
-export interface VideoCandidate {
-  id: string;
-  url?: string;
-  title?: string;
-  format?: string;
-  source?: string;
-  size?: string;
+export interface VideoCandidate extends DetectedVideo {
+  /**
+   * Narrower than the wire's `number | null`, deliberately: `Number(null)` is 0 at
+   * every read, and `ui/filter.ts`'s `FilterableItem` types it `number`, so widening it
+   * here would break the `filterAndSort` call for no behavioural difference.
+   */
   sizeBytes?: number;
-  width?: number | null;
-  height?: number | null;
-  /** Seconds. Copied to `durationSeconds` by {@link displayedVideos} for `ui/filter.ts`. */
-  duration?: number | null;
-  bitrate?: number | null;
-  tbr?: number | null;
-  thumbnailUrl?: string;
+  /** How many sibling renditions folded into this row (`shared/video_sorting.ts`). */
+  variantCount?: number;
+  /** Site/poster art shapes `DetectedVideo` does not carry; only `ui/format.ts` reads them. */
   poster?: string;
   image?: string;
-  /** The page the video was found on — input to site-derived art. */
-  pageUrl?: string;
-  /**
-   * The content script's ordered ladder. See `ui/format.ts:videoThumbnailCandidates`,
-   * which builds one from `thumbnailUrl` + `pageUrl` when this is absent.
-   */
-  thumbnailCandidates?: string[];
-  downloadable?: boolean;
-  variantCount?: number;
-  hasSubtitles?: boolean;
-  subtitleLanguages?: number;
-  /** Set by `shared/video_sorting.js` `buildGroupedVideo`; the popup's recency key. */
-  lastSeen?: number;
   /** Stamped from `lastSeen` by {@link displayedVideos} — see `ui/filter.ts` `recencyOf`. */
   updatedAt?: number;
 }
