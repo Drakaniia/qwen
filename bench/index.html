@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Qwin — Media list benchmark</title>
+    <script>
+      // `shared/browser_api.ts` reads `globalThis.browser ?? globalThis.chrome` at import
+      // time and dereferences `.tabs`/`.runtime` right after, so a bare page throws on the
+      // first import. An empty object is enough: every wrapper guards its own namespace,
+      // and the benchmark never sends a message.
+      globalThis.chrome = globalThis.chrome || {};
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

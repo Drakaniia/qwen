@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "noUnusedLocals": true
   },
-  "include": ["src/**/*", "tests/js/**/*", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src/**/*", "tests/js/**/*", "bench/**/*", "vite.config.ts", "vitest.config.ts"]
 }

@@ -444,9 +444,39 @@ Chrome:
   contain URLs, so it must never be committed). It is not shipped to `dist/`, and it is
   rotated to its newest 2000 lines at ~1 MB by `log_utils.maybe_rotate`. `debug.log` is
   dead — its writer was deleted in `f38e6de` — do not document it as a live log.
-- The video list is **not virtualized**, deliberately. No candidate-count instrumentation has
-  ever been collected, so the ceiling is unmeasured; see the `ponytail:` note in
-  `src/popup/views/VideoRow.tsx`.
+- The video list is **not virtualized** — and the ceiling is no longer unmeasured. `bench/`
+  (a second Vite config, invisible to `npm run build` and to vitest) mounts the real
+  `MediaView` inside the popup's own frame and times a playlist expansion:
+
+  | tracks | expand: DOM build (median, spread) | then forced layout | pre-select re-render | DOM nodes | `<img>` |
+  | ------ | --------------------------------- | ------------------ | -------------------- | --------- | ------- |
+  | 50     | 24 ms (18–31)                     | 9 ms               | 14 ms                | 1,051     | 51      |
+  | 100    | 58 ms (49–66)                     | 30 ms              | 25 ms                | 2,051     | 101     |
+  | 250    | 114 ms (96–150)                   | 84 ms              | 64 ms                | 5,051     | 251     |
+  | 500    | 202 ms (178–271)                  | 184 ms             | 76–107 ms            | 10,051    | 501     |
+
+  The two time columns are sequential halves of one blocking commit — build the nodes,
+  then lay them out — so the cost the user waits on is their sum: **~380 ms for a 500-track
+  folder**, ~200 ms for 250, ~90 ms for 100. Every measurement is the median of 3–5 samples
+  on a fresh page, because a single sample swings by 2×.
+
+  Re-measure with `npx vite build --config bench/vite.config.ts && npx vite preview --config
+  bench/vite.config.ts`, then `await qwinBench.samples(500)` in the page. Two things must
+  not be lost: **measure the build, never the dev server** — the unminified dev graph
+  reported 1657 ms where the built one reported 202 ms, an 8× overstatement — and **take
+  several samples on a fresh page**, because a session's later reps drift upward as the
+  previous trees become garbage. Both caveats are written into `bench/main.tsx`.
+
+  **Decision: the list needs virtualization for large playlists, and it does not have it
+  yet.** One frame is 16.7 ms, so ~50 rows is already at the limit, ~100 is a dropped frame
+  and ~250 is a visible hitch — and the sum above is all layout-bound work, which is
+  precisely what windowing removes. Do not reach for a fixed-height `translateY` window: a
+  media row is 16:9-plus-text and a playlist header is a 48px tile, so the window has to
+  measure rows. That work belongs in `MediaView`'s listbox rather than in the rows — see
+  the `ponytail:` note in `src/popup/views/VideoRow.tsx`.
+- The numbers above were taken in the Preview panel's Chromium (Electron 33 / Chrome 130,
+  12 cores, headed, dpr 1) — **not** in Yandex. The extension's floor is 148, so treat them
+  as an order of magnitude, not as the target browser's p99.
 - `curl_cffi` TLS impersonation is still live _inside_ yt-dlp
   (`--extractor-args generic:impersonate`, `yt_dlp_command.py`), as the
   `yt-dlp[default,curl-cffi]` extra. It is not a download backend, has no probe, and is not a
