@@ -72,6 +72,14 @@ function glyph(host: Element): Element | null {
   return host.querySelector(".aspect-video svg");
 }
 
+/**
+ * The row's own Download button. Label-matched rather than picked by position, so an
+ * audio row's "Extract audio" and a subtitles row's "CC" toggle cannot satisfy it.
+ */
+function downloadButton(host: Element): HTMLButtonElement | undefined {
+  return [...host.querySelectorAll("button")].find((b) => (b.textContent || "").includes("Download"));
+}
+
 beforeEach(() => {
   document.body.innerHTML = "";
   // A row's grab is keyed on the active tab (the media list is tab-scoped), so every
@@ -483,14 +491,6 @@ describe("VideoRow: progress replaces the button in place (spec §6.6)", () => {
 });
 
 describe("VideoRow: a selection takes the buttons over (spec §6.9, D21)", () => {
-  /**
-   * The row's own Download button. Label-matched rather than picked by position, so an
-   * audio row's "Extract audio" and a subtitles row's "CC" toggle cannot satisfy it.
-   */
-  function downloadButton(host: Element): HTMLButtonElement | undefined {
-    return [...host.querySelectorAll("button")].find((b) => (b.textContent || "").includes("Download"));
-  }
-
   it("draws every downloadable row's button while nothing is selected", () => {
     expect(selectedCount.value).toBe(0);
     expect(downloadButton(row({ id: "a" }))).toBeDefined();
@@ -544,6 +544,52 @@ describe("VideoRow: a selection takes the buttons over (spec §6.9, D21)", () =>
 
     expect(host.querySelector("[role=progressbar]")).not.toBeNull();
     expect(text(host)).toContain("62%");
+    expect(downloadButton(host)).toBeUndefined();
+  });
+});
+
+describe("VideoRow: a folder track keeps its own Download action (spec §6.9)", () => {
+  const PLAYLIST = "https://music.youtube.com/playlist?list=PLY5CT0TRwHPt";
+
+  /** A track row as `MediaView` renders it under an open folder header. */
+  function track(video: Partial<VideoCandidate> = {}): HTMLElement {
+    return render(
+      <VideoRow
+        video={{ ...BASE, playlistId: PLAYLIST, source: "playlist", ...video } as VideoCandidate}
+        active={false}
+        selected={false}
+        inFolder
+      />,
+    ).container as HTMLElement;
+  }
+
+  it("keeps the button while the paste's own selection is active", async () => {
+    // The reported gap: `resolvePastedUrl` pre-selects every track it added, so the bulk
+    // rule hid the button on every row of the folder for as long as that selection stood
+    // — "Download all" on the bar was the only way to take a single track out of it.
+    const host = track({ id: "a" });
+    await act(async () => select(["a", "b"]));
+
+    expect(selectedCount.value).toBe(2);
+    expect(downloadButton(host)).toBeDefined();
+  });
+
+  it("downloads just that track on click, without touching the selection", async () => {
+    const host = track({ id: "solo" });
+    await act(async () => select(["solo", "other"]));
+
+    await act(async () => downloadButton(host)?.click());
+
+    expect(startVideoDownload).toHaveBeenCalledWith("solo");
+    expect(selectedCount.value).toBe(2);
+  });
+
+  it("still swaps to the running job's meter rather than adding a second control", async () => {
+    currentDownloads.value = [{ id: "j1", videoId: "a", status: "running", percent: 62 }] as never;
+    const host = track({ id: "a" });
+    await act(async () => select(["a"]));
+
+    expect(host.querySelector("[role=progressbar]")).not.toBeNull();
     expect(downloadButton(host)).toBeUndefined();
   });
 });

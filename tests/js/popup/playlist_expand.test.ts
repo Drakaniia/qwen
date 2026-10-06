@@ -12,11 +12,16 @@ vi.mock("../../../src/shared/popup_api.js", () => ({
   tabsQuery: vi.fn(async () => [{ id: 7, url: "https://open.spotify.com/playlist/abc123" }]),
   getVideos: vi.fn(async () => ({ ok: true, videos: [], downloads: [], settings: {} })),
   getDownloadSyncHistory: vi.fn(async () => ({ ok: true, history: [], syncInfo: {} })),
+  // A rendered `MediaView`'s rows ask for a stream frame when their ladder is empty and a
+  // tab is active (hls-thumbnail-spec.md H3). The reply is irrelevant here; the row must
+  // simply not call an undefined function.
+  grabThumbnailFrame: vi.fn(async () => ({ ok: true })),
 }));
 
 import * as PopupApi from "../../../src/shared/popup_api.js";
-import { hideQualityDialog, notice, qualityDialog, viewMode } from "../../../src/popup/state/app.js";
+import { activeTabId, hideQualityDialog, notice, qualityDialog, viewMode } from "../../../src/popup/state/app.js";
 import { resolvePastedUrl } from "../../../src/popup/popup_url_events.js";
+import { MediaView } from "../../../src/popup/views/MediaView.js";
 import { batchDownloadSelection } from "../../../src/popup/views/PopupFrame.js";
 import { PlaylistRow } from "../../../src/popup/views/PlaylistRow.js";
 import { DEFAULT_FILTER } from "../../../src/ui/filter.js";
@@ -446,6 +451,39 @@ describe("a YouTube playlist paste reaches the folder intact", () => {
     expect(playlistSelectionState(folder.children)).toBe("all");
     setPlaylistChildrenSelected(folder.children, false);
     expect(selection.value.size).toBe(0);
+  });
+});
+
+describe("MediaView: an expanded folder's tracks keep their own action", () => {
+  it("leaves each track downloadable while the paste's blanket selection is active", async () => {
+    // This is the *wiring*, not the rule: `VideoRow` keeps its own button inside a folder
+    // only because `MediaView` passes `inFolder` for the rows it emits under a header. A
+    // missing prop is a silent regression of the whole feature, so it is asserted through
+    // the composed list rather than on the component's own prop list.
+    activeTabId.value = 7;
+    // The page candidate sorts last (`lastSeen: 1`), so the folder's three tracks stay one
+    // consecutive run and the page row is the control case beside them.
+    currentVideos.value = [song("t0", 4), song("t1", 3), song("t2", 2), song("page", 1, null)];
+    togglePlaylist(FOLDER);
+    selection.value = new Set(["t0", "t1", "t2"]);
+
+    // `h(...)`, not JSX: this file is `.ts`, and renaming it would churn every import.
+    const host = render(h(MediaView, { searchRef: { current: null } })).container as HTMLElement;
+    await act(async () => {});
+
+    const options = [...host.querySelectorAll('li[role="option"]')];
+    const withButton = options.filter((row) =>
+      [...row.querySelectorAll("button")].some((button) => (button.textContent || "").includes("Download")),
+    );
+
+    // The header plus four rows.
+    expect(options).toHaveLength(5);
+    // The three tracks keep their button; the page row in the same list still yields to
+    // the bar, which is the rule this feature carves its exception out of.
+    expect(withButton).toHaveLength(3);
+    for (const label of ["Track t0", "Track t1", "Track t2"]) {
+      expect(withButton.some((row) => (row.textContent || "").includes(label))).toBe(true);
+    }
   });
 });
 

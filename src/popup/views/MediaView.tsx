@@ -226,6 +226,9 @@ function MediaList() {
                   active={index === keys.activeIndex}
                   selected={isSelected(video.id)}
                   id={keys.rowId(index)}
+                  // A folder's track keeps its own Download button even while the
+                  // paste's pre-selection is active — see the `bulk` note in `VideoRow`.
+                  inFolder
                 />
               ))}
             </div>

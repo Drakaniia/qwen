@@ -126,6 +126,12 @@ export interface VideoRowProps {
    * candidate. Pass `useListKeys`'s `rowId(index)`.
    */
   id?: string;
+  /**
+   * This row is a track inside an open playlist folder. The one thing it changes is the
+   * bulk rule below: a folder's tracks keep their own Download button while a selection
+   * is active. `MediaView` passes it for the rows it emits under a folder header.
+   */
+  inFolder?: boolean;
 }
 
 /**
@@ -151,12 +157,15 @@ export interface VideoRowProps {
  * which is what `applyJobUpdate`'s in-place merge already assumes.
  *
  * ponytail: no virtualization (spec §13). Every surviving candidate renders a row. The
- * ceiling behind that is still unmeasured — see §13: the p99 has never been collected,
- * and this redesign is not the place to collect it. Reverse it at p99 >= ~50 rows with
- * `@tanstack/virtual` (~5 KB, and it handles the variable row height a
- * thumbnail-bearing row has).
+ * ceiling §13 left unmeasured is now measured — `bench/` mounts this row inside the
+ * popup's own frame, and the method, the numbers and the decision are recorded in
+ * `AGENTS.md`. In short: expanding a 500-track folder costs ~200 ms, of which ~180 ms is
+ * layout, and it is a visible hitch from ~250 rows up. Nothing here is virtualized: the
+ * fix is a windowed listbox in `MediaView`, not a change to this row, and it has to cope
+ * with rows of two different heights (a track's tile is 48px, this row's is 16:9) — which
+ * is why a fixed `translateY` window is not the cheap answer it looks like.
  */
-export function VideoRow({ video, active, selected, id }: VideoRowProps) {
+export function VideoRow({ video, active, selected, id, inFolder = false }: VideoRowProps) {
   const [thumbIndex, setThumbIndex] = useState(0);
   const [subtitlesOpen, setSubtitlesOpen] = useState(false);
 
@@ -227,7 +236,16 @@ export function VideoRow({ video, active, selected, id }: VideoRowProps) {
   // anything, and a row of competing buttons would contradict it. The job branch below
   // wins over this one: a download in flight keeps reporting itself. Read during render
   // so the `.value` subscription is what re-renders the row when the count changes.
-  const bulk = selectedCount.value > 0;
+  //
+  // ## A track in a folder is the one exception (`inFolder`)
+  //
+  // A pasted playlist pre-selects every track it added (`popup_url_events.ts`), so under
+  // this rule a folder's rows would *all* lose their button for as long as the paste's
+  // own selection stood: the bar's "Download all" would be the only way to start
+  // anything, and taking one track out of sixty-one would mean clearing the selection
+  // first. "Just this one" is what an expanded folder is for, so its rows keep their
+  // button; the batch path is still one click away on the bar.
+  const bulk = selectedCount.value > 0 && !inFolder;
 
   const meterSlot = "flex h-7 min-w-0 items-center";
   const action = !video.downloadable ? null : job ? (
