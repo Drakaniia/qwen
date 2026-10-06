@@ -146,3 +146,8 @@ module, so those two must stay self-contained.
 
 Download only content you have the right to download. You are responsible for complying with
 applicable law and with the terms of the sites you visit.
+
+Qwin's own code is GPL-3.0-only ([LICENSE](LICENSE)). The external tools it shells out to —
+yt-dlp, ffmpeg, aria2c, N_m3u8DL-RE, Streamlink — are free and open-source under their own
+licenses and are not redistributed here; see
+[Download backends](docs/guides/downloaders.md#licenses).

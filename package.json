@@ -1,6 +1,7 @@
 {
   "name": "qwin-video-downloader",
   "private": true,
+  "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
     "setup": "C:\\Progra~1\\Git\\bin\\bash.exe scripts/install.sh",

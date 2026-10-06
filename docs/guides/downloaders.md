@@ -47,6 +47,27 @@ winget install --id Gyan.FFmpeg -e        # ffmpeg binary
 `yt-dlp[default]` pulls `brotli`, `certifi`, `websockets` and `mutagen`. Do not install
 bare `yt-dlp` — several sites now require brotli and websockets.
 
+### Licenses
+
+Every tool above is free and open-source, fetched from its upstream source (PyPI, the
+`Gyan.FFmpeg` winget package, or the project's own GitHub releases — see `scripts/install.sh`).
+None of them is vendored into this repo and none carries a non-commercial clause, but they are
+separate works under their own terms, and Qwin ships **no source for them**:
+
+| Tool           | License                                           |
+| -------------- | ------------------------------------------------- |
+| yt-dlp         | Unlicense (public domain)                         |
+| ffmpeg         | LGPL v2.1+, or GPL when built with `--enable-gpl` |
+| aria2          | MIT                                               |
+| N_m3u8DL-RE    | MIT                                               |
+| Streamlink     | BSD-2-Clause                                      |
+| imageio-ffmpeg | BSD-2-Clause                                      |
+| curl_cffi      | MIT                                               |
+| certifi        | MPL-2.0                                           |
+
+The bundled extension itself is GPL-3.0-only (see `LICENSE`), which covers Qwin's own code
+only. Read a tool's license before redistributing its binary.
+
 ## How a backend is chosen
 
 `run_download` builds a list of probes and runs them all **in parallel**. Nothing is cancelled
