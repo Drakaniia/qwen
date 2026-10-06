@@ -13,6 +13,8 @@ from process_control import creation_flags
 from yt_dlp_command import (
     build_flat_playlist_command,
     build_formats_command,
+    build_playlist_info_command,
+    is_youtube_collection_url,
     summarize_audio_formats,
     summarize_formats,
 )
@@ -124,6 +126,83 @@ def run_format_list(
         send({"type": "formats", "id": request_id, **summarize_formats(info)})
 
 
+# The ladder is capped because every extra URL rides along on each row's synced history
+# entry (see `background/download/native.ts` on the ~100KB budget).
+MAX_PLAYLIST_THUMBNAILS = 3
+
+
+def _entry_artwork(entry):
+    """Thumbnail ladder for one playlist entry: `thumbnail` first, then `thumbnails`.
+
+    https/http only. Never a `data:` URL — an ffmpeg frame grab arrives as
+    `data:image/jpeg;base64,…` (hls-thumbnail-spec.md §5.2/§11) and one such blob per row
+    destroys the synced-history budget on its own.
+    """
+    raw = entry.get("thumbnail")
+    urls = [raw] if isinstance(raw, str) else []
+    for thumb in entry.get("thumbnails") or []:
+        if isinstance(thumb, dict) and thumb.get("url"):
+            urls.append(str(thumb["url"]))
+
+    ladder = []
+    for url in urls:
+        url = url.strip()
+        if not url.lower().startswith(("https://", "http://")) or url in ladder:
+            continue
+        ladder.append(url)
+        if len(ladder) == MAX_PLAYLIST_THUMBNAILS:
+            break
+    return ladder
+
+
+# Short, because the probe is decoration: the enumeration it decorates has already
+# succeeded by the time it runs, and a slow cover must never turn a working answer
+# into a failure.
+PLAYLIST_ARTWORK_TIMEOUT_SECONDS = 15
+
+
+def _playlist_cover(command):
+    """The playlist's own cover URL, or "" — best effort, never an error.
+
+    `--flat-playlist` describes the ENTRIES of a playlist and carries no artwork for
+    the collection itself, so the extension's folder has nothing to show without this
+    probe. Every failure mode collapses to "": a non-zero exit, unparseable output, a
+    timeout, a missing yt-dlp. The caller has a complete enumeration in hand at this
+    point and one more subprocess is not worth turning into a user-visible error.
+
+    ponytail: one extra yt-dlp subprocess on a user-visible path, spent purely on a
+    folder cover. Delete `_playlist_cover` and the `build_playlist_info_command`
+    partial if the spawn is ever felt — the folder header falls back to a music glyph
+    and nothing else changes.
+    """
+    try:
+        completed = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=PLAYLIST_ARTWORK_TIMEOUT_SECONDS,
+            creationflags=creation_flags(),
+        )
+    except (subprocess.SubprocessError, OSError, ValueError):
+        return ""
+
+    if completed.returncode != 0:
+        return ""
+    try:
+        info = json.loads(completed.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    if not isinstance(info, dict):
+        return ""
+
+    ladder = _entry_artwork(info)
+    return ladder[0] if ladder else ""
+
+
 @register_handler("enumeratePlaylist")
 def run_playlist_enumeration(
     message,
@@ -198,6 +277,23 @@ def run_playlist_enumeration(
             details = (completed.stderr or completed.stdout or "").strip()
             if "CERTIFICATE_VERIFY_FAILED" in details:
                 completed = execute_yt_dlp(nocheckcertificate=True)
+        # Only once the enumeration has succeeded, and only while the cookie and header
+        # temp files still exist — a probe that needs them cannot run after the `finally`
+        # below has deleted them.
+        playlist_thumbnail_url = ""
+        if completed.returncode == 0:
+            playlist_thumbnail_url = _playlist_cover(
+                build_playlist_info_command(
+                    url=url,
+                    referer=message.get("pageUrl"),
+                    user_agent=message.get("userAgent"),
+                    request_headers=request_headers,
+                    cookies_file=cookies_file,
+                    yt_dlp_command=yt_dlp_command_resolver(),
+                    ffmpeg_location=ffmpeg_location_resolver(),
+                    headers_config_path=headers_config_path,
+                )
+            )
     except subprocess.TimeoutExpired as exc:
         raise HostError("Timed out while enumerating playlist items.") from exc
     except OSError as exc:
@@ -234,12 +330,18 @@ def run_playlist_enumeration(
         if not item_id and not item_url:
             continue
 
+        artwork = _entry_artwork(entry)
+
         items.append(
             {
                 "id": item_id,
                 "url": item_url,
                 "title": item_title or f"Item {len(items) + 1}",
                 "duration": int(item_duration) if item_duration else 0,
+                # Artwork for the expanded rows. The head of the ladder is also the
+                # canonical `thumbnailUrl`, so a consumer that reads one field still gets art.
+                "thumbnailUrl": artwork[0] if artwork else "",
+                "thumbnailCandidates": artwork,
             }
         )
 
@@ -250,12 +352,20 @@ def run_playlist_enumeration(
             "ok": True,
             "items": items,
             "playlistTitle": playlist_title,
+            # The collection's own cover, for the popup's folder header. Absent art stays
+            # `""` so the extension's own glyph takes the slot — see `_playlist_cover`.
+            "playlistThumbnailUrl": playlist_thumbnail_url,
             "totalItems": len(items),
             # Whether this was REALLY a collection. `--flat-playlist` answers an ordinary
             # video URL with exactly one entry, which the popup would otherwise read as a
             # one-item playlist — losing the quality sheet for every plain paste. yt-dlp
             # stamps `playlist_title` on a real playlist and leaves it empty for a single
-            # video, so that plus the item count is the whole signal.
-            "isCollection": bool(playlist_title) or len(items) > 1,
+            # video, so that plus the item count is the whole signal…
+            # …except on YouTube Music, where a `playlist?list=` paste returns flat entries
+            # with no `playlist_title` at all and a one-track playlist then reads as a single
+            # video. There the URL shape is the stronger signal, so it promotes the answer:
+            # `is_youtube_collection_url` excludes `/watch`, so a plain video paste still
+            # falls through to the quality sheet.
+            "isCollection": bool(playlist_title) or len(items) > 1 or is_youtube_collection_url(url),
         }
     )

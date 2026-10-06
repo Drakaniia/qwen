@@ -122,6 +122,72 @@ def test_collection_with_null_artists_does_not_crash():
     assert [t["artist"] for t in result["tracks"]] == ["Unknown Artist", "Unknown Artist"]
 
 
+def _entity_page(entity):
+    """An embed page carrying one collection entity, built rather than brace-counted."""
+    payload = {"props": {"pageProps": {"state": {"data": {"entity": entity}}}}}
+    return '<script id="__NEXT_DATA__" type="application/json">' + json.dumps(payload) + "</script>"
+
+
+def test_collection_tracks_carry_the_collection_cover_art():
+    """A collection embed page has ONE album image, so every track shares it.
+
+    It was dropped in `_normalize_collection_track`, which left the popup deriving
+    the *playlist* page's art — or nothing — for every row.
+    """
+    page = _entity_page(
+        {
+            "name": "Cover Mix",
+            "visualIdentity": {"image": [{"url": "https://i.scdn.co/image/ab67616d"}]},
+            "trackList": [
+                {"uri": "spotify:track:3ssTtSdEIKuuTC8BV1OaTg", "title": "All of the Stars", "subtitle": "Hayd"},
+                {"uri": "spotify:track:2luM65sD7j1L4aOyhskNBY", "title": "Windowsill", "subtitle": "Sky McCreery"},
+            ],
+        }
+    )
+    with patch.object(meta.urllib.request, "urlopen", return_value=_CollectionResp(page)):
+        result = meta.fetch_spotify_collection_tracks("cover", "playlist")
+    for track in result["tracks"]:
+        assert track["thumbnailUrl"] == "https://i.scdn.co/image/ab67616d"
+        assert track["thumbnailCandidates"] == ["https://i.scdn.co/image/ab67616d"]
+
+
+def test_collection_track_ladder_is_capped_and_http_only():
+    """`data:` art would be a base64 JPEG per row; the synced-history budget is ~100KB."""
+    page = _entity_page(
+        {
+            "name": "Mixed",
+            "album": {
+                "images": [
+                    {"url": "data:image/jpeg;base64,AAA"},
+                    {"url": "https://i.scdn.co/image/1"},
+                    {"url": "https://i.scdn.co/image/2"},
+                    {"url": "https://i.scdn.co/image/3"},
+                    {"url": "https://i.scdn.co/image/4"},
+                ]
+            },
+            "trackList": [{"uri": "spotify:track:3ssTtSdEIKuuTC8BV1OaTg", "title": "One", "subtitle": "A"}],
+        }
+    )
+    with patch.object(meta.urllib.request, "urlopen", return_value=_CollectionResp(page)):
+        result = meta.fetch_spotify_collection_tracks("mixed", "playlist")
+    track = result["tracks"][0]
+    assert track["thumbnailUrl"] == "https://i.scdn.co/image/1"
+    assert track["thumbnailCandidates"] == [
+        "https://i.scdn.co/image/1",
+        "https://i.scdn.co/image/2",
+        "https://i.scdn.co/image/3",
+    ]
+
+
+def test_collection_without_art_emits_no_thumbnail_fields():
+    """Absent, not empty: the popup's site-derived ladder is the fallback."""
+    with patch.object(meta.urllib.request, "urlopen", return_value=_Resp()):
+        result = meta.fetch_spotify_collection_tracks("abc123", "playlist")
+    for track in result["tracks"]:
+        assert "thumbnailUrl" not in track
+        assert "thumbnailCandidates" not in track
+
+
 def test_track_metadata_rejects_non_dict_entity():
     from native_protocol import HostError
     import pytest

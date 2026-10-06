@@ -119,7 +119,10 @@ def resolve_spotify_formats(url, yt_dlp_command=None, ffmpeg_location=None):
 
 
 def resolve_spotify_playlist(url):
-    """Playlist/album URL → {playlistTitle, items, totalItems, truncated} for the popup's expand-to-rows flow."""
+    """Playlist/album URL → the popup's expand-to-rows dict.
+
+    ``{playlistTitle, items, totalItems, truncated, playlistThumbnailUrl}``.
+    """
     from spotify_metadata import fetch_spotify_collection_tracks
 
     content_type, collection_id = parse_spotify_url(url)
@@ -139,4 +142,7 @@ def resolve_spotify_playlist(url):
         # The REAL total, not the capped length — the popup prints "the first 100 of 300".
         "totalItems": collection["totalItems"],
         "truncated": collection["truncated"],
+        # The collection's own cover, which the popup renders as the playlist folder's
+        # image — the rows carry their own art, the folder carries this one.
+        "playlistThumbnailUrl": collection.get("thumbnail", ""),
     }

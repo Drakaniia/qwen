@@ -9,7 +9,9 @@ Public API:
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 from native_protocol import HostError
 
@@ -81,13 +83,7 @@ def fetch_spotify_track_metadata(track_id):
     # them, and `get(key, default)` only substitutes the default for a MISSING key.
     artists = [a["name"] for a in entity.get("artists") or []]
     album_data = entity.get("album") or {}
-    album_images = album_data.get("images", [])
-    visual_images = (entity.get("visualIdentity") or {}).get("image", [])
-    cover_url = ""
-    if album_images:
-        cover_url = album_images[0].get("url", "")
-    elif visual_images:
-        cover_url = (visual_images[0] if isinstance(visual_images, list) else visual_images).get("url", "")
+    artwork = _artwork_urls(entity)
 
     return {
         "id": entity.get("id", track_id),
@@ -97,15 +93,46 @@ def fetch_spotify_track_metadata(track_id):
         "album": album_data.get("name", "") or "",
         "duration": int(entity.get("duration", 0)) / 1000.0,
         "explicit": bool(entity.get("isExplicit", False)),
-        "cover_url": cover_url,
+        "cover_url": artwork[0] if artwork else "",
         "release_date": entity.get("releaseDate", {}).get("isoString", ""),
     }
+
+
+THUMBNAIL_CANDIDATE_LIMIT = 3
+
+
+def _artwork_urls(entity):
+    """Every usable cover-art URL on a Spotify entity, best first, capped.
+
+    The shapes are the ones `fetch_spotify_track_metadata` already knew: a track carries
+    `album.images`, while a collection embed page carries the same art under
+    `visualIdentity.image`. One helper for both means a shape that drifts only has to be
+    fixed once.
+
+    `data:` is dropped on purpose. These URLs ride into the popup's ladder, into every job
+    record and into synced history, where a base64 JPEG per row would blow the ~100KB
+    budget — see the note in `background/download/native.ts`.
+    """
+    images = list((entity.get("album") or {}).get("images") or [])
+    visual = (entity.get("visualIdentity") or {}).get("image") or []
+    images += visual if isinstance(visual, list) else [visual]
+
+    urls = []
+    for image in images:
+        if not isinstance(image, dict):
+            continue
+        url = str(image.get("url") or "")
+        if (url.startswith("http://") or url.startswith("https://")) and url not in urls:
+            urls.append(url)
+        if len(urls) >= THUMBNAIL_CANDIDATE_LIMIT:
+            break
+    return urls
 
 
 PLAYLIST_ITEM_LIMIT = 100
 
 
-def _normalize_collection_track(entry, index):
+def _normalize_collection_track(entry, index, artwork):
     artists = [a.get("name", "") for a in entry.get("artists") or [] if isinstance(a, dict)]
     artist = ", ".join(a for a in artists if a) or entry.get("subtitle") or "Unknown Artist"
     title = entry.get("name") or entry.get("title") or f"Track {index + 1}"
@@ -115,7 +142,89 @@ def _normalize_collection_track(entry, index):
         if uri_match:
             track_id = uri_match.group(1)
     url = f"https://open.spotify.com/track/{track_id}" if track_id else ""
-    return {"artist": artist, "title": title, "spotifyUrl": url, "url": url}
+    track = {"artist": artist, "title": title, "spotifyUrl": url, "url": url}
+    # A collection embed page has ONE image, so every track in it shares the same art.
+    # Camel-cased to the UI's own field names (`shared/contracts.ts`), NOT to this module's
+    # `cover_url`: `playlist_helpers.enumeratePlaylistVideos` reads these two off the wire
+    # reply and hands them to the detector, so a snake_case key here would be dropped again.
+    if artwork:
+        track["thumbnailUrl"] = artwork[0]
+        track["thumbnailCandidates"] = list(artwork)
+    return track
+
+
+def fetch_track_cover(track_id, timeout=8):
+    """One track's own album art, or "" — Spotify's oEmbed endpoint.
+
+    The collection embed page carries ONE image for the whole playlist, so every track
+    extracted from it shares that art. This is the only per-track source available without
+    credentials, and it is a small JSON GET.
+    """
+    target = urllib.parse.quote(f"https://open.spotify.com/track/{track_id}", safe="")
+    req = urllib.request.Request(
+        f"https://open.spotify.com/oembed?url={target}",
+        headers={"User-Agent": _YOUR_USER_AGENT},
+    )
+    # Never raise. A failed lookup must degrade to the collection art already on the track,
+    # not fail the enumeration the user is waiting on. `json.JSONDecodeError` is a
+    # `ValueError`, so the decode is covered by the same arm.
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, json.JSONDecodeError):
+        return ""
+    cover = payload.get("thumbnail_url") if isinstance(payload, dict) else ""
+    # These keys ride into the popup, every job record and synced history, where a base64
+    # JPEG per row would blow the ~100KB budget — same rule as `_artwork_urls`.
+    if isinstance(cover, str) and cover.startswith(("http://", "https://")):
+        return cover
+    return ""
+
+
+def _track_id_of(track):
+    """A track's Spotify id, or "" — `_normalize_collection_track`'s URL is where it survives.
+
+    It is never stored as a plain `id`, so the id has to be sliced back off the URL rather
+    than re-requested from the page.
+    """
+    explicit = str(track.get("id") or "")
+    if explicit:
+        return explicit
+    for key in ("url", "spotifyUrl"):
+        match = re.search(r"open\.spotify\.com/track/([A-Za-z0-9]+)", str(track.get(key) or ""))
+        if match:
+            return match.group(1)
+    return ""
+
+
+def apply_track_covers(tracks, fetch=fetch_track_cover, workers=8):
+    """Give each track its own cover where obtainable, leaving the shared fallback otherwise.
+
+    Mutates in place and returns nothing. A track the fetcher cannot answer for is left
+    exactly as `_normalize_collection_track` made it — the collection art is a better answer
+    than none, so this only ever upgrades a row, never blanks one.
+    """
+    jobs = [(t, _track_id_of(t)) for t in tracks]
+    jobs = [(track, track_id) for track, track_id in jobs if track_id]
+    if not jobs:
+        return
+
+    def run(job):
+        track, track_id = job
+        cover = fetch(track_id) or ""
+        if cover:
+            # Same two camelCase keys, same reason (see `_normalize_collection_track`).
+            track["thumbnailUrl"] = cover
+            track["thumbnailCandidates"] = [cover]
+
+    # ponytail: 8 workers, no retry, no memo — add caching if the same playlist gets pasted
+    # repeatedly, or drop the pool for a serial loop under load.
+    if len(jobs) < 10:
+        for job in jobs:
+            run(job)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(pool.map(run, jobs))
 
 
 def _extract_track_list(entity):
@@ -139,7 +248,7 @@ def _extract_track_list(entity):
 def fetch_spotify_collection_tracks(collection_id, kind):
     """Fetch one collection's first PLAYLIST_ITEM_LIMIT tracks.
 
-    Returns ``{title, tracks, totalItems, truncated}``. ``totalItems`` and ``truncated``
+    Returns ``{title, tracks, totalItems, truncated, thumbnail}``. ``totalItems`` and ``truncated``
     describe the WHOLE collection, not the capped list, so the popup can say "the first
     100 of 300" (spec §4) — which is only knowable while ``raw_items`` is still in scope.
     """
@@ -164,13 +273,20 @@ def fetch_spotify_collection_tracks(collection_id, kind):
         raise HostError("Failed to parse Spotify metadata: the page did not describe a collection.")
     raw_items, title = _extract_track_list(entity)
     usable = raw_items[:PLAYLIST_ITEM_LIMIT]
-    tracks = [_normalize_collection_track(e, i) for i, e in enumerate(usable) if isinstance(e, dict)]
+    artwork = _artwork_urls(entity)
+    tracks = [_normalize_collection_track(e, i, artwork) for i, e in enumerate(usable) if isinstance(e, dict)]
     if not tracks:
         raise HostError("This Spotify playlist has no playable tracks.")
+    # Last, so it overwrites only the shared fallback art — the popup's rows want each
+    # track's own cover, and the playlist's is one click away on the folder itself.
+    apply_track_covers(tracks)
     return {
         "title": title,
         "tracks": tracks,
         "totalItems": len(raw_items),
+        # The collection's OWN art, unlike the per-row keys: the popup draws it on the
+        # playlist folder, so it must stay the playlist's even after every row is upgraded.
+        "thumbnail": artwork[0] if artwork else "",
         # Strictly `>`: a playlist of exactly PLAYLIST_ITEM_LIMIT tracks is not truncated,
         # and recomputing this from the capped list below would report it as such.
         "truncated": len(raw_items) > PLAYLIST_ITEM_LIMIT,

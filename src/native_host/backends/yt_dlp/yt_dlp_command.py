@@ -1,6 +1,6 @@
 from functools import partial
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from browser_context import append_browser_context_options
 from native_paths import sanitize_filename
@@ -65,6 +65,37 @@ def is_youtube_url(url):
         return False
     host = host.lower()
     return host == "youtu.be" or host.endswith(".youtube.com") or host.endswith(".youtube-nocookie.com")
+
+
+# YouTube's own list routes. A `/playlist` or `/album` path is a collection by definition;
+# anywhere else only a `list=` query param says so.
+YOUTUBE_COLLECTION_PATHS = ("playlist", "album", "browse")
+# `/watch` is deliberately excluded: `watch?v=<id>&list=<id>` is a single video *in* a
+# playlist, and pasting one must still get its quality sheet, not a 200-row expansion.
+YOUTUBE_SINGLE_ITEM_PATHS = ("watch", "shorts", "live", "embed", "v")
+
+
+def is_youtube_collection_url(url):
+    """True when the URL itself is a YouTube list shape, whatever yt-dlp reports.
+
+    yt-dlp's `--flat-playlist` answer is not enough on its own: for a
+    `music.youtube.com/playlist?list=…` paste the flat entries carry no `playlist_title`,
+    so the item count is the only other signal — and a short playlist loses its expansion
+    (`background/playlist_helpers.ts`, which gates on `isCollection` rather than a length
+    guess precisely because a plain video URL answers with exactly one entry).
+    """
+    if not is_youtube_url(url):
+        return False
+    try:
+        parsed = urlparse(str(url or ""))
+    except Exception:
+        return False
+    first_segment = (parsed.path or "").strip("/").split("/")[0].lower()
+    if first_segment in YOUTUBE_SINGLE_ITEM_PATHS:
+        return False
+    if first_segment in YOUTUBE_COLLECTION_PATHS:
+        return True
+    return bool(parse_qs(parsed.query or "").get("list"))
 
 
 def append_youtube_ejs_options(command, url):
@@ -273,6 +304,15 @@ build_flat_playlist_command = partial(
 build_formats_command = partial(
     _build_probe_command,
     ["--dump-single-json", "--no-warnings", "--no-color", "--no-playlist", "--no-check-formats", "--skip-download"],
+)
+
+# The playlist's OWN json, for the popup's folder cover. --flat-playlist (above)
+# describes each entry and says nothing about the collection, so the cover never
+# appears in its output; --dump-single-json is what makes the blob playlist-level,
+# and --flat-playlist keeps it cheap (no per-item extraction).
+build_playlist_info_command = partial(
+    _build_probe_command,
+    ["--dump-single-json", "--flat-playlist", "--no-warnings", "--no-color", "--skip-download", "--no-check-formats"],
 )
 
 
