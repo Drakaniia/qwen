@@ -23,7 +23,7 @@ import {
   downloadProgressLabel,
   downloadProgressValue,
 } from "../download_status.js";
-import { dayKeyOf, runJobAction, type DownloadRecord } from "./state.js";
+import { dayKeyOf, runJobAction, settings, type DownloadRecord } from "./state.js";
 
 /** Dot state per row status: moving, failed, or settled. One shape, three tokens (§4.4). */
 function dotState(record: DownloadRecord): StatusDotState {
@@ -108,8 +108,11 @@ export function HistoryRow({ record, id, selected, active, onSelect, onOpen, onR
   const message = downloadMessageText(job);
   // Open and Reveal are rendered above with the icons §7 names; everything else the
   // job offers is lifecycle, bound to its own job here so no `!` is needed downstream.
+  // `settings.downloadFolder` is what keeps a finished job's `Folder` in that list: with
+  // no `filepath` to show, `downloadActions` offers the destination only when it is
+  // handed one, so the call used to leave this page with Redownload + Remove alone.
   const lifecycle = job
-    ? downloadActions(job)
+    ? downloadActions(job, settings.value.downloadFolder || "")
         .filter((action) => action.action !== "open-file" && action.action !== "show-folder")
         .map((action) => ({ ...action, run: () => void runJobAction(action.action, job) }))
     : [];

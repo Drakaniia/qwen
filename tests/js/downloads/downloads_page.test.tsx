@@ -22,6 +22,7 @@ import {
   jobs,
   loaded,
   notice,
+  settings,
   syncEnabled,
   theme,
 } from "../../../src/popup/downloads/state.js";
@@ -72,6 +73,7 @@ beforeEach(() => {
   filter.value = { query: "", status: "", format: "", source: "", sort: "recency" };
   loaded.value = true;
   notice.value = "";
+  settings.value = {};
   syncEnabled.value = true;
   theme.value = "system";
   resetSelection([]);
@@ -151,6 +153,38 @@ describe("row actions (spec §1.3, §7)", () => {
 
     expect(container.textContent).toContain("Synced only");
     expect(container.querySelectorAll('button[aria-label^="Open "]')).toHaveLength(0);
+  });
+
+  it("still offers Folder on a finished music row whose path was never stamped", async () => {
+    // The no-`filepath` fallback. `downloadActions` hands out `open-folder` only when it
+    // is given a destination, and this page used to call it with one argument - so the
+    // button was never built here, and `runJobAction` had no case for it besides. A music
+    // row is where that showed: the Spotify backend printed no filepath marker, so every
+    // track finished with no Open, no Reveal and no Folder.
+    settings.value = { downloadFolder: "C:/out" };
+    jobs.value = [
+      { id: "song", title: "A song", status: "done", format: "AUDIO", url: "https://x/y.mp3", updatedAt: NOW },
+    ];
+    const { container } = render(<DownloadsPage />);
+
+    expect(container.querySelectorAll('button[aria-label^="Open "]')).toHaveLength(0);
+    const folder = buttons(container, "Folder")[0];
+    expect(folder).toBeDefined();
+
+    folder.click();
+    await Promise.resolve();
+
+    expect(sent[0]).toEqual({ type: "openDownloadedFile", tabId: -1, jobId: "song" });
+  });
+
+  it("offers no Folder fallback when no destination is configured", () => {
+    settings.value = {};
+    jobs.value = [
+      { id: "song", title: "A song", status: "done", format: "AUDIO", url: "https://x/y.mp3", updatedAt: NOW },
+    ];
+    const { container } = render(<DownloadsPage />);
+
+    expect(buttons(container, "Folder")).toHaveLength(0);
   });
 
   it("renders the job's speed, bytes and stage on a running row", () => {
@@ -237,11 +271,7 @@ describe("bulk bar (spec §7)", () => {
       ...buttons(container, "Clear all"),
       ...buttons(container, "Reveal newest"),
     ];
-    expect(labels.map((node) => node.textContent?.trim())).toEqual([
-      "Retry failed",
-      "Clear all",
-      "Reveal newest",
-    ]);
+    expect(labels.map((node) => node.textContent?.trim())).toEqual(["Retry failed", "Clear all", "Reveal newest"]);
     expect(buttons(container, "Reveal newest")[0].disabled).toBe(true);
     expect(buttons(container, "Retry failed")[0].disabled).toBe(true);
   });

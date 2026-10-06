@@ -70,6 +70,18 @@ export const noticeIsError = signal(false);
 export const theme = signal<ThemeMode>("system");
 
 /**
+ * The `qwinSettings` fields a row reads but this page owns no control for - the same
+ * partial-form shape `popup/state/app.ts:settings` holds for the tray.
+ *
+ * `downloadFolder` is the whole reason: `downloadActions` offers a finished job a Folder
+ * button with no `filepath` behind it *only* when it is handed a destination
+ * (`download_status.ts:336`). This page called `downloadActions(job)` with one argument,
+ * so that branch was unreachable here and a terminal row got Redownload + Remove and
+ * nothing else - no Open, no Folder, whatever it was downloading.
+ */
+export const settings = signal<{ downloadFolder?: string }>({});
+
+/**
  * Frames the helper already holds for these URLs (hls-thumbnail-spec.md §5.3).
  *
  * H7: service-worker memory only. Nothing here is ever written to `storage.sync` — a
@@ -411,11 +423,15 @@ function asThemeMode(value: unknown): ThemeMode {
   return text === "light" || text === "dark" ? text : "system";
 }
 
-/** Read the persisted choice and apply it before the first paint settles. */
+/** Read the persisted settings - the theme (spec D6) and the download folder - before the first paint settles. */
 export async function loadTheme(): Promise<void> {
   const stored = await browserApi.storage.get(SETTINGS_STORAGE_KEY);
-  const settings = (stored ? stored[SETTINGS_STORAGE_KEY] : null) as { theme?: unknown } | null;
-  theme.value = asThemeMode(settings && settings.theme);
+  const persisted = (stored ? stored[SETTINGS_STORAGE_KEY] : null) as {
+    theme?: unknown;
+    downloadFolder?: unknown;
+  } | null;
+  theme.value = asThemeMode(persisted && persisted.theme);
+  settings.value = { downloadFolder: String((persisted && persisted.downloadFolder) || "") };
   applyThemeToDocument(theme.value);
 }
 
@@ -434,7 +450,7 @@ export async function setTheme(mode: ThemeMode): Promise<void> {
   }
 }
 
-/** Follow theme changes made in the popup or on the options page while this tab is open. */
+/** Follow settings changes made in the popup or on the options page while this tab is open. */
 export function watchTheme(): () => void {
   const onChanged = browserApi.raw && browserApi.raw.storage && browserApi.raw.storage.onChanged;
   if (!onChanged || typeof onChanged.addListener !== "function") {
@@ -445,9 +461,10 @@ export function watchTheme(): () => void {
     if (areaName !== "local" || !changes[SETTINGS_STORAGE_KEY]) {
       return;
     }
-    const next = asThemeMode((changes[SETTINGS_STORAGE_KEY].newValue as { theme?: unknown } | undefined)?.theme);
-    theme.value = next;
-    applyThemeToDocument(next);
+    const next = changes[SETTINGS_STORAGE_KEY].newValue as { theme?: unknown; downloadFolder?: unknown } | undefined;
+    theme.value = asThemeMode(next && next.theme);
+    settings.value = { downloadFolder: String((next && next.downloadFolder) || "") };
+    applyThemeToDocument(theme.value);
   };
 
   onChanged.addListener(handler);
@@ -488,6 +505,11 @@ export async function runJobAction(action: string, job: DownloadJob): Promise<st
       break;
     case "show-folder":
       response = asRecord(await PopupApi.showDownloadedFile(tabId, job.id));
+      break;
+    // The same native verb as `open-file`: `os.startfile` on a directory opens the
+    // folder, which is the whole point of the no-`filepath` fallback.
+    case "open-folder":
+      response = asRecord(await PopupApi.openDownloadedFile(tabId, job.id));
       break;
     case "remove":
       response = asRecord(await PopupApi.removeDownload(tabId, job.id));
