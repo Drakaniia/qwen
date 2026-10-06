@@ -272,6 +272,34 @@
 
 /* ─── Motion + accessibility utilities (spec §4.5, §4.6, §10) ───────────────────── */
 
+/* Indeterminate progress - the fill for a `ProgressBar` whose `value` is `null`.
+ *
+ * A fill that only pulses reads as *full*: opacity is not motion, and nothing about it
+ * says "in progress". §6.5's "loading, not spinners" is about a skeleton standing in for
+ * content whose shape is known - this is a bar with no content to stand in for, so it
+ * travels instead. A 30% segment, `linear` (constant motion takes the linear curve), in
+ * CSS rather than `motion` because the motion is predetermined and has to keep moving
+ * while the service worker is busy, where a `requestAnimationFrame` loop drops frames.
+ *
+ * **This block must stay ABOVE the `prefers-reduced-motion` media query below.** Media
+ * queries add no specificity, so the two `.sheen-indeterminate` rules are equal-weight
+ * and the later one in source order wins. Declared after it, the `animation: none` in the
+ * reduced-motion block would lose to `animation: … infinite` here and the clamp would
+ * snap the segment to its end keyframe — off the track, so the bar renders empty. */
+@keyframes qwin-sheen {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+
+.sheen-indeterminate {
+  width: 30%;
+  animation: qwin-sheen 1.4s linear infinite;
+}
+
 /*
  * Reduced motion is NOT no feedback. Only durations are clamped; opacity and colour
  * transitions survive untouched, so press states, progress movement and status
@@ -282,6 +310,15 @@
   * {
     animation-duration: 1ms !important;
     transition-duration: 150ms !important;
+  }
+
+  .sheen-indeterminate {
+    /* The 1ms clamp above snaps this to its end keyframe, which parks the segment off
+     * the track entirely — the bar renders empty and reads as 0%. Park it mid-track
+     * instead: still visible, still clearly "not done", no movement. Reduced motion is
+     * not no feedback (§4.6), and a vanished bar is the opposite of feedback. */
+    animation: none;
+    transform: translateX(100%);
   }
 }
 

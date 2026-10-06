@@ -168,7 +168,7 @@ export function ProgressBar({
         class="h-1.5 w-full overflow-hidden rounded-full bg-raised"
       >
         <span
-          class={`block h-full rounded-full bg-accent ${indeterminate ? "w-full animate-pulse" : ""}`.trim()}
+          class={`block h-full rounded-full bg-accent ${indeterminate ? "sheen-indeterminate" : ""}`.trim()}
           // The one inline style in the library: the fill width is a runtime value,
           // not a theme decision, and Tailwind has no class for an arbitrary runtime
           // percentage. Matches the imperative version's `fill.style.width`.

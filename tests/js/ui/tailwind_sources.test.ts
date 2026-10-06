@@ -40,3 +40,40 @@ describe("theme.css Tailwind sources", () => {
     expect(sourceAt).toBeGreaterThan(importAt);
   });
 });
+
+/**
+ * The indeterminate sheen needs a `prefers-reduced-motion` override that parks the segment
+ * mid-track, because the blanket `animation-duration: 1ms !important` would otherwise snap
+ * it to its end keyframe — off the track, so the bar renders *empty* and reads as 0%.
+ *
+ * That override only works because of source order: media queries add no specificity, so
+ * the two `.sheen-indeterminate` rules are equal-weight and the later one wins. Declared
+ * after the media query, `animation: none` loses to `animation: … infinite` and the
+ * "fix" silently stops existing — a broken bar that only shows up under the OS reduced-motion
+ * setting, which is exactly the kind of regression no build or type check catches.
+ */
+describe("theme.css indeterminate sheen ordering", () => {
+  const baseAt = THEME_CSS.indexOf(".sheen-indeterminate {");
+  const overrideAt = THEME_CSS.indexOf(".sheen-indeterminate {", baseAt + 1);
+
+  it("declares both the sheen and its reduced-motion override", () => {
+    expect(THEME_CSS).toMatch(/@keyframes\s+qwin-sheen/);
+    expect(baseAt).toBeGreaterThanOrEqual(0);
+    expect(overrideAt).toBeGreaterThan(baseAt);
+  });
+
+  it("declares the animated sheen BEFORE the reduced-motion override that cancels it", () => {
+    // Sanity: the two matches above are the base rule and the override, not the same one.
+    expect(overrideAt).not.toBe(baseAt);
+    // The override must sit inside the reduced-motion media query, not be a bare
+    // declaration that would then also apply at full motion.
+    const mediaAt = THEME_CSS.indexOf("@media (prefers-reduced-motion: reduce)");
+    expect(mediaAt).toBeGreaterThanOrEqual(0);
+    expect(mediaAt).toBeLessThan(overrideAt);
+    // Bounded rather than a fixed slice width: the declaration sits below the comment
+    // that explains why it exists, and that comment is the thing most likely to be edited.
+    const noneAt = THEME_CSS.indexOf("animation: none", overrideAt);
+    expect(noneAt).toBeGreaterThan(overrideAt);
+    expect(noneAt - overrideAt).toBeLessThan(600);
+  });
+});
