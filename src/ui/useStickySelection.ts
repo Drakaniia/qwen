@@ -49,14 +49,6 @@ export const selectedCount = computed<number>(() => selection.value.size);
  */
 export const orderedSelection = computed<string[]>(() => [...selection.value]);
 
-/**
- * The first selected id, or `null` when nothing is selected.
- *
- * Exists for the Phase 2 executor's single-item case ("download this one") so that
- * branch does not have to reach into the set and unwrap an `undefined`.
- */
-export const firstSelectedId = computed<string | null>(() => orderedSelection.value[0] ?? null);
-
 /** Whether one candidate is selected. Read `selection.value` so readers subscribe. */
 export function isSelected(id: string): boolean {
   return selection.value.has(id);

@@ -12,47 +12,19 @@
  */
 import { computed, signal } from "@preact/signals";
 
+import type { DownloadJob } from "../../shared/contracts.js";
 import { isActiveDownload } from "../../shared/download_statuses.js";
 
-export interface DownloadJob {
-  id: string;
-  videoId?: string;
-  tabId?: number;
-  status?: string;
-  percent?: number;
-  rawPercent?: number;
-  stage?: string;
-  message?: string;
-  error?: string;
-  url?: string;
-  title?: string;
-  format?: string;
-  formatId?: string;
-  variantId?: string;
-  backend?: string;
-  filepath?: string;
-  artifactRoot?: string;
-  pageUrl?: string;
-  fragment?: string;
-  speed?: string;
-  eta?: string;
-  totalSize?: string;
-  downloadedSize?: string;
-  connections?: number | string;
-  /**
-   * `true` means `percent` is an **estimate**, not a measurement — spec D2/D9
-   * (`real-progress-spec.md` §4.1). Absent/false is exact.
-   *
-   * **Structural duplicate of the same field in `shared/contracts.ts`; the two must
-   * stay in sync.** `shared/` cannot import from `popup/` (layering rule R11), so the
-   * record is written twice rather than shared, and this is the render-side half:
-   * `ProgressBar` reads it to print a `~` and to mark `aria-valuetext`. A field that
-   * exists in only one copy is a field the other layer silently drops on the wire.
-   */
-  percentApproximate?: boolean;
-  rawProgressLine?: string;
-  updatedAt?: number;
-}
+/**
+ * The render-side job record **is** the wire record, imported rather than mirrored.
+ *
+ * This used to be a hand-maintained copy, and the copy had already drifted: it was
+ * missing `thumbnailUrl` and `createdAt`, the former of which
+ * `ui/format.ts:videoThumbnailUrl` reads. `shared/` may not import `popup/` (R11), but
+ * the reverse is allowed — so the popup re-exports the shared record instead of
+ * restating its 29 fields and dropping two of them.
+ */
+export type { DownloadJob };
 
 export const currentDownloads = signal<DownloadJob[]>([]);
 

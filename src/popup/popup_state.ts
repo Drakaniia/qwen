@@ -80,11 +80,4 @@ export interface HelperStatusResponse extends PopupResponse {
   dependencies?: Record<string, unknown>;
 }
 
-/** `chooseDownloadFolder` reply — the envelope plus its cancellation and path fields. */
-export interface ChooseFolderResponse extends PopupResponse {
-  canceled?: boolean;
-  path?: string;
-  settings?: { downloadFolder?: string };
-}
-
 export { ACTIVE_DOWNLOAD_STATUSES };

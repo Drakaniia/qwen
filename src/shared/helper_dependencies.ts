@@ -63,11 +63,6 @@ export const HELPER_DEPENDENCIES: readonly HelperDependency[] = [
   },
 ] as const;
 
-/** Keys whose absence blocks a download, as opposed to merely narrowing coverage. */
-export const REQUIRED_DEPENDENCY_KEYS: readonly string[] = HELPER_DEPENDENCIES.filter((dep) => dep.required).map(
-  (dep) => dep.key,
-);
-
 /**
  * `host.py` reports `{ ytDlp, ffmpeg, aria2c, nM3u8DlRe, streamlink }`.
  * Anything falsy there is missing — the host never sends `false` for a tool it

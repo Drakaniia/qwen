@@ -46,15 +46,6 @@ import type { SyncEntry } from "../state/filters.js";
 /** `storage.local` key for the id-keyed job map. Written by `background/tab_state.js`. */
 export const DOWNLOADS_STORAGE_KEY = "qwinDownloadsById";
 
-/**
- * `storage.sync` key for completed history, written by `background/tab_state.js:169`.
- *
- * Not read directly - the page goes through `getDownloadSyncHistory()` because that
- * message also returns `syncInfo`. Exported so the test can assert the key this page
- * is *about* stays the key the background writes.
- */
-export const HISTORY_STORAGE_KEY = "qwinDownloadHistory";
-
 /** `storage.local` key the background persists settings to. Read for `theme` (spec D6). */
 export const SETTINGS_STORAGE_KEY = "qwinSettings";
 
