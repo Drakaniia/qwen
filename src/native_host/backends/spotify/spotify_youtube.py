@@ -16,6 +16,8 @@ import re
 import subprocess
 import sys
 
+from progress_parser import FILEPATH_MARKER
+
 # YouTube format IDs for audio-only streams (Opus and AAC variants)
 # Ordered by quality (highest first)
 _YT_AUDIO_FORMATS = {
@@ -227,6 +229,14 @@ def build_youtube_download_command(
         "--add-metadata",
         "-f",
         audio_format_id,
+        # The only way this download reports where it landed. `download_task.py` fills
+        # `final_path` solely from this marker, and an empty `final_path` is what hides
+        # the popup's Open / Folder buttons (`download_actions` gates both on
+        # `job.filepath`) - so without it a music job is a file nobody can open. The
+        # template above is dynamic, so the path cannot be precomputed and seeded the
+        # way the stream backends do it.
+        "--print",
+        f"after_move:{FILEPATH_MARKER}%(filepath)s",
         "-o",
         output_template,
     ]

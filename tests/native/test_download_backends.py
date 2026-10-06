@@ -43,7 +43,9 @@ _add_native_host_to_path()
 from probe_runner import ProbeResult  # noqa: E402
 
 import download_manager  # noqa: E402
-from yt_dlp_command import build_yt_dlp_fallback_variants  # noqa: E402
+from progress_parser import FILEPATH_MARKER  # noqa: E402
+from spotify_youtube import build_youtube_download_command  # noqa: E402
+from yt_dlp_command import build_yt_dlp_command, build_yt_dlp_fallback_variants  # noqa: E402
 
 
 class _FakeTask:
@@ -239,6 +241,37 @@ def test_probe_winner_reports_where_the_file_landed():
     for winner in ("streamlink", "n_m3u8dl_re"):
         path = Path(_task_for_winner(winner)["final_path"])
         assert path.name == "Clip.mp4" and path.parent.name == "Clip", f"{winner} winner lost its output path: {path}"
+
+
+def test_every_ytdlp_download_command_reports_its_filepath():
+    """A download that never says where it landed is a file the popup cannot open.
+
+    `DownloadTask` learns `final_path` *only* from the `after_move:__QWIN_FILEPATH__`
+    marker, and `downloadActions` gates the popup's Open / Folder buttons on a non-empty
+    `job.filepath` -- so a builder without the marker produces a finished job whose file
+    nothing in the UI can reach. The Spotify builder skipped it, which took Open *and*
+    Folder off every music row, and off every track of a pasted playlist with them.
+
+    It cannot be seeded as a hint the way the stream backends do it: the Spotify output
+    template is dynamic (`{artist} - {title}/%(title).180B [%(id)s].%(ext)s`), and a
+    guess would *win* over the truth, since `DownloadTask` only fills `final_path` while
+    it is still empty. The marker is the only route.
+
+    No subprocess: both builders are pure argv assembly.
+    """
+    marker = f"after_move:{FILEPATH_MARKER}%(filepath)s"
+    commands = {
+        "spotify": build_youtube_download_command(
+            "https://youtu.be/abc",
+            "251",
+            "C:/Downloads",
+            {"artist": "Artist", "title": "Track"},
+        ),
+        "audio": build_yt_dlp_command("https://youtu.be/abc", "C:/Downloads", extract_audio=True),
+        "video": build_yt_dlp_command("https://youtu.be/abc", "C:/Downloads", extract_audio=False),
+    }
+    missing = [name for name, command in commands.items() if marker not in command]
+    assert not missing, f"yt-dlp commands that never report their filepath: {missing}"
 
 
 def test_probe_winner_keeps_the_fallback_chain():
