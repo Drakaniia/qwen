@@ -28,7 +28,16 @@ const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{8,20}$/;
 const VIMEO_ID_RE = /^\d{4,15}$/;
 const DAILYMOTION_ID_RE = /^[A-Za-z0-9]{4,24}$/;
 
-const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"]);
+// `music.youtube.com` is a real YouTube host serving the same `?v=<id>` shape, so a
+// YouTube Music track row derives its own art instead of nothing. Curated, like the rest.
+const YOUTUBE_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "music.youtube.com",
+  "youtu.be",
+  "www.youtu.be",
+]);
 const VIMEO_HOSTS = new Set(["vimeo.com", "www.vimeo.com", "player.vimeo.com"]);
 const DAILYMOTION_HOSTS = new Set(["dailymotion.com", "www.dailymotion.com", "geo.dailymotion.com", "dai.ly"]);
 

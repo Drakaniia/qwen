@@ -20,6 +20,10 @@ describe("deriveSiteThumbnail", () => {
     ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"],
     ["https://youtube.com/watch?v=dQw4w9WgXcQ&t=42", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"],
     ["https://m.youtube.com/watch?v=dQw4w9WgXcQ", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"],
+    // YouTube Music serves the same `?v=<id>` shape on a real YouTube host, so a
+    // playlist row pasted from there derives its own art instead of nothing.
+    ["https://music.youtube.com/watch?v=dQw4w9WgXcQ", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"],
+    ["https://music.youtube.com/playlist?list=OLAK5uy_x", ""],
     ["https://youtu.be/dQw4w9WgXcQ", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"],
     ["https://www.youtube.com/shorts/dQw4w9WgXcQ", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"],
     ["https://www.youtube.com/embed/dQw4w9WgXcQ", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"],

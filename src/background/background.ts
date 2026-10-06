@@ -198,11 +198,18 @@ async function addDetectedVideo(tabId: TabId, input: VideoInput, notify = true):
     title: finalTitle,
     pageUrl: input.pageUrl || input.frameUrl || "",
     frameUrl: input.frameUrl || "",
-    // Playlist enumeration stamps every row of one enumeration with the same groupId so
-    // the popup can group them and offer "Download all". Not part of the network
-    // detection ladder — before playlist-parallel-download nothing set it here, so it was
-    // dropped on the floor.
+    // `groupId` names the PRIMARY candidate a variant belongs to — `download/native.ts`
+    // sends `videoId: video.groupId || video.id` and `variantId: video.groupId ? video.id
+    // : ""`, and `download/index.ts` / `download_fallbacks.ts` are its only writers.
+    // (An earlier comment here claimed playlist enumeration stamped it; it never has —
+    // see `playlistId` below for what actually groups a playlist.)
     groupId: input.groupId || current?.groupId || "",
+    // Playlist membership, stamped by `enumeratePlaylistVideos` on every row of one
+    // enumeration. The popup folds consecutive rows sharing `playlistId` into one
+    // collapsible folder; nothing on the download path reads any of these three.
+    playlistId: input.playlistId || current?.playlistId || "",
+    playlistTitle: input.playlistTitle || current?.playlistTitle || "",
+    playlistThumbnailUrl: input.playlistThumbnailUrl || current?.playlistThumbnailUrl || "",
     contentType: input.contentType || "",
     downloadable: current?.downloadable === false ? false : isDownloadableUrl(normalizedUrl, input.contentType),
     width: Number.isFinite(width) && width > 0 ? width : current?.width || null,

@@ -73,6 +73,21 @@ export interface DetectedVideo {
   subtitleLanguages?: number;
   firstSeen?: number;
   lastSeen?: number;
+  /**
+   * The playlist/album this row was enumerated from. `playlistId` is the group key:
+   * all rows of one `enumeratePlaylist` share it, and the popup folds consecutive runs
+   * of the same id into one collapsible folder. Absent on every other candidate.
+   *
+   * Deliberately NOT `groupId`. That field is live download-path state —
+   * `download/native.ts` sends `videoId: video.groupId || video.id` and
+   * `variantId: video.groupId ? video.id : ""` — so it names the primary candidate a
+   * *variant* belongs to, and stamping a playlist id there sends the wrong ids to the
+   * helper for every row of a playlist.
+   */
+  playlistId?: string;
+  playlistTitle?: string;
+  /** The folder's cover. Absent when the host could not resolve one (yt-dlp usually can). */
+  playlistThumbnailUrl?: string;
   /** Set by `shared/video_sorting.js:buildGroupedVideo`; the popup's recency key. */
   groupId?: string;
   groupVariants?: DetectedVideo[];
