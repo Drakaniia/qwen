@@ -35,6 +35,22 @@ const EXIT = { transform: ["translateY(0%)", "translateY(140%)"], opacity: [1, 0
  * ponytail: the strip clips rather than capping plus a "+N more". The count beside it
  * already says how many are selected, so a truncated strip loses no information — if
  * tiles ever need to be individually reachable, cap the slice and add the overflow chip.
+ *
+ * Clipping only works if the strip is *allowed* to shrink: it was `shrink-0`, so 40
+ * selected tracks demanded ~1000px of flex basis in a 460px popup, `overflow-hidden`
+ * clipped nothing because the box never got smaller than its content, and the count,
+ * "Download all" and "Clear" were pushed off the right edge — which is what "there is no
+ * Download all button" reported. `min-w-0 shrink` is the pair that makes the clip real:
+ * `overflow-x-auto` zeroes the automatic minimum size, so the strip yields instead of
+ * overflowing. The two buttons take `shrink-0` in return, or they squeeze instead.
+ *
+ * `overflow-x-auto` is also the swipe. A touch drag on an `overflow-x` box scrolls it
+ * natively — momentum, trackpad, shift+wheel and keyboard all included — so there is no
+ * pointer handler, no drag state and nothing to clean up. `grow` hands the strip the
+ * leftover width instead of the count taking it, which is what gives a one-tile
+ * selection a scrollable box to grow into; the count gives up `flex-1` so it cannot
+ * squeeze the strip back to nothing. The scrollbar is suppressed because a 24px-tall
+ * native scrollbar in a 28px bar reads as a defect, not as an affordance.
  */
 function SelectedTiles() {
   const chosen = (currentVideos.value || []).filter((video) => selection.value.has(video.id));
@@ -44,7 +60,7 @@ function SelectedTiles() {
   }
 
   return (
-    <span class="flex shrink-0 items-center gap-1 overflow-hidden">
+    <span class="flex min-w-0 grow shrink items-center gap-1 overflow-x-auto [scrollbar-width:none]">
       {chosen.map((video) => {
         const art = videoThumbnailCandidates(video)[0];
         const audio = String(video.format || "").toUpperCase() === AUDIO_FORMAT;
@@ -157,14 +173,14 @@ export function SelectionBar({ onDownloadAll }: SelectionBarProps) {
     >
       <SelectedTiles />
 
-      <span class="nums text-body min-w-0 flex-1 truncate text-text-muted">{count} selected</span>
+      <span class="nums text-body min-w-0 shrink truncate text-text-muted">{count} selected</span>
 
-      <Button variant="primary" size="sm" onClick={onDownloadAll}>
+      <Button variant="primary" size="sm" class="shrink-0" onClick={onDownloadAll}>
         <Icon name="download" size={13} />
         Download all
       </Button>
 
-      <Button variant="ghost" size="sm" onClick={clear}>
+      <Button variant="ghost" size="sm" class="shrink-0" onClick={clear}>
         <Icon name="xmark" size={13} />
         Clear
       </Button>

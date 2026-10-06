@@ -21,7 +21,7 @@ import { VideoRow } from "../../../../src/popup/views/VideoRow.js";
 import { activeTabId } from "../../../../src/popup/state/app.js";
 import { currentDownloads } from "../../../../src/popup/state/downloads.js";
 import { currentVideos, type VideoCandidate } from "../../../../src/popup/state/videos.js";
-import { clear, select } from "../../../../src/ui/useStickySelection.js";
+import { clear, select, selectedCount } from "../../../../src/ui/useStickySelection.js";
 
 vi.mock("../../../../src/popup/popup_actions.js", () => ({
   runDownloadAction: vi.fn(async () => ""),
@@ -305,7 +305,62 @@ describe("VideoRow: the thumbnail ladder (spec §6, D4/D15)", () => {
 });
 
 describe("VideoRow: selection (D21)", () => {
-  it("keeps the checkbox in the DOM at opacity 0 rather than mounting it on hover", () => {
+  /**
+   * The checkbox's ancestors, nearest first. Written as a walk rather than a selector
+   * because the fix that matters is "no ancestor hides it" — pinning *which* wrapper
+   * carries the class would re-break the moment the markup changes shape.
+   */
+  function wrappersOf(input: Element): Element[] {
+    const chain: Element[] = [];
+    for (let node = input.parentElement; node; node = node.parentElement) {
+      chain.push(node);
+    }
+    return chain;
+  }
+
+  it("leaves an unchecked box visible, at every width and on any pointer (D21)", () => {
+    // The row used to rest at `opacity-0` and reveal on `group-hover`, which at the
+    // default 460px popup width on a desktop browser left an invisible box and nothing
+    // to aim at. The reported symptom was "the checkbox is not clickable"; the handler
+    // was always fine, so the assertion is on the class list rather than on `checked`.
+    const box = row().querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    for (const node of wrappersOf(box)) {
+      expect(node.className).not.toMatch(/(^|\s)opacity-0(\s|$)/);
+    }
+  });
+
+  it("keeps the checked-state crossfade the spec's one permitted tween (§4.5, §4.6)", () => {
+    const box = row().querySelector('input[type="checkbox"]') as HTMLInputElement;
+    // 150ms on opacity only — `theme.css` clamps it to 150ms under reduced motion, so
+    // the fade survives rather than being dropped.
+    expect(
+      wrappersOf(box)
+        .map((node) => node.className)
+        .join(" "),
+    ).toMatch(/transition-opacity/);
+    expect(
+      wrappersOf(box)
+        .map((node) => node.className)
+        .join(" "),
+    ).toMatch(/duration-150/);
+  });
+
+  it("makes the input itself the hit area, so a click on the drawn box lands (D21)", () => {
+    // vitest cannot hit-test — `input.click()` dispatches directly on the node — so the
+    // invariant is pinned in the class list instead. `sr-only` on the input plus
+    // `pointer-events-none` on the drawn box left a label-less checkbox with a 1px
+    // target: visible, focusable, and still not clickable.
+    const box = row().querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(box.className).toContain("absolute");
+    expect(box.className).toContain("inset-0");
+    expect(box.className).toContain("size-full");
+    expect(box.className).not.toContain("sr-only");
+    // Still visually hidden, so the platform-drawn box is what the user sees.
+    expect(box.className).toContain("opacity-0");
+  });
+
+  it("keeps the checkbox in the DOM at every width rather than mounting it on hover", () => {
     const box = row().querySelector('input[type="checkbox"]') as HTMLInputElement;
     expect(box).not.toBeNull();
     expect(box.checked).toBe(false);
@@ -327,6 +382,26 @@ describe("VideoRow: selection (D21)", () => {
 
   it("labels the box with the row's own title", () => {
     expect(row().querySelector('input[type="checkbox"]')?.getAttribute("aria-label")).toBe("Select Big Buck Bunny");
+  });
+
+  it("toggles on click: the box checks itself and the bar's count follows, both ways", async () => {
+    // The whole loop in one case, because the symptom was "not clickable" and no single
+    // link in it — input, `toggle`, the signal, the re-read of `isSelected` — was ever
+    // broken on its own. `selectedCount` is the `computed` behind `SelectionBar`'s label.
+    const host = row();
+    const box = host.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(selectedCount.value).toBe(0);
+
+    await act(async () => box.click());
+
+    expect(box.checked).toBe(true);
+    expect(selectedCount.value).toBe(1);
+
+    await act(async () => box.click());
+
+    expect(box.checked).toBe(false);
+    expect(selectedCount.value).toBe(0);
   });
 });
 
@@ -404,6 +479,72 @@ describe("VideoRow: progress replaces the button in place (spec §6.6)", () => {
     const button = [...host.querySelectorAll("button")].find((b) => (b.textContent || "").includes("Download"));
     await act(async () => button?.click());
     expect(startVideoDownload).toHaveBeenCalledWith("v1");
+  });
+});
+
+describe("VideoRow: a selection takes the buttons over (spec §6.9, D21)", () => {
+  /**
+   * The row's own Download button. Label-matched rather than picked by position, so an
+   * audio row's "Extract audio" and a subtitles row's "CC" toggle cannot satisfy it.
+   */
+  function downloadButton(host: Element): HTMLButtonElement | undefined {
+    return [...host.querySelectorAll("button")].find((b) => (b.textContent || "").includes("Download"));
+  }
+
+  it("draws every downloadable row's button while nothing is selected", () => {
+    expect(selectedCount.value).toBe(0);
+    expect(downloadButton(row({ id: "a" }))).toBeDefined();
+    expect(downloadButton(row({ id: "b" }))).toBeDefined();
+  });
+
+  it("hides every row's button as soon as anything is selected — selected or not", async () => {
+    // The chosen semantics: the sticky bar's "Download all" is the only way to start
+    // anything, so a row left showing a competing button contradicts it. `b` is not in
+    // the selection and still loses its button.
+    const hosts = [row({ id: "a" }), row({ id: "b" })];
+    await act(async () => select(["a", "b"]));
+
+    expect(selectedCount.value).toBe(2);
+    for (const host of hosts) {
+      expect(downloadButton(host)).toBeUndefined();
+    }
+    // The row itself survives: only the action column empties.
+    expect(hosts[0].querySelector('input[type="checkbox"]')).not.toBeNull();
+  });
+
+  it("re-renders on the count alone, without a prop or an effect", async () => {
+    // The signal read happens during render, so writing the signal is what re-renders
+    // the row — no `useEffect`, no parent re-render.
+    const host = row({ id: "solo" });
+    expect(downloadButton(host)).toBeDefined();
+    await act(async () => select(["solo"]));
+    expect(downloadButton(host)).toBeUndefined();
+  });
+
+  it("brings the buttons back when the selection is cleared", async () => {
+    const host = row({ id: "a" });
+    await act(async () => select(["a", "b"]));
+    expect(downloadButton(host)).toBeUndefined();
+
+    await act(async () => clear());
+
+    expect(selectedCount.value).toBe(0);
+    expect(downloadButton(host)).toBeDefined();
+  });
+
+  it("still reports a running job's meter while selected — the button, not the bar, goes", async () => {
+    // The regression guard for the branch order: hiding the button must not hide the
+    // progress that replaced it, or a download in flight goes invisible the moment the
+    // user touches the checkbox.
+    currentDownloads.value = [{ id: "j1", videoId: "a", status: "running", percent: 62 }] as never;
+    const host = row({ id: "a" });
+    expect(host.querySelector("[role=progressbar]")).not.toBeNull();
+
+    await act(async () => select(["a"]));
+
+    expect(host.querySelector("[role=progressbar]")).not.toBeNull();
+    expect(text(host)).toContain("62%");
+    expect(downloadButton(host)).toBeUndefined();
   });
 });
 
@@ -602,5 +743,27 @@ describe("SelectionBar (spec §6.9, D21)", () => {
     const host = render(<SelectionBar onDownloadAll={vi.fn()} />).container as HTMLElement;
     expect(image(host)).toBeNull();
     expect(host.querySelector(".size-6 svg")).not.toBeNull();
+  });
+
+  it("keeps the executor reachable once the tile strip outgrows the bar", () => {
+    // 40 tiles at 24px is ~1000px of flex basis in a 460px popup. A `shrink-0` strip
+    // overflows rather than clips, and takes "Download all" off the right edge with it.
+    currentVideos.value = Array.from({ length: 40 }, (_, n) => ({ ...BASE, id: `many-${n}` }));
+    select(currentVideos.value.map((video) => video.id));
+    const host = render(<SelectionBar onDownloadAll={vi.fn()} />).container as HTMLElement;
+    const buttons = [...host.querySelectorAll("button")];
+    const downloadAll = buttons.find((b) => (b.textContent || "").includes("Download all")) as HTMLButtonElement;
+    expect(downloadAll).toBeDefined();
+    // The strip yields; the buttons never do.
+    expect(downloadAll.className).toContain("shrink-0");
+    const strip = host.querySelector(".size-6")?.parentElement;
+    expect(strip?.className).toContain("shrink");
+    expect(strip?.className).not.toContain("shrink-0");
+    // The swipe is the native `overflow-x` scroll, so the box has to be one — and it has
+    // to hold the width the count used to claim, or there is nothing to scroll.
+    expect(strip?.className).toContain("overflow-x-auto");
+    expect(strip?.className).toContain("grow");
+    const count = host.querySelector(".nums");
+    expect(count?.className).not.toContain("flex-1");
   });
 });

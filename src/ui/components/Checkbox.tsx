@@ -33,6 +33,21 @@ const reducedMotion = () => globalThis.matchMedia?.("(prefers-reduced-motion: re
  * The check springs in on `springs.checkbox` (`damping 0.7`) — the one place in the
  * app where the overshoot is load-bearing, because a check that overshoots reads as a
  * snap and one that fades reads as a repaint (spec §4.5).
+ *
+ * ## Why the input is not `sr-only`
+ *
+ * It was, and the drawn box below it is `pointer-events-none`, so the only pixels that
+ * reached the control were the 1×1 clipped `sr-only` box (`width: 1px; height: 1px;
+ * clip-path: inset(50%)` — verified in the built `style-*.css`) parked in one corner of
+ * the 16px cell. A caller with no `label` — the media row, whose `ariaLabel` names a row
+ * that labels itself — therefore had **no hit area at all**: the box could be made
+ * visible and still be unclickable, which is exactly the reported symptom.
+ *
+ * So the input is the hit area: `absolute inset-0 size-full opacity-0`, transparent but
+ * full-bleed and still in the accessibility tree, drawn under the `pointer-events-none`
+ * box because it comes first in the DOM. `size-full` is load-bearing — an absolutely
+ * positioned replaced element with `width: auto` takes its intrinsic width and ignores
+ * the over-constrained `right`, so `inset-0` alone would leave it 1px wide again.
  */
 export function Checkbox({
   checked,
@@ -79,7 +94,7 @@ export function Checkbox({
           }
         }}
         type="checkbox"
-        class="peer sr-only"
+        class="peer absolute inset-0 size-full cursor-pointer opacity-0"
         checked={checked}
         disabled={disabled}
         name={name}

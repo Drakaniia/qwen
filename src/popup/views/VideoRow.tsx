@@ -15,7 +15,7 @@ import {
   videoTitle,
 } from "../../ui/format.js";
 import { Icon } from "../../ui/Icon.js";
-import { isSelected, toggle } from "../../ui/useStickySelection.js";
+import { isSelected, selectedCount, toggle } from "../../ui/useStickySelection.js";
 import { downloadProgressButtonText, downloadProgressValue } from "../download_status.js";
 import { startVideoDownload } from "../popup_actions.js";
 import { activeTabId } from "../state/app.js";
@@ -82,25 +82,38 @@ function grabEligible(video: VideoCandidate, candidateCount: number): boolean {
 const framesRequested = new Set<string>();
 
 /**
- * The checkbox's reveal rule (spec §6.6, D21), verbatim: *"Never a checkbox the user
- * has to hunt for, never one that shifts layout on hover — it occupies its cell at
- * `opacity: 0` and fades, so nothing reflows."*
+ * The checkbox's reveal rule (spec §6.6, D21). The spec sentence it comes from is
+ * verbatim: *"Never a checkbox the user has to hunt for, never one that shifts layout on
+ * hover — it occupies its cell and fades, so nothing reflows."*
  *
- * Always visible on a selected row, on a touch device, and under 420px where the row
- * has collapsed to near single-column. The touch rule is a separate media query rather
- * than a consequence of Tailwind's `hover:` variant: v4 compiles `group-hover:` to
- * `:is(:where(.group):hover *)` with **no** `@media (hover: hover)` gate (verified in the
- * built `style-*.css`), and a tap leaves `:hover` stuck on afterwards — so relying on
- * hover alone would mean a phone either never reveals the box or reveals it by accident.
- * `focus-within` is there so a keyboard user tabbing to the box sees it too.
+ * ## The box is always visible; only the row's emphasis moves
  *
- * `duration-150` is the spec's one permitted tween (§4.5: "value crossfade — 150ms
- * ease-out on opacity only"), and `theme.css` clamps it to 150ms under
- * `prefers-reduced-motion`, so the fade survives reduced motion as §4.6 requires.
+ * This used to read `opacity-0 … group-hover:opacity-100`, which honours the second half
+ * of the sentence and breaks the first. At the default 460px popup width on a desktop
+ * browser none of the escape hatches applied, so every unchecked box was painted at
+ * `opacity: 0` — a checkbox the user has to hunt for, and one with no visible target to
+ * aim at. The report was "the checkbox is not clickable"; the handler never was the
+ * problem (`Checkbox` is a real `<input type="checkbox">` behind `sr-only`, and
+ * `onChange` → `toggle` fired correctly all along).
+ *
+ * So the fade now carries *emphasis*, not existence: the box occupies its cell at full
+ * opacity on every row, and the residual transition is kept because it is §4.5's one
+ * permitted tween ("value crossfade — 150ms ease-out on opacity only") and `theme.css`
+ * clamps it to 150ms under `prefers-reduced-motion`, so it survives reduced motion as
+ * §4.6 requires. Nothing about the *layout* is conditional — the cell is
+ * `w-4 shrink-0` and always reserved, which is the half of D21 that still holds and the
+ * half that was always right.
+ *
+ * Because the resting state is no longer hidden, the hover / `focus-within` /
+ * `max-[419px]` / `(hover: none)` variants are gone rather than merely unnecessary —
+ * they existed only to un-hide a box, and Tailwind v4 compiles `group-hover:` to
+ * `:is(:where(.group):hover *)` with no `@media (hover: hover)` gate (verified in the
+ * built `style-*.css`), so a touch tap left the box stuck revealed anyway.
+ *
+ * Visibility was only half of "not clickable": the box also had no *hit area* — see
+ * `Checkbox`'s own note on `sr-only`. Both had to go before the click landed.
  */
-const REVEAL =
-  "opacity-0 transition-opacity duration-150 focus-within:opacity-100 " +
-  "group-hover:opacity-100 max-[419px]:opacity-100 [@media(hover:none)]:opacity-100";
+const CHECKBOX_FADE = "transition-opacity duration-150";
 
 export interface VideoRowProps {
   video: VideoCandidate;
@@ -209,6 +222,13 @@ export function VideoRow({ video, active, selected, id }: VideoRowProps) {
 
   const tail = [size, duration].filter(Boolean);
 
+  // A selection belongs to the sticky bar, so every row gives up its own button the
+  // moment anything is selected — the bar's "Download all" is then the only way to start
+  // anything, and a row of competing buttons would contradict it. The job branch below
+  // wins over this one: a download in flight keeps reporting itself. Read during render
+  // so the `.value` subscription is what re-renders the row when the count changes.
+  const bulk = selectedCount.value > 0;
+
   const meterSlot = "flex h-7 min-w-0 items-center";
   const action = !video.downloadable ? null : job ? (
     // The meter takes the button's exact 28px box so the row does not grow when a job
@@ -228,10 +248,22 @@ export function VideoRow({ video, active, selected, id }: VideoRowProps) {
         percentApproximate={job.percentApproximate}
       />
     </div>
-  ) : (
+  ) : bulk ? null : (
     <Button variant="primary" size="sm" disabled={pending} onClick={() => void startVideoDownload(video.id)}>
-      <Icon name="download" size={14} />
-      {pending ? "Loading…" : isAudio ? "Extract audio" : "Download"}
+      {pending ? (
+        // Shimmer in the label's own box, not the word "Loading…" (spec §6.5, "skeletons,
+        // not spinners"). Same treatment as `PasteBox`'s pending state — a real label
+        // disappearing leaves a button with no identity, and this row has no second line
+        // to explain it. `w-12` not the paste box's `w-16`: this is a `size="sm"` button
+        // and the wider block overflows it. Not the `Skeleton` component — that is
+        // `bg-raised`, which is invisible inside a filled primary button.
+        <span class="inline-block h-2.5 w-12 animate-pulse rounded-badge bg-accent-fg/40" aria-hidden="true" />
+      ) : (
+        <>
+          <Icon name="download" size={14} />
+          {isAudio ? "Extract audio" : "Download"}
+        </>
+      )}
     </Button>
   );
 
@@ -242,11 +274,11 @@ export function VideoRow({ video, active, selected, id }: VideoRowProps) {
       aria-selected={selected}
       class={`group flex gap-3 rounded-row p-2 transition-colors ${active ? "bg-raised" : ""}`.trim()}
     >
-      {/* The checkbox keeps its cell at every width; only its opacity moves. */}
-      <span class="flex w-4 shrink-0 items-start justify-center pt-0.5">
-        <span class={checked ? "" : REVEAL}>
-          <Checkbox checked={checked} onChange={() => toggle(video.id)} ariaLabel={`Select ${videoTitle(video)}`} />
-        </span>
+      {/* The checkbox keeps its cell at every width and at every state — D21's "nothing
+          reflows" is a *layout* promise, and it is the layout this span holds, not an
+          opacity the row happens to be resting at. */}
+      <span class={`flex w-4 shrink-0 items-start justify-center pt-0.5 ${CHECKBOX_FADE}`}>
+        <Checkbox checked={checked} onChange={() => toggle(video.id)} ariaLabel={`Select ${videoTitle(video)}`} />
       </span>
 
       {/* Thumbnails are unconditional (spec §6.6 — `layout.css:96`'s
