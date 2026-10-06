@@ -20,6 +20,7 @@ import { resolvePastedUrl } from "../../../src/popup/popup_url_events.js";
 import { batchDownloadSelection } from "../../../src/popup/views/PopupFrame.js";
 import { PlaylistRow } from "../../../src/popup/views/PlaylistRow.js";
 import { DEFAULT_FILTER } from "../../../src/ui/filter.js";
+import { groupUniqueFullVideos } from "../../../src/shared/video_sorting.js";
 import { selection } from "../../../src/ui/useStickySelection.js";
 import {
   expandedPlaylists,
@@ -391,6 +392,60 @@ describe("selecting a folder's tracks", () => {
 
   it("never claims an all-selected folder with nothing in it", () => {
     expect(playlistSelectionState([])).toBe("none");
+  });
+});
+
+describe("a YouTube playlist paste reaches the folder intact", () => {
+  /**
+   * The reported bug, end to end.
+   *
+   * A YouTube Music playlist enumerates one `watch?v=` entry per track, all stamped with
+   * the same `playlistId` and the playlist URL as `pageUrl`. `getVisibleVideosForTab`'s
+   * grouping read that as "same page, same stem (`watch`)" and handed the popup ONE row
+   * with 61 variants — so the folder was captioned "1 track" while the paste had selected
+   * 61 ids, and the 60 tracks with no row could be neither seen nor deselected. Only the
+   * *background* half was broken; the popup layer is fed `currentVideos` directly here so
+   * this suite covers the seam between them.
+   */
+  function paste(playlist: string, count: number) {
+    return Array.from({ length: count }, (_value, index) => ({
+      id: `h${index}`,
+      url: `https://www.youtube.com/watch?v=v${index}`,
+      title: `Track ${index}`,
+      pageUrl: playlist,
+      source: "playlist",
+      format: "YOUTUBE",
+      playlistId: playlist,
+      playlistTitle: "High School Radio",
+      playlistThumbnailUrl: "",
+      downloadable: true,
+      duration: 200,
+      // Newest first, the order the enumeration added them in.
+      lastSeen: count - index,
+    }));
+  }
+
+  it("folds sixty-one enumerated tracks into one folder of sixty-one togglable rows", () => {
+    const playlist = "https://music.youtube.com/playlist?list=PLY5CT0TRwHPt";
+    const enumerated = paste(playlist, 61);
+
+    // What the background's `getVisibleVideosForTab` sends the popup.
+    currentVideos.value = groupUniqueFullVideos(enumerated) as unknown as VideoCandidate[];
+
+    // One folder, captioned with the track count rather than 1.
+    expect(mediaRows.value).toHaveLength(1);
+    const folder = header(mediaRows.value)[0] as PlaylistGroup;
+    expect(folder).toMatchObject({ kind: "playlist", count: 61 });
+
+    // Every track is reachable once it is open — the 61 rows the paste selected.
+    togglePlaylist(playlist);
+    expect(mediaRows.value).toHaveLength(62);
+
+    // And the header's box answers for all of them: all selected, then none.
+    selection.value = new Set(enumerated.map((entry) => entry.id));
+    expect(playlistSelectionState(folder.children)).toBe("all");
+    setPlaylistChildrenSelected(folder.children, false);
+    expect(selection.value.size).toBe(0);
   });
 });
 

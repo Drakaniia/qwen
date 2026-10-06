@@ -47,6 +47,41 @@ function ladderOf(video: MediaCandidateLike | undefined | null): string[] {
   return (video as (MediaCandidateLike & CandidateLadder) | undefined | null)?.thumbnailCandidates || [];
 }
 
+/**
+ * Where a candidate came from, if it came from a playlist enumeration — read through
+ * the same structural widening as {@link CandidateLadder}, for the same reason.
+ */
+type CandidatePlaylist = { playlistId?: string };
+
+function playlistIdOf(video: MediaCandidateLike | undefined | null): string {
+  return String((video as (MediaCandidateLike & CandidatePlaylist) | undefined | null)?.playlistId || "");
+}
+
+/**
+ * Whether these two candidates are two *entries of one playlist* rather than one video
+ * seen twice — the one case where {@link isSameFullVideo}'s heuristics must not run.
+ *
+ * Every entry of one enumeration carries the same `playlistId` and the *same* `pageUrl`
+ * (the playlist URL, `background/playlist_helpers.ts`), and `isSameFullVideo` reads
+ * exactly those two things: same page, and a title/stem that agrees. A YouTube
+ * playlist is the worst case for that pair — every entry's URL is
+ * `https://www.youtube.com/watch?v=<id>`, so `normalizeVideoStem` hands back the same
+ * `watch` for all of them, and `isSameFullVideo` merges a 61-track paste into **one**
+ * row with 61 variants. The popup then draws one folder captioned "1 track" while the
+ * sticky bar counts 61 selected ids that have no row to toggle — the reported bug.
+ *
+ * Two different URLs in one enumeration are two tracks, because the enumeration is the
+ * authority on what the entries are. Identical URLs are exempt: a re-detection of one
+ * track must still fold into that track's row.
+ */
+function areDistinctPlaylistEntries(left: MediaCandidateLike, right: MediaCandidateLike): boolean {
+  const playlistId = playlistIdOf(left);
+  if (!playlistId || playlistId !== playlistIdOf(right)) {
+    return false;
+  }
+  return normalizeComparableUrl(left.url || "") !== normalizeComparableUrl(right.url || "");
+}
+
 // ── Format priority ────────────────────────────────────────────────────
 
 /** Higher is better. Tiers, not a total order — anything unlisted is 1. */
@@ -208,7 +243,9 @@ function groupUniqueFullVideos(videos: unknown): GroupedVideo[] {
     }
 
     const video = enrichVideoVariant(rawVideo as MediaCandidateLike);
-    let group = groups.find((item) => item.variants.some((variant) => isSameFullVideo(variant, video)));
+    let group = groups.find((item) =>
+      item.variants.some((variant) => !areDistinctPlaylistEntries(variant, video) && isSameFullVideo(variant, video)),
+    );
     if (!group) {
       group = {
         id: video.id || normalizeComparableUrl(video.url || ""),

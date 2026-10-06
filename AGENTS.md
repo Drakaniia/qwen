@@ -380,6 +380,15 @@ Chrome:
   stamped there sends bad ids to the helper for every row of the playlist. The comment
   above `addDetectedVideo`'s `groupId` line used to claim playlist enumeration already
   stamped it; that was stale and is now corrected.
+- **Playlist rows must not collapse into each other in `groupUniqueFullVideos`.** Every
+  entry of one enumeration shares a `playlistId` *and* a `pageUrl` (the playlist URL), so
+  `isSameFullVideo` read a whole YouTube playlist as one video: each entry is
+  `youtube.com/watch?v=<id>`, whose `normalizeVideoStem` is the same `watch` for all of
+  them. A 61-track paste became **one** row with 61 variants — a folder captioned
+  "1 track" next to a bar counting 61 selected ids that no row could toggle. The guard is
+  `areDistinctPlaylistEntries` in `shared/video_sorting.ts`; identical URLs still fold, so
+  a re-detection of one track keeps its row. Do not delete it as redundant with
+  `pageUrl` — the shared `pageUrl` is exactly what made the rows look like one video.
 - A Spotify collection embed page carries **one** image, so it cannot be the source of
   per-track art — `spotify_metadata.apply_track_covers` upgrades each row through
   `open.spotify.com/oembed` (8 threads, no retry, no memo) and leaves the collection art

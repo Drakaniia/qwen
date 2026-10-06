@@ -214,6 +214,53 @@ describe("groupUniqueFullVideos", () => {
     expect(grouped[0].variantCount).toBe(2);
   });
 
+  it("keeps every entry of one playlist as its own row", () => {
+    // The reported bug. A yt-dlp flat enumeration gives one `watch?v=` entry per track,
+    // all stamped with the same `playlistId` and the playlist URL as `pageUrl`, so the
+    // page/stem heuristic read "same page, same stem (`watch`)" for every pair and folded
+    // a 61-track paste into ONE row with 61 variants: the popup drew a folder captioned
+    // "1 track" while the bar counted 61 selected ids that had no row to toggle.
+    const playlist = "https://music.youtube.com/playlist?list=PLY5CT0";
+    const track = (id: string) => ({
+      id: `h_${id}`,
+      url: `https://www.youtube.com/watch?v=${id}`,
+      title: `Track ${id}`,
+      pageUrl: playlist,
+      source: "playlist",
+      playlistId: playlist,
+      playlistTitle: "High School Radio",
+      downloadable: true,
+      duration: 200,
+      lastSeen: 100,
+    });
+
+    const grouped = groupUniqueFullVideos(Array.from({ length: 61 }, (_value, index) => track(`v${index}`)));
+
+    expect(grouped).toHaveLength(61);
+    expect(grouped.every((entry) => entry.variantCount === 1)).toBe(true);
+    // All one folder, so the popup's `mediaRows` still folds them into a single row and
+    // the header's count is the track count rather than 1.
+    expect(new Set(grouped.map((entry) => (entry as { playlistId?: string }).playlistId))).toEqual(new Set([playlist]));
+  });
+
+  it("still folds a re-detection of one playlist track into that track's row", () => {
+    // Identical urls are exempt from the playlist guard: that is the same track seen
+    // twice, which is exactly what grouping is for.
+    const playlist = "https://music.youtube.com/playlist?list=PLY5CT0";
+    const entry = {
+      id: "h_v0",
+      url: "https://www.youtube.com/watch?v=v0",
+      title: "Track v0",
+      pageUrl: playlist,
+      source: "playlist",
+      playlistId: playlist,
+      downloadable: true,
+      duration: 200,
+    };
+
+    expect(groupUniqueFullVideos([entry, { ...entry, source: "dom-video" }])).toHaveLength(1);
+  });
+
   it("groups distinct urls on the same page under one entry", () => {
     const grouped = groupUniqueFullVideos([
       candidate({ url: "https://cdn.example/video.mp4", sizeBytes: 5_000_000 }),
