@@ -13,11 +13,17 @@ AD_RE = re.compile(
 )
 GIF_RE = re.compile(r"\.(?:gif|gifv)(?:$|[?#])", re.IGNORECASE)
 SEGMENT_RE = re.compile(
-    r"(?:\.(?:ts|m4s|cmfv|cmfa)(?:$|[?#])|(?:^|[/?#._-])(?:seg(?:ment)?|frag(?:ment)?|chunk|part)[._-]?\d+(?:[/?#._-]|$))",
+    r"(?:\.(?:ts|mp2t|m4s|cmfv|cmfa)(?:$|[?#])|(?:^|[/?#._-])(?:seg(?:ment)?|frag(?:ment)?|chunk|part)[._-]?\d+(?:[/?#._-]|$))",
     re.IGNORECASE,
 )
 STATIC_ASSET_RE = re.compile(r"\.(?:hlsjs|js|mjs|cjs|css|map)(?:$|[?#])", re.IGNORECASE)
-STATIC_PAGE_ASSET_RE = re.compile(r"/(?:stylesheet|theme-color|browserconfig)(?:$|[?#])", re.IGNORECASE)
+# `X-UA-Compatible`/`overflow-y-hidden` mirror `media_patterns.ts:STATIC_PAGE_ASSET_RE`;
+# they were missing here, so the host classified a few page assets as media that the
+# extension's own classifier blocks. Keep the two lists in step.
+STATIC_PAGE_ASSET_RE = re.compile(
+    r"/(?:stylesheet|theme-color|browserconfig|X-UA-Compatible|overflow-y-hidden)(?:$|[?#])",
+    re.IGNORECASE,
+)
 WEB_APP_MANIFEST_RE = re.compile(
     r"(?:\.webmanifest|(?:^|[/?#._-])manifest\.(?:json|webm)(?:$|[?#]))",
     re.IGNORECASE,
