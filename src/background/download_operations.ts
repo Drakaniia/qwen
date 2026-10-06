@@ -34,9 +34,20 @@ export function createOperations(deps: DownloadOrchestratorDeps) {
     return deps.blockingDownloadStatuses.has(status || "queued");
   }
 
+  /**
+   * The in-flight job already downloading this video, if any.
+   *
+   * `ignoreJobId` is the id the caller has ALREADY written a record under. `downloadMany`
+   * writes every item's placeholder as `status: "queued"` before the gate admits it
+   * (spec §4), and "queued" is a blocking status — so without this the row matched itself,
+   * came back `existing: true`, opened no native port, and reported success for a playlist
+   * where nothing ran. Excluded by id rather than by status, so a genuinely different job
+   * on the same video still blocks. Empty (the single-video flow) changes nothing.
+   */
   function findBlockingDownloadJobForVideo(
     video: VideoRecord,
     selectedVideo: VideoRecord,
+    ignoreJobId = "",
   ): DownloadJobRecord | undefined {
     const ids = new Set<string>();
     for (const value of [video?.id, video?.groupId, selectedVideo?.id, selectedVideo?.groupId]) {
@@ -48,6 +59,9 @@ export function createOperations(deps: DownloadOrchestratorDeps) {
 
     return Object.values(downloadsById()).find((job) => {
       if (!job || !isBlockingDownloadStatus(job.status)) {
+        return false;
+      }
+      if (ignoreJobId && job.id === ignoreJobId) {
         return false;
       }
       if ((job.videoId && ids.has(job.videoId)) || (job.variantId && ids.has(job.variantId))) {

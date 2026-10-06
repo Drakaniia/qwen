@@ -81,7 +81,9 @@ function create(deps: DownloadOrchestratorDeps) {
     await deps.ensureStateLoaded();
     const { video, selected } = await resolveTabVideo(tabId, videoId, variantId);
 
-    const blockingJob = ops.findBlockingDownloadJobForVideo(video, selected);
+    // The jobId is passed so `downloadMany`'s own `queued` placeholder cannot be mistaken
+    // for a duplicate of itself — it is already in the map by the time we get here.
+    const blockingJob = ops.findBlockingDownloadJobForVideo(video, selected, jobId);
     if (blockingJob) {
       // Nothing was opened, so nothing is in flight on this row's behalf: the slot is
       // free the moment this returns rather than when the pre-existing job settles.
@@ -248,7 +250,18 @@ function create(deps: DownloadOrchestratorDeps) {
     const firstWave = await Promise.all(admitted.slice(0, MAX_CONCURRENT_DOWNLOADS));
     const startedJobIds = firstWave.filter((slot): slot is QueueSlot => Boolean(slot)).map((slot) => slot.jobId);
     if (!startedJobIds.length) {
-      throw new Error("None of those downloads could start.");
+      // Backstop for the invariant the two writes above cannot guarantee between them: a
+      // placeholder is only ever promoted by `startNativeDownloadFromVideo`, so any still
+      // `queued` record here has no download behind it and would sit in the tray forever.
+      // Rows the per-item catch already failed keep their own reason — that is better text
+      // than the batch verdict.
+      const reason = "None of those downloads could start.";
+      named.forEach((found, index) => {
+        if (found && deps.getDownloadsById()[jobIds[index]]?.status === "queued") {
+          deps.updateDownload(jobIds[index], { status: "error", error: reason });
+        }
+      });
+      throw new Error(reason);
     }
     void Promise.all(admitted);
     return { jobIds: startedJobIds };

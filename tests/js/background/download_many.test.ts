@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ACTIVE_DOWNLOAD_STATUSES } from "../../../src/shared/download_statuses.js";
 
 // A macrotask, not a microtask: releasing the first 3 admits the next rows through several
 // awaits (the `waiting` resume, then `start`), and a fixed microtask count would race that.
@@ -242,7 +243,9 @@ describe("downloadMany", () => {
       userFriendlyDownloadError: (error: unknown) => String(error),
       variantsForVideo: () => [],
       findVariant: (video: Record<string, unknown>) => video,
-      blockingDownloadStatuses: new Set(["connecting", "running"]),
+      // The REAL set, not a hand-picked subset: `"queued"` is in it, which is what let the
+      // duplicate check match a row against its own placeholder and open no port at all.
+      blockingDownloadStatuses: ACTIVE_DOWNLOAD_STATUSES,
       updateDownload: (jobId: string, patch: Record<string, unknown>) => {
         jobs[jobId] = { ...(jobs[jobId] || { id: jobId }), ...patch };
       },
@@ -335,5 +338,76 @@ describe("downloadMany", () => {
     // releasing on settlement rather than on a `done`-only path.
     expect(openPorts).toHaveLength(3);
     expect(openPorts.map((port) => port.jobId)).not.toContain(failing.jobId);
+  });
+
+  it("starts a real download per item instead of matching its own queued placeholder", async () => {
+    const { deps, jobs, openPorts } = fakeDeps(6);
+    const { create } = await import("../../../src/background/download/index.js");
+    const api = create(deps as never);
+
+    await api.downloadMany(7, ["v0", "v1", "v2", "v3", "v4", "v5"]);
+
+    // `downloadMany` writes every placeholder as `status: "queued"` BEFORE the gate admits
+    // anything, and "queued" is a blocking status — so the duplicate check matched each row
+    // against itself, returned `{ existing: true }` for all six, opened no port at all, and
+    // the tray sat on six permanent "Queued" rows. Three real ports is the whole difference.
+    expect(openPorts).toHaveLength(3);
+
+    // The gate-held rows still read "Queued"; the three it admitted were overwritten by
+    // `startNativeDownloadFromVideo`. Status is useless as the discriminator here — the
+    // starter also parks on `"queued"` ("Sent to native helper.") — so the message is it.
+    const held = Object.values(jobs).filter((job) => String(job.message).startsWith("Queued #"));
+    expect(held.map((job) => job.message)).toEqual([
+      "Queued #4 of 6.",
+      "Queued #5 of 6.",
+      "Queued #6 of 6.",
+    ]);
+  });
+
+  it("still reuses a SEPARATE in-flight job for the same video", async () => {
+    const { deps, openPorts } = fakeDeps(2);
+    const { create } = await import("../../../src/background/download/index.js");
+    const api = create(deps as never);
+
+    // A real duplicate: someone already started v0 and it is still running.
+    deps.updateDownload("job_other", {
+      id: "job_other",
+      videoId: "v0",
+      url: "https://example.com/v0.mp4",
+      status: "running",
+    });
+
+    const reply = await api.downloadMany(7, ["v0", "v1"]);
+
+    // Ignoring one's OWN placeholder must not weaken this: only v1 opens a port, and the
+    // reused job is what comes back for v0.
+    expect(reply.jobIds[0]).toBe("job_other");
+    expect(openPorts).toHaveLength(1);
+    expect(openPorts[0].jobId).not.toBe("job_other");
+  });
+
+  it("leaves no Queued placeholder behind when the whole first wave cannot start", async () => {
+    const { deps, jobs } = fakeDeps(4);
+    // Fails inside `startNativeDownloadFromVideo`, i.e. AFTER the placeholder is written.
+    deps.callTabsQuery = async (): Promise<never> => {
+      throw new Error("No active tab");
+    };
+    const { create } = await import("../../../src/background/download/index.js");
+    const api = create(deps as never);
+
+    await expect(api.downloadMany(7, ["v0", "v1", "v2", "v3"])).rejects.toThrow(
+      "None of those downloads could start.",
+    );
+    // The batch is self-driving, so the rows behind the first wave only learn they failed
+    // after the throw — flush before looking at them.
+    await flush();
+
+    // A queued placeholder here is never promoted, so it is a row the user can only ever
+    // cancel by hand: the batch already reported failure. `message` still reads "Queued #n"
+    // on a failed row — the per-item catch writes `status`/`error`, not the message — so
+    // `status` is the discriminator. Nothing started here, so no row can be legitimately
+    // sitting on the starter's own "queued".
+    expect(Object.values(jobs).filter((job) => job.status === "queued")).toEqual([]);
+    expect(Object.values(jobs).every((job) => job.status === "error")).toBe(true);
   });
 });
