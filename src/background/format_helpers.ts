@@ -238,7 +238,10 @@ async function getNativeFormatsForVideo(
 
   log("info", `Starting format enumeration for: ${sourceUrl.substring(0, 120)}`);
 
-  await status("Checking link with yt-dlp...");
+  // Outcome, not tool: this string is shown in the quality dialog and the on-page
+  // overlay, and "yt-dlp" is the helper's business, not the user's. The name belongs in
+  // the `log` line below, which is the service-worker console.
+  await status("Finding available versions...");
   try {
     log("info", "Checking link with yt-dlp...");
     response = await requestNativeFormats(formatLookupVideo, nativeRequestFn);
