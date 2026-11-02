@@ -43,6 +43,6 @@
     "vitest-chrome-mv3": "^1.0.0"
   },
   "dependencies": {
-    "motion": "^14.0.0"
+    "motion": "^14.9.0"
   }
 }
