@@ -24,32 +24,34 @@
 
 ## File map
 
-| File | Responsibility |
-| ---- | -------------- |
-| `src/native_host/backends/spotify/spotify_metadata.py` | += `fetch_spotify_collection_tracks` (embed playlist/album parse) |
-| `src/native_host/backends/spotify/spotify_resolver.py` | += `resolve_spotify_playlist`, `PLAYLIST_ITEM_LIMIT = 100` |
-| `src/native_host/backends/format_list.py` | `enumeratePlaylist` += Spotify branch |
-| `src/shared/contracts.ts` | += `enumeratePlaylist`, `downloadMany` message types + payload interfaces |
-| `src/shared/popup_api.ts` | += `enumeratePlaylist`, `downloadMany` clients |
-| `src/background/download/index.ts` | += `downloadMany` queue, `MAX_CONCURRENT_DOWNLOADS = 3` |
-| `src/background/message-handlers/download.ts` | += register both handlers |
-| `src/popup/popup_url_events.ts` | `resolvePastedUrl` += playlist branch |
-| `src/popup/views/PopupFrame.tsx` | `batchDownloadStub` → real executor |
-| `src/popup/views/SelectionBar.tsx` | drop `BATCH_PENDING_REASON` disabled state |
-| `tests/native/test_spotify_playlist.py` | new: collection parse, cap, branch dispatch |
-| `tests/js/background/download_many.test.ts` | new: queue cap, failure isolation |
-| `tests/js/popup/playlist_expand.test.ts` | new: expand-to-rows, single-track fallback |
+| File                                                   | Responsibility                                                            |
+| ------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `src/native_host/backends/spotify/spotify_metadata.py` | += `fetch_spotify_collection_tracks` (embed playlist/album parse)         |
+| `src/native_host/backends/spotify/spotify_resolver.py` | += `resolve_spotify_playlist`, `PLAYLIST_ITEM_LIMIT = 100`                |
+| `src/native_host/backends/format_list.py`              | `enumeratePlaylist` += Spotify branch                                     |
+| `src/shared/contracts.ts`                              | += `enumeratePlaylist`, `downloadMany` message types + payload interfaces |
+| `src/shared/popup_api.ts`                              | += `enumeratePlaylist`, `downloadMany` clients                            |
+| `src/background/download/index.ts`                     | += `downloadMany` queue, `MAX_CONCURRENT_DOWNLOADS = 3`                   |
+| `src/background/message-handlers/download.ts`          | += register both handlers                                                 |
+| `src/popup/popup_url_events.ts`                        | `resolvePastedUrl` += playlist branch                                     |
+| `src/popup/views/PopupFrame.tsx`                       | `batchDownloadStub` → real executor                                       |
+| `src/popup/views/SelectionBar.tsx`                     | drop `BATCH_PENDING_REASON` disabled state                                |
+| `tests/native/test_spotify_playlist.py`                | new: collection parse, cap, branch dispatch                               |
+| `tests/js/background/download_many.test.ts`            | new: queue cap, failure isolation                                         |
+| `tests/js/popup/playlist_expand.test.ts`               | new: expand-to-rows, single-track fallback                                |
 
 ---
 
 ### Task 1: Spotify collection parser + playlist resolver
 
 **Files:**
+
 - Modify: `src/native_host/backends/spotify/spotify_metadata.py`
 - Modify: `src/native_host/backends/spotify/spotify_resolver.py`
 - Test: `tests/native/test_spotify_playlist.py` (create)
 
 **Interfaces:**
+
 - Consumes: `parse_spotify_url`, `HostError` (both already in tree).
 - Produces: `resolve_spotify_playlist(url, yt_dlp_command=None, ffmpeg_location=None) -> {"playlistTitle": str, "items": [{"artist": str, "title": str, "spotifyUrl": str, "url": str}], "totalItems": int}` — Task 2 calls it.
 
@@ -232,10 +234,12 @@ git commit -m "feat(native): resolve Spotify playlists and albums to track lists
 ### Task 2: `enumeratePlaylist` Spotify branch
 
 **Files:**
+
 - Modify: `src/native_host/backends/format_list.py`
 - Test: `tests/native/test_spotify_playlist.py` (append)
 
 **Interfaces:**
+
 - Consumes: `resolve_spotify_playlist` from Task 1.
 - Produces: `run_playlist_enumeration` sends `{"type": "playlistItems", "id", "playlistTitle", "items", "totalItems"}` for Spotify URLs — Task 3 consumes this shape.
 
@@ -306,12 +310,14 @@ git commit -m "feat(native): enumerate Spotify playlists via enumeratePlaylist"
 ### Task 3: Wire types + background `enumeratePlaylist` handler
 
 **Files:**
+
 - Modify: `src/shared/contracts.ts`
 - Modify: `src/shared/popup_api.ts`
 - Modify: `src/background/message-handlers/download.ts`
 - Test: `tests/js/background/download_many.test.ts` (create; enumerate test lives here too)
 
 **Interfaces:**
+
 - Consumes: native `playlistItems` shape from Task 2; `addDetectedVideo`, `nativeRequest`, `senderTabId` from handler `ctx` (all already destructured in `download.ts` except `nativeRequest` — it is in `ctx`, add to destructure).
 - Produces: `PopupApi.enumeratePlaylist(tabId, url)` and handler reply `{ok, videoIds, playlistTitle, totalItems}` — Task 5 consumes them.
 
@@ -458,13 +464,13 @@ export async function enumeratePlaylistVideos(
 `download.ts` — add `nativeRequest` to the `ctx` destructure and register:
 
 ```ts
-  register({
-    name: "enumeratePlaylist",
-    async handle(message: HandlerMessage<MessageOf<"enumeratePlaylist">>) {
-      const tabId = senderTabId(message, message.sender);
-      return { ok: true, ...(await enumeratePlaylistVideos(ctx, tabId, String(message.url || ""))) };
-    },
-  });
+register({
+  name: "enumeratePlaylist",
+  async handle(message: HandlerMessage<MessageOf<"enumeratePlaylist">>) {
+    const tabId = senderTabId(message, message.sender);
+    return { ok: true, ...(await enumeratePlaylistVideos(ctx, tabId, String(message.url || ""))) };
+  },
+});
 ```
 
 with `import { enumeratePlaylistVideos } from "../playlist_helpers.js";` at top.
@@ -488,11 +494,13 @@ git commit -m "feat(background): enumerate playlists into tab-scoped rows"
 ### Task 4: `downloadMany` queue (3-at-a-time)
 
 **Files:**
+
 - Modify: `src/background/download/index.ts`
 - Modify: `src/background/message-handlers/download.ts`
 - Test: `tests/js/background/download_many.test.ts` (append)
 
 **Interfaces:**
+
 - Consumes: `startNativeDownload` (same module), `enumeratePlaylistVideos` result ids.
 - Produces: `downloadMany` in the orchestrator return + `"downloadMany"` handler — Tasks 5–6 consume via `PopupApi.downloadMany`.
 
@@ -577,33 +585,29 @@ export function createBoundedQueue(limit: number, start: QueueStarter) {
 In `download/index.ts`, after `startNativeDownload`:
 
 ```ts
-  const MAX_CONCURRENT_DOWNLOADS = 3;
-  const batchQueue = createBoundedQueue(MAX_CONCURRENT_DOWNLOADS, (queueTabId, queueVideoId, queueFormatId) =>
-    startNativeDownload(queueTabId, queueVideoId, queueFormatId),
-  );
+const MAX_CONCURRENT_DOWNLOADS = 3;
+const batchQueue = createBoundedQueue(MAX_CONCURRENT_DOWNLOADS, (queueTabId, queueVideoId, queueFormatId) =>
+  startNativeDownload(queueTabId, queueVideoId, queueFormatId),
+);
 
-  async function downloadMany(
-    tabId: TabId,
-    videoIds: string[],
-    formatId = "best",
-  ): Promise<{ jobIds: string[] }> {
-    await deps.ensureStateLoaded();
-    const ids = [...new Set(videoIds)].slice(0, 100);
-    if (!ids.length) {
-      throw new Error("Select at least one video first.");
-    }
-    const started = await Promise.allSettled(ids.map((id) => batchQueue.add(tabId, id, formatId)));
-    const jobIds: string[] = [];
-    for (const result of started) {
-      if (result.status === "fulfilled") {
-        jobIds.push(result.value.jobId);
-      }
-    }
-    if (!jobIds.length) {
-      throw new Error("None of those downloads could start.");
-    }
-    return { jobIds };
+async function downloadMany(tabId: TabId, videoIds: string[], formatId = "best"): Promise<{ jobIds: string[] }> {
+  await deps.ensureStateLoaded();
+  const ids = [...new Set(videoIds)].slice(0, 100);
+  if (!ids.length) {
+    throw new Error("Select at least one video first.");
   }
+  const started = await Promise.allSettled(ids.map((id) => batchQueue.add(tabId, id, formatId)));
+  const jobIds: string[] = [];
+  for (const result of started) {
+    if (result.status === "fulfilled") {
+      jobIds.push(result.value.jobId);
+    }
+  }
+  if (!jobIds.length) {
+    throw new Error("None of those downloads could start.");
+  }
+  return { jobIds };
+}
 ```
 
 Add `downloadMany` to the returned object and import `createBoundedQueue` from `"./queue.js"`. Cap 100 mirrors `MAX_VIDEOS_PER_TAB` (`video_utils.ts:13`) — one screen of rows, never more.
@@ -611,14 +615,14 @@ Add `downloadMany` to the returned object and import `createBoundedQueue` from `
 `download.ts` — register beside `downloadVideo`:
 
 ```ts
-  register({
-    name: "downloadMany",
-    async handle(message: HandlerMessage<MessageOf<"downloadMany">>) {
-      const tabId = senderTabId(message, message.sender);
-      const ids = Array.isArray(message.videoIds) ? message.videoIds.map(String) : [];
-      return { ok: true, ...(await downloadMany(tabId, ids, message.formatId || "best")) };
-    },
-  });
+register({
+  name: "downloadMany",
+  async handle(message: HandlerMessage<MessageOf<"downloadMany">>) {
+    const tabId = senderTabId(message, message.sender);
+    const ids = Array.isArray(message.videoIds) ? message.videoIds.map(String) : [];
+    return { ok: true, ...(await downloadMany(tabId, ids, message.formatId || "best")) };
+  },
+});
 ```
 
 destructuring `downloadMany` from `ctx` at the top of `registerDownloadHandlers` next to `startNativeDownload`. `ctx` here is `BackgroundContext` — the orchestrator's return (which now includes `downloadMany`) is spread into it in `background.ts`; verify that spread while editing (it already spreads `...ops` output for the other methods).
@@ -640,10 +644,12 @@ git commit -m "feat(background): 3-at-a-time downloadMany queue"
 ### Task 5: Popup paste flow — playlist branch
 
 **Files:**
+
 - Modify: `src/popup/popup_url_events.ts`
 - Test: `tests/js/popup/playlist_expand.test.ts` (create)
 
 **Interfaces:**
+
 - Consumes: `PopupApi.enumeratePlaylist` (Task 3), existing `getFormatsForUrl` single flow.
 - Produces: pasted playlist URL → rows + downloads view; single URLs unchanged — Task 6 consumes the rows.
 
@@ -696,23 +702,23 @@ Expected: FAIL — `enumeratePlaylist` is not a function (real `popup_api.ts` ha
 In `resolvePastedUrl`, after `setNotice("")` and before the `getFormatsForUrl` call:
 
 ```ts
-  const playlist = (await PopupApi.enumeratePlaylist(activeTabIdOrZero(),
-    url,
-  )) as (FormatsResponse & { videoIds?: string[]; playlistTitle?: string; totalItems?: number }) | null;
+const playlist = (await PopupApi.enumeratePlaylist(activeTabIdOrZero(), url)) as
+  | (FormatsResponse & { videoIds?: string[]; playlistTitle?: string; totalItems?: number })
+  | null;
 
-  if (playlist && playlist.ok && playlist.videoIds?.length) {
-    hideQualityDialog();
-    setNotice(`Added ${playlist.videoIds.length} tracks from ${playlist.playlistTitle || "playlist"}.`);
-    setViewMode("downloads");
-    await refresh();
-    return true;
-  }
-  if (playlist && !playlist.ok && playlist.error && !String(playlist.error).includes("__QWIN_SINGLE_TRACK__")) {
-    hideQualityDialog();
-    setNotice(playlist.error, true);
-    return false;
-  }
-  // Single track (sentinel) or unexpected shape: fall through to the existing single-URL flow.
+if (playlist && playlist.ok && playlist.videoIds?.length) {
+  hideQualityDialog();
+  setNotice(`Added ${playlist.videoIds.length} tracks from ${playlist.playlistTitle || "playlist"}.`);
+  setViewMode("downloads");
+  await refresh();
+  return true;
+}
+if (playlist && !playlist.ok && playlist.error && !String(playlist.error).includes("__QWIN_SINGLE_TRACK__")) {
+  hideQualityDialog();
+  setNotice(playlist.error, true);
+  return false;
+}
+// Single track (sentinel) or unexpected shape: fall through to the existing single-URL flow.
 ```
 
 `MessageResult` needs an `error` read — follow the existing `asRecord` pattern used in `popup/downloads/state.ts` (`errorText`-style narrowing), not a cast that drops it. Keep the rest of the function byte-identical.
@@ -736,11 +742,13 @@ git commit -m "feat(popup): expand pasted playlists into rows"
 ### Task 6: Selection-bar batch executor
 
 **Files:**
+
 - Modify: `src/popup/views/PopupFrame.tsx`
 - Modify: `src/popup/views/SelectionBar.tsx`
 - Test: extend `tests/js/popup/playlist_expand.test.ts`
 
 **Interfaces:**
+
 - Consumes: `orderedSelection` from `ui/useStickySelection.ts`, `PopupApi.downloadMany`, `activeTabIdOrZero` pattern.
 - Produces: working "Download N" button — the screenshot's Retry/Remove rows stay per-row and untouched.
 
@@ -749,9 +757,12 @@ git commit -m "feat(popup): expand pasted playlists into rows"
 ```ts
 it("batch executor calls downloadMany with the ordered selection", async () => {
   const api = await import("../../../src/shared/popup_api.js");
-  vi.mocked(api.downloadMany ?? (() => { throw new Error("no downloadMany"); })).mockResolvedValue?.(
-    { ok: true, jobIds: ["j1", "j2"] } as never,
-  );
+  vi.mocked(
+    api.downloadMany ??
+      (() => {
+        throw new Error("no downloadMany");
+      }),
+  ).mockResolvedValue?.({ ok: true, jobIds: ["j1", "j2"] } as never);
   const { batchDownloadSelection } = await import("../../../src/popup/views/PopupFrame.js");
   const reply = await batchDownloadSelection(7, ["v1", "v2"], "best");
   expect(reply.jobIds).toHaveLength(2);
@@ -772,7 +783,11 @@ Expected: FAIL with "no downloadMany" / "does not provide an export named 'batch
 ```tsx
 export async function batchDownloadSelection(tabId: number, ids: string[], formatId = "best") {
   const { downloadMany } = await import("../../shared/popup_api.js");
-  const reply = (await downloadMany(tabId, ids, formatId)) as { ok?: boolean; jobIds?: string[]; error?: string } | null;
+  const reply = (await downloadMany(tabId, ids, formatId)) as {
+    ok?: boolean;
+    jobIds?: string[];
+    error?: string;
+  } | null;
   if (!reply || !reply.ok) {
     throw new Error(reply?.error || "Batch download failed to start.");
   }
