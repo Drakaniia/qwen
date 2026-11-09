@@ -139,37 +139,39 @@ spring here is a bug" — so `useResize` writes `document.body.style.width` dire
 
 ## WHERE TO LOOK
 
-| Task                        | Location                                                              | Notes                                                                                                                                |
-| --------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **Download orchestration**  | `src/background/download/`, `download_operations.ts`                  | Native-host path and browser-download path                                                                                           |
-| **Download error mapping**  | `src/background/download_fallbacks.ts`                                | Translates raw backend errors into user-facing text                                                                                  |
-| **Network interception**    | `src/background/background_webrequest.ts`                             | `webRequest` listeners, header capture                                                                                               |
-| **Message routing**         | `src/background/message_router.ts`, `message-handlers/`               | `download` / `tab` / `settings` handlers                                                                                             |
-| **Tab state**               | `src/background/tab_state.ts`                                         | Per-tab detected videos, `storage.local`. **Owns `qwinSettings` in memory** — `persistSettings` rewrites the whole key.              |
-| **Format enumeration**      | `src/background/format_helpers.ts`                                    | Orchestrates native `formats` request                                                                                                |
-| **Content detection**       | `src/content/content.ts`, `page_detection.ts`                         | DOM sweep, `<video>`/`<source>`, SPA rescans                                                                                         |
-| **On-page overlay**         | `src/content/content_overlay.ts`                                      | Shadow DOM; reads `:host` tokens, mirrors the theme onto the shadow host                                                             |
-| **Popup frame & rows**      | `src/popup/views/`                                                    | `PopupFrame` (header/view switch/footer/resize grip), `MediaView`, `DownloadsView`, `VideoRow`, `JobRow`, `SelectionBar`             |
-| **Popup state**             | `src/popup/state/`                                                    | Signals: `app.ts` (view mode, theme, width), `videos.ts`, `downloads.ts`, `filters.ts`                                               |
-| **Downloads page**          | `src/popup/downloads/`                                                | Grouped by day, per-row open/reveal, facet popovers, bulk bar                                                                        |
-| **Options page**            | `src/popup/options/`                                                  | Five task sections + search; `sections.tsx` holds the section table and terms                                                        |
-| **Design system**           | `src/ui/`                                                             | Tokens in `theme.css`, springs in `motion.ts`, everything else beside them                                                           |
-| **Icons**                   | `src/ui/Icon.tsx`                                                     | The only icon set, plus `StatusDot`. 24×24, `stroke-width: 1.6`. No emoji anywhere in `src/`.                                        |
-| **Popup resize**            | `src/ui/useResize.ts`                                                 | 400–720px, default 460, rubber-banded at both bounds, persisted                                                                      |
-| **Selection set**           | `src/ui/useStickySelection.ts`                                        | Module-level signal. **No download dispatch** — the batch executor is Phase 2.                                                       |
-| **Playlist folders**        | `src/popup/state/playlists.ts`, `src/popup/views/PlaylistRow.tsx`    | `mediaRows` folds *consecutive* runs of `playlistId` into one collapsed folder. `displayedVideos` is untouched, so search/facets still run on songs. |
-| **Keyboard model**          | `src/ui/useListKeys.ts`                                               | Roving tabindex, `/` search, Enter, Space, Esc, Home/End                                                                             |
-| **Native host entry**       | `src/native_host/host.py`                                             | stdio loop + `match` dispatch table                                                                                                  |
-| **yt-dlp commands**         | `src/native_host/backends/yt_dlp/yt_dlp_command.py`                   | Command building, variant fallbacks                                                                                                  |
-| **Dependency probing**      | `src/native_host/backends/yt_dlp/yt_dlp_dependencies.py`              | `yt-dlp`, `ffmpeg`, `aria2c`, `N_m3u8DL-RE`, `streamlink`                                                                            |
-| **Stream backends**         | `src/native_host/backends/stream_backends.py`                         | N_m3u8DL-RE / Streamlink / ffmpeg command builders                                                                                   |
-| **Shared contracts**        | `src/shared/contracts.ts`                                             | `Settings` (incl. `popupWidth`, `theme`), `DetectedVideo`, `ThemeMode`. Both sides must stay in sync.                                |
-| **Media detection helpers** | `src/shared/media_candidates.ts`, `video_filters.ts`                  | Filtering the detector's output, both sides share them                                                                               |
-| **Helper dependency table** | `src/shared/helper_dependencies.ts`, `host.py:dependency_status()`    | One entry per external tool. Both UIs render it; the Python side reports it.                                                         |
-| **Filter lists**            | `src/shared/filter_list_*.ts`, `src/background/filter_integration.ts` | uBO + EasyList patterns, 5-day / 1-day refresh                                                                                       |
-| **Overlay tokens**          | `src/shared/qwin_overlay.css`                                         | `:host`-scoped copy of `theme.css`'s palette. `tests/js/content/overlay_tokens.test.ts` diffs the two hex sets so they cannot drift. |
-| **Build**                   | `scripts/build-extension.ps1`, `scripts/build-bundles.js`             | Owns `dist/`                                                                                                                         |
-| **Tests**                   | `tests/js/**`, `tests/native/**`                                      | 1118 vitest tests / 31 files; 9 pytest tests / 2 files                                                                               |
+| Task                           | Location                                                                | Notes                                                                                                                                                |
+| ------------------------------ | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Download orchestration**     | `src/background/download/`, `download_operations.ts`                    | Native-host path and browser-download path                                                                                                           |
+| **Download error mapping**     | `src/background/download_fallbacks.ts`                                  | Translates raw backend errors into user-facing text                                                                                                  |
+| **Why a video has no options** | `src/background/format_helpers.ts`                                      | `unavailableReasonFor` — the sentence the quality dialog shows _instead of_ a format table                                                           |
+| **Byte-level media probe**     | `src/native_host/media/media_probe.py`, `src/background/media_probe.ts` | Last resort after yt-dlp and every detected candidate fail: `HEAD` + `Range: bytes=0-511`, Content-Type then magic bytes                             |
+| **Network interception**       | `src/background/background_webrequest.ts`                               | `webRequest` listeners, header capture                                                                                                               |
+| **Message routing**            | `src/background/message_router.ts`, `message-handlers/`                 | `download` / `tab` / `settings` handlers                                                                                                             |
+| **Tab state**                  | `src/background/tab_state.ts`                                           | Per-tab detected videos, `storage.local`. **Owns `qwinSettings` in memory** — `persistSettings` rewrites the whole key.                              |
+| **Format enumeration**         | `src/background/format_helpers.ts`                                      | Orchestrates native `formats` request                                                                                                                |
+| **Content detection**          | `src/content/content.ts`, `page_detection.ts`                           | DOM sweep, `<video>`/`<source>`, SPA rescans                                                                                                         |
+| **On-page overlay**            | `src/content/content_overlay.ts`                                        | Shadow DOM; reads `:host` tokens, mirrors the theme onto the shadow host                                                                             |
+| **Popup frame & rows**         | `src/popup/views/`                                                      | `PopupFrame` (header/view switch/footer/resize grip), `MediaView`, `DownloadsView`, `VideoRow`, `JobRow`, `SelectionBar`                             |
+| **Popup state**                | `src/popup/state/`                                                      | Signals: `app.ts` (view mode, theme, width), `videos.ts`, `downloads.ts`, `filters.ts`                                                               |
+| **Downloads page**             | `src/popup/downloads/`                                                  | Grouped by day, per-row open/reveal, facet popovers, bulk bar                                                                                        |
+| **Options page**               | `src/popup/options/`                                                    | Five task sections + search; `sections.tsx` holds the section table and terms                                                                        |
+| **Design system**              | `src/ui/`                                                               | Tokens in `theme.css`, springs in `motion.ts`, everything else beside them                                                                           |
+| **Icons**                      | `src/ui/Icon.tsx`                                                       | The only icon set, plus `StatusDot`. 24×24, `stroke-width: 1.6`. No emoji anywhere in `src/`.                                                        |
+| **Popup resize**               | `src/ui/useResize.ts`                                                   | 400–720px, default 460, rubber-banded at both bounds, persisted                                                                                      |
+| **Selection set**              | `src/ui/useStickySelection.ts`                                          | Module-level signal. **No download dispatch** — the batch executor is Phase 2.                                                                       |
+| **Playlist folders**           | `src/popup/state/playlists.ts`, `src/popup/views/PlaylistRow.tsx`       | `mediaRows` folds _consecutive_ runs of `playlistId` into one collapsed folder. `displayedVideos` is untouched, so search/facets still run on songs. |
+| **Keyboard model**             | `src/ui/useListKeys.ts`                                                 | Roving tabindex, `/` search, Enter, Space, Esc, Home/End                                                                                             |
+| **Native host entry**          | `src/native_host/host.py`                                               | stdio loop + `match` dispatch table                                                                                                                  |
+| **yt-dlp commands**            | `src/native_host/backends/yt_dlp/yt_dlp_command.py`                     | Command building, variant fallbacks                                                                                                                  |
+| **Dependency probing**         | `src/native_host/backends/yt_dlp/yt_dlp_dependencies.py`                | `yt-dlp`, `ffmpeg`, `aria2c`, `N_m3u8DL-RE`, `streamlink`                                                                                            |
+| **Stream backends**            | `src/native_host/backends/stream_backends.py`                           | N_m3u8DL-RE / Streamlink / ffmpeg command builders                                                                                                   |
+| **Shared contracts**           | `src/shared/contracts.ts`                                               | `Settings` (incl. `popupWidth`, `theme`), `DetectedVideo`, `ThemeMode`. Both sides must stay in sync.                                                |
+| **Media detection helpers**    | `src/shared/media_candidates.ts`, `video_filters.ts`                    | Filtering the detector's output, both sides share them                                                                                               |
+| **Helper dependency table**    | `src/shared/helper_dependencies.ts`, `host.py:dependency_status()`      | One entry per external tool. Both UIs render it; the Python side reports it.                                                                         |
+| **Filter lists**               | `src/shared/filter_list_*.ts`, `src/background/filter_integration.ts`   | uBO + EasyList patterns, 5-day / 1-day refresh                                                                                                       |
+| **Overlay tokens**             | `src/shared/qwin_overlay.css`                                           | `:host`-scoped copy of `theme.css`'s palette. `tests/js/content/overlay_tokens.test.ts` diffs the two hex sets so they cannot drift.                 |
+| **Build**                      | `scripts/build-extension.ps1`, `scripts/build-bundles.js`               | Owns `dist/`                                                                                                                                         |
+| **Tests**                      | `tests/js/**`, `tests/native/**`                                        | 1118 vitest tests / 31 files; 9 pytest tests / 2 files                                                                                               |
 
 ## BUILD TOPOLOGY — two bundlers, three artifacts
 
@@ -280,7 +282,7 @@ fresh clone still shows the old`.js` files.
   reasoning is written out in `theme.css`'s header comment. Read it before "simplifying".
 - **Do not hand `motion` a spring's `damping`/`response`.** Spec §4.5's `{damping, response}`
   table is _not_ motion v14's API. v14 takes `{bounce, duration}` for a spring — `bounce` is
-  `1 - damping`. **`duration` is SECONDS, for a spring and a tween alike** — a millisecond literal is read as *seconds* and clamped (which made every `motion.ts` preset a ten-second spring). A
+  `1 - damping`. **`duration` is SECONDS, for a spring and a tween alike** — a millisecond literal is read as _seconds_ and clamped (which made every `motion.ts` preset a ten-second spring). A
   bare `damping` with no `stiffness`/`mass` silently switches motion to a physics spring and
   ignores `duration`: `{damping: 1.0, response: 0.3}` measured **10.7 seconds** to settle,
   and the runtime prints `Spring duration must be 10 seconds or less`. Take numbers from
@@ -372,6 +374,31 @@ Chrome:
 
 ## NOTES
 
+- **The broad response gate has four independent ways in, and none is a precondition for
+  another** (`background/background_webrequest.ts`): a named media `Content-Type`; the
+  browser's own `type: "media"` stamp; `application/octet-stream` over HTTP 206; or a
+  `streaming_patterns.ts` match. It used to require the Content-Type **and** a URL pattern,
+  which threw away every real stream served from a URL that matched none of ~50 hardcoded
+  host shapes — the most common way a working site looked "not downloadable". The block
+  list runs first on every path and is still authoritative; do not relax _that_.
+- **A `<video>` vouches for its own source.** `page_detection.ts:buildCandidate` accepts a
+  DOM candidate when the element passes `isLikelyRealVideoBox`, without asking the URL
+  classifier — an opaque URL on a real player is media, and no table needs to say so.
+  `blob:` sources are tagged `source: "mse-player"` instead of being dropped: the handle is
+  a MediaSource pointer, so it is never downloadable, and the tag is what lets the UI say so
+  rather than offering a dead quality list. `mse-player` is in `video_filters.ts`'s DOM-source
+  exemption list, so a title like "Episode 3 Part 1" cannot delete the row.
+- **`probeUrls` is the probe's input, and it rides on the page-fallback row only.**
+  `content.ts:unclassifiedResourceUrls` collects the bounded set of `fetch`/`xmlhttprequest`
+  resource-timing URLs the ordinary scanners had to drop (the only URLs the extension ever
+  discarded without asking the server), and `format_helpers.ts` hands them to
+  `probeMediaUrls` once everything else has failed. Adding them to every row would put a
+  dozen URLs into every `videoListUpdated` broadcast for no gain — the page-fallback row is
+  the one that ends up failing.
+- **An empty format list is a real answer.** `getNativeFormatsForVideo` returns `formats: []`
+  plus `unavailableReason`; `QualityDialog` renders the sentence in place of the table. There
+  is deliberately no synthetic "Best available MP4" fallback — it was a clickable row for a
+  URL the helper had already refused.
 - **`playlistId` is not `groupId`.** A pasted playlist collapses into a folder keyed on
   `DetectedVideo.playlistId` (the playlist URL, un-hashed — nothing displays it, it is
   only compared for equality by `state/playlists.ts`). `groupId` is the tempting reuse
@@ -381,7 +408,7 @@ Chrome:
   above `addDetectedVideo`'s `groupId` line used to claim playlist enumeration already
   stamped it; that was stale and is now corrected.
 - **Playlist rows must not collapse into each other in `groupUniqueFullVideos`.** Every
-  entry of one enumeration shares a `playlistId` *and* a `pageUrl` (the playlist URL), so
+  entry of one enumeration shares a `playlistId` _and_ a `pageUrl` (the playlist URL), so
   `isSameFullVideo` read a whole YouTube playlist as one video: each entry is
   `youtube.com/watch?v=<id>`, whose `normalizeVideoStem` is the same `watch` for all of
   them. A 61-track paste became **one** row with 61 variants — a folder captioned
@@ -394,7 +421,7 @@ Chrome:
   `open.spotify.com/oembed` (8 threads, no retry, no memo) and leaves the collection art
   in place whenever a lookup fails. yt-dlp's flat enumeration has no such gap: each
   entry already carries its own `thumbnails`, read by `format_list._entry_artwork`. The
-  *playlist's own* cover is a separate value (`playlistThumbnailUrl`) because a
+  _playlist's own_ cover is a separate value (`playlistThumbnailUrl`) because a
   `--flat-playlist` dump describes entries and carries nothing for the collection — for
   yt-dlp that costs one best-effort `_playlist_cover` probe, `ponytail:`-marked, whose
   deletion path is documented on the function.
@@ -449,11 +476,11 @@ Chrome:
   `MediaView` inside the popup's own frame and times a playlist expansion:
 
   | tracks | expand: DOM build (median, spread) | then forced layout | pre-select re-render | DOM nodes | `<img>` |
-  | ------ | --------------------------------- | ------------------ | -------------------- | --------- | ------- |
-  | 50     | 24 ms (18–31)                     | 9 ms               | 14 ms                | 1,051     | 51      |
-  | 100    | 58 ms (49–66)                     | 30 ms              | 25 ms                | 2,051     | 101     |
-  | 250    | 114 ms (96–150)                   | 84 ms              | 64 ms                | 5,051     | 251     |
-  | 500    | 202 ms (178–271)                  | 184 ms             | 76–107 ms            | 10,051    | 501     |
+  | ------ | ---------------------------------- | ------------------ | -------------------- | --------- | ------- |
+  | 50     | 24 ms (18–31)                      | 9 ms               | 14 ms                | 1,051     | 51      |
+  | 100    | 58 ms (49–66)                      | 30 ms              | 25 ms                | 2,051     | 101     |
+  | 250    | 114 ms (96–150)                    | 84 ms              | 64 ms                | 5,051     | 251     |
+  | 500    | 202 ms (178–271)                   | 184 ms             | 76–107 ms            | 10,051    | 501     |
 
   The two time columns are sequential halves of one blocking commit — build the nodes,
   then lay them out — so the cost the user waits on is their sum: **~380 ms for a 500-track
@@ -461,7 +488,7 @@ Chrome:
   on a fresh page, because a single sample swings by 2×.
 
   Re-measure with `npx vite build --config bench/vite.config.ts && npx vite preview --config
-  bench/vite.config.ts`, then `await qwinBench.samples(500)` in the page. Two things must
+bench/vite.config.ts`, then `await qwinBench.samples(500)` in the page. Two things must
   not be lost: **measure the build, never the dev server** — the unminified dev graph
   reported 1657 ms where the built one reported 202 ms, an 8× overstatement — and **take
   several samples on a fresh page**, because a session's later reps drift upward as the
@@ -474,6 +501,7 @@ Chrome:
   media row is 16:9-plus-text and a playlist header is a 48px tile, so the window has to
   measure rows. That work belongs in `MediaView`'s listbox rather than in the rows — see
   the `ponytail:` note in `src/popup/views/VideoRow.tsx`.
+
 - The numbers above were taken in the Preview panel's Chromium (Electron 33 / Chrome 130,
   12 cores, headed, dpr 1) — **not** in Yandex. The extension's floor is 148, so treat them
   as an order of magnitude, not as the target browser's p99.
