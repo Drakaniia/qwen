@@ -133,7 +133,7 @@ Both the popup's **Downloads** view and the full **Downloads** page support:
 
 The Downloads page adds free-text search over titles, faceted filters by status / format /
 source, and the bulk actions **Retry failed**, **Clear all** and **Reveal newest**.
-**Clear all** drops every finished job *and* the synced history behind it, so a cleared
+**Clear all** drops every finished job _and_ the synced history behind it, so a cleared
 list stays cleared; active downloads are left running.
 
 Pause/resume stops `yt-dlp` and restarts the same job later. `yt-dlp` resumes from its
