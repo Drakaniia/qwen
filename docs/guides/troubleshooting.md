@@ -64,8 +64,14 @@ seconds so the extension can see the underlying media requests. On YouTube watch
 shorts pages, Qwin should list the YouTube page itself rather than the temporary
 `googlevideo.com` playback URL.
 
-Some pages never expose a reusable media URL. In that case the helper cannot download it, and
-pasting the URL into **Download from link** is worth trying.
+A `blob:` row is detected by the content script and tagged internally (`source: mse-player`)
+rather than handed to the helper, because the handle points at the player's own buffer and
+there is no file behind it — `blob:`, `data:` and `file:` cannot be sent to `yt-dlp` at all.
+Qwin cannot save those rows; the row says so instead of offering a Download button. If the
+site itself is supported by yt-dlp, the page's own row can still download it.
+
+Some pages never expose a reusable media URL at all. The quality dialog now says which of
+these it is instead of offering a download that cannot work (see **Zero Formats Returned**).
 
 ## Manual Link Fails
 
@@ -86,14 +92,33 @@ formats.
 ## Zero Formats Returned
 
 If the popup shows no quality options for a video it did detect, the native host answered but
-returned no usable formats. `src/logs/downloads.jsonl` records the reason
-(`ATTEMPT_END` / `DOWNLOAD_ERROR` entries), and the common ones are:
+returned no usable formats. The dialog shows one sentence explaining why **instead of** the
+version table — it no longer offers a synthetic "Best available MP4", which was a row the
+helper had already refused and which always failed on click.
+
+What each sentence means:
+
+- **"This page does not expose a downloadable video link"** — the helper was handed a page
+  URL, not a media URL, and has no extractor for that host (`Unsupported URL`). Start
+  playback so the player loads its stream, then reopen the popup.
+- **"This video plays through a browser-managed stream"** — the source is a `blob:` handle
+  (MSE). Nothing can fetch it, and Qwin does not record playback. Try the page URL instead.
+- **"This stream is DRM-protected"** — Widevine/PlayReady. No downloader can copy it.
+- **"No downloadable versions were found for this video"** — the helper reached the address
+  and found nothing in it (a segment, a token-only URL, or a session-gated page).
+
+`src/logs/downloads.jsonl` still records the raw reason (`ATTEMPT_END` / `DOWNLOAD_ERROR`
+entries), and the raw text is shown under the sentence when no mapping matches. The usual
+causes are:
 
 - `yt-dlp returned response but no formats found` — the site was reached but nothing
-  extractable came back. Usually the URL was not the media URL (a segment, a token-only URL,
-  or a page that requires a session).
+  extractable came back. Usually the URL was not the media URL.
 - `Format enumeration complete: 0 native + 0 detected format(s)` — both the native path and
   the detected-candidate path came up empty.
+
+Before giving up, the extension already probes the URLs it could not classify: a `HEAD` plus
+at most one ranged `GET` per URL, classified by Content-Type and the first 512 bytes
+(`probeMediaUrls`). Only URLs that survive the block list are probed, capped at 12 per video.
 
 Check the URL in the log line directly: paste it into **Download from link** and see whether
 `yt-dlp` alone can handle it. If it cannot, the extension's classification is not the problem.
