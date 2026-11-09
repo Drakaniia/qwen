@@ -114,11 +114,10 @@ def validate_download_url(url):
     if not isinstance(url, str) or not url.strip():
         raise HostError("Download request did not include a video URL.")
 
-    url = url.strip()
-    if url.startswith("magnet:?"):
-        return
-
-    parsed = urlparse(url)
+    # magnet: links used to be waved through here although the torrent backend was
+    # deleted (AGENTS.md: dad38be / f38e6de / 8c5c698) -- they reached yt-dlp and failed
+    # there with a confusing error. They are rejected with every other non-http scheme.
+    parsed = urlparse(url.strip())
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise HostError(
             "Only http:// and https:// media, playlist, or supported video page URLs can be sent to yt-dlp. "

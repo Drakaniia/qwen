@@ -107,7 +107,32 @@ def append_generic_impersonation_options(command):
     command.extend(["--extractor-args", GENERIC_EXTRACTOR_ARGS])
 
 
-def format_selector_for_choice(selected_format, extract_audio=False):
+def capped_format_selector(max_height):
+    """`best`, but no taller than `max_height` -- degrading to plain best when nothing fits.
+
+    The tail (`bv*+ba/b`) is deliberate: a source whose formats carry no height at all, or
+    whose smallest rendition is still above the cap, must download something rather
+    than fail with "requested format is not available".
+    """
+    cap = int(max_height)
+    return f"bv*[height<={cap}]+ba/b[height<={cap}]/bv*+ba/b"
+
+
+def normalize_max_height(value):
+    """The `maxHeight` download field as a non-negative int; 0 (or junk) means no cap."""
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, number)
+
+
+def format_selector_for_choice(selected_format, extract_audio=False, max_height=0):
+    """yt-dlp `-f` for the user's choice.
+
+    `max_height` only shapes the automatic `best` pick. An explicit format id is the
+    user's own decision, and music mode extracts audio, so the cap ignores both.
+    """
     selected = str(selected_format or "").strip()
     if extract_audio:
         if not selected or selected == "best":
@@ -118,10 +143,13 @@ def format_selector_for_choice(selected_format, extract_audio=False):
             return selected
         return f"{selected}/ba"
     if not selected or selected == "best":
-        return DEFAULT_FORMAT_SELECTOR
+        cap = normalize_max_height(max_height)
+        return capped_format_selector(cap) if cap else DEFAULT_FORMAT_SELECTOR
     if any(separator in selected for separator in ["+", "/", ","]):
         return selected
-    return f"{selected}+bestaudio/best"
+    # `X+bestaudio` fails outright when the source has no separate audio (an HLS
+    # rendition with muxed audio); `/X` keeps the user's pick before plain `best`.
+    return f"{selected}+bestaudio/{selected}/best"
 
 
 def build_yt_dlp_command(
@@ -142,10 +170,11 @@ def build_yt_dlp_command(
     audio_format="mp3",
     download_subtitles=True,
     headers_config_path=None,
+    max_height=0,
 ):
     download_root = str(Path(download_dir))
     output_template = "%(title).240B [%(id)s].%(ext)s"
-    format_selector = format_selector_for_choice(selected_format, extract_audio=extract_audio)
+    format_selector = format_selector_for_choice(selected_format, extract_audio=extract_audio, max_height=max_height)
     fragment_count = bounded_int(concurrent_fragments, DEFAULT_CONCURRENT_FRAGMENTS)
     command = [
         *(yt_dlp_command or ["yt-dlp"]),
@@ -192,9 +221,15 @@ def build_yt_dlp_command(
     else:
         command.extend(
             [
+                # Container changes only, never a re-encode. `--recode-video mp4` used to
+                # transcode every webm/mov source -- slow, and lossy for no reason, since
+                # mp4 carries h264/hevc/av1/vp9 + aac/opus as-is. A merge of separate
+                # streams goes straight into mp4; a single-file source is remuxed (stream
+                # copy). If a codec truly cannot live in mp4 the remux fails, and
+                # DownloadTask's "conversion failed" branch keeps the original file.
                 "--merge-output-format",
                 "mp4",
-                "--recode-video",
+                "--remux-video",
                 "mp4",
                 "--print",
                 f"after_move:{FILEPATH_MARKER}%(filepath)s",
@@ -381,17 +416,26 @@ def summarize_formats(info):
     seen_ids = set()
     choices = []
 
-    video_formats = []
+    progressive_formats = []
+    segmented_formats = []
+    audio_formats = []
     for item in raw_formats:
         format_id = str(item.get("format_id") or "").strip()
         if not format_id or format_id in seen_ids:
             continue
-        if str(item.get("vcodec") or "none").lower() == "none":
-            continue
-        if is_segmented_stream_format(item):
-            continue
+        if str(item.get("protocol") or "").lower() == "mhtml":
+            continue  # storyboard images, not media
         seen_ids.add(format_id)
-        video_formats.append(item)
+        if _is_explicit_audio_only(item):
+            audio_formats.append(item)
+        elif _may_carry_video(item):
+            (segmented_formats if is_segmented_stream_format(item) else progressive_formats).append(item)
+
+    # Progressive files stay preferred: when a site offers both, the HLS/DASH twins are
+    # duplicates of the same renditions. But an HLS/DASH-only source (Vimeo-style, or a
+    # bare .m3u8/.mpd) used to answer with an EMPTY list -- every one of its formats was
+    # segmented -- although yt-dlp downloads a segmented format by id just fine.
+    video_formats = progressive_formats or segmented_formats
 
     if video_formats:
         choices.append(
@@ -402,25 +446,55 @@ def summarize_formats(info):
                 "height": None,
                 "size": "",
                 "note": "Recommended",
+                "kind": "video",
             }
         )
 
     for item in sorted(video_formats, key=format_sort_key, reverse=True)[:25]:
-        choices.append(
-            {
-                "id": str(item.get("format_id")),
-                "label": format_label(item),
-                "ext": item.get("ext") or "",
-                "height": item.get("height"),
-                "width": item.get("width"),
-                "fps": item.get("fps"),
-                "vcodec": item.get("vcodec") or "",
-                "acodec": item.get("acodec") or "",
-                "tbr": item.get("tbr"),
-                "size": human_size(item.get("filesize") or item.get("filesize_approx")),
-                "note": item.get("format_note") or "",
-            }
-        )
+        choice = {
+            "id": str(item.get("format_id")),
+            "label": format_label(item),
+            "ext": item.get("ext") or "",
+            "height": item.get("height"),
+            "width": item.get("width"),
+            "fps": item.get("fps"),
+            "vcodec": item.get("vcodec") or "",
+            "acodec": item.get("acodec") or "",
+            "tbr": item.get("tbr"),
+            "size": human_size(item.get("filesize") or item.get("filesize_approx")),
+            "note": item.get("format_note") or "",
+            "kind": "video",
+        }
+        if is_segmented_stream_format(item):
+            choice["streaming"] = True
+            choice["protocol"] = str(item.get("protocol") or "")
+        choices.append(choice)
+
+    # Audio-only renditions, for an "Audio only" section. A separate list, not rows in
+    # `formats`: a consumer that does not know `kind` must not render a 128 kbps stream
+    # as a video quality. The `id` is a complete yt-dlp selector (`<fid>/bestaudio`), so
+    # sending it back as `formatId` downloads exactly that stream -- `format_selector_
+    # for_choice` passes any id containing `/` through verbatim instead of pairing it
+    # with `+bestaudio`. `formatId` is the bare yt-dlp id, for display.
+    audio_choices = [
+        {
+            "id": f"{item.get('format_id')}/bestaudio",
+            "formatId": str(item.get("format_id")),
+            "kind": "audio",
+            "label": audio_format_label(item),
+            "ext": item.get("ext") or "",
+            "height": None,
+            "width": None,
+            "vcodec": "none",
+            "acodec": item.get("acodec") or "",
+            "abr": item.get("abr"),
+            "asr": item.get("asr"),
+            "tbr": item.get("tbr"),
+            "size": human_size(item.get("filesize") or item.get("filesize_approx")),
+            "note": item.get("format_note") or "",
+        }
+        for item in sorted(audio_formats, key=audio_format_sort_key, reverse=True)[:10]
+    ]
 
     # Check if subtitles are available from yt-dlp metadata
     raw_subtitles = info.get("subtitles") or {}
@@ -436,8 +510,46 @@ def summarize_formats(info):
         "thumbnailUrl": thumbnail_url,
         "hasSubtitles": has_subtitles,
         "subtitleLanguages": subtitle_language_count,
+        "duration": duration_seconds(info),
         "formats": choices,
+        "audioFormats": audio_choices,
     }
+
+
+def duration_seconds(info):
+    """yt-dlp's `duration` as a positive number of seconds, or None when unknown."""
+    try:
+        value = float(info.get("duration") or 0)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return int(value) if value.is_integer() else round(value, 3)
+
+
+def _is_explicit_audio_only(item):
+    """yt-dlp SAID there is no picture (`vcodec: "none"`) and did not say there is no sound.
+
+    Stricter than `is_audio_only_format`, which reads a missing vcodec as "none": a direct
+    `.mp4` link and an HLS master without CODECS both arrive with no vcodec at all, and
+    those are videos.
+    """
+    vcodec = item.get("vcodec")
+    acodec = item.get("acodec")
+    if vcodec is None or str(vcodec).lower() != "none":
+        return False
+    return acodec is None or str(acodec).lower() != "none"
+
+
+def _may_carry_video(item):
+    """True unless yt-dlp explicitly reported `vcodec: "none"`.
+
+    An unset vcodec is "unknown", not "absent": yt-dlp's generic extractor leaves it
+    unset for a direct media link, so treating it as audio-less-and-video-less dropped
+    every directly linked file from the list.
+    """
+    vcodec = item.get("vcodec")
+    return vcodec is None or str(vcodec).lower() != "none"
 
 
 def is_audio_only_format(item):
@@ -537,6 +649,7 @@ def summarize_audio_formats(info):
         "title": title,
         "webpageUrl": webpage_url,
         "thumbnailUrl": thumbnail_url,
+        "duration": duration_seconds(info),
         "formats": choices,
     }
 

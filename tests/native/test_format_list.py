@@ -89,23 +89,27 @@ def sent(monkeypatch):
         stdout = json.dumps(YOUTUBE_INFO)
         stderr = ""
 
-    monkeypatch.setattr(format_list, "yt_dlp_command_resolver", lambda: ["yt-dlp"], raising=False)
     monkeypatch.setattr(format_list.subprocess, "run", lambda *a, **k: _Completed())
 
-    def _capture(message):
-        messages.append(message)
+    # The resolvers are default *parameters* of run_format_list, bound at definition
+    # time, so patching a module attribute would never reach them. Stub them at the
+    # call site instead; otherwise the test probes the machine and fails wherever
+    # yt-dlp or ffmpeg is not installed (CI).
+    def _run(request_id):
+        format_list.run_format_list(
+            {"id": request_id, "url": "https://www.youtube.com/watch?v=PgyggSRHY1o"},
+            send=messages.append,
+            yt_dlp_command_resolver=lambda: ["yt-dlp"],
+            ffmpeg_location_resolver=lambda: "ffmpeg",
+        )
 
-    return messages, _capture
+    return messages, _run
 
 
 def test_first_message_is_the_formats_response_not_a_progress_update(sent):
     """The bug: native_requests.js resolves on the first id-tagged message."""
-    messages, capture = sent
-
-    format_list.run_format_list(
-        {"id": "formats_1", "url": "https://www.youtube.com/watch?v=PgyggSRHY1o"},
-        send=capture,
-    )
+    messages, run = sent
+    run("formats_1")
 
     assert messages, "run_format_list sent no message at all"
     first = messages[0]
@@ -117,12 +121,8 @@ def test_first_message_is_the_formats_response_not_a_progress_update(sent):
 
 
 def test_response_carries_formats(sent):
-    messages, capture = sent
-
-    format_list.run_format_list(
-        {"id": "formats_2", "url": "https://www.youtube.com/watch?v=PgyggSRHY1o"},
-        send=capture,
-    )
+    messages, run = sent
+    run("formats_2")
 
     formats = messages[0]["formats"]
     assert len(formats) > 0, "response carried an empty formats list"
@@ -139,23 +139,15 @@ def test_response_carries_formats(sent):
 
 def test_no_progress_messages_share_the_request_id(sent):
     """No message may precede the terminal response on this id."""
-    messages, capture = sent
-
-    format_list.run_format_list(
-        {"id": "formats_3", "url": "https://www.youtube.com/watch?v=PgyggSRHY1o"},
-        send=capture,
-    )
+    messages, run = sent
+    run("formats_3")
 
     assert [m for m in messages if m["type"] != "formats"] == []
 
 
 def test_title_and_subtitle_metadata_survive(sent):
-    messages, capture = sent
-
-    format_list.run_format_list(
-        {"id": "formats_4", "url": "https://www.youtube.com/watch?v=PgyggSRHY1o"},
-        send=capture,
-    )
+    messages, run = sent
+    run("formats_4")
 
     response = messages[0]
     assert "HTMX" in response["title"]

@@ -70,8 +70,8 @@ def run_spotify_fallback_download(
     )
 
     # Build fallback variants for the YouTube URL.
-    # aria2c is required — the primary command above needs it, and none of these
-    # variants pass aria2c_location.
+    # None of these variants pass aria2c_location: aria2c is optional, so they double
+    # as the plain yt-dlp-downloader retry when aria2c is missing or misbehaves.
     fallback_commands = []
 
     def _yt_base():

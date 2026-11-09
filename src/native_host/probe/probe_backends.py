@@ -8,15 +8,68 @@ import json
 import subprocess
 import tempfile
 import threading
+import time
 from typing import Optional
 
 from browser_context import append_browser_context_options
+from process_control import creation_flags, terminate_process_tree
 from stream_backends import header_args_for_n_m3u8dl_re, header_args_for_streamlink
 
 # Probes inherit the host's cwd in dev (src/native_host/) — a misbehaving
 # probe binary must not drop files into the source tree, so all three run
 # with cwd pointed at the temp dir instead. Zero behavior change otherwise.
 _PROBE_CWD = tempfile.gettempdir()
+
+# Exit code reported for a probe killed by its cancel event.
+PROBE_CANCELLED_EXIT_CODE = -1
+
+
+def run_probe_command(command, cancel_event, timeout):
+    """`subprocess.run` that a cancel can interrupt.
+
+    The probes used `subprocess.run(timeout=30)`, which nothing can stop early: a
+    download canceled while probing left up to three probe processes running for
+    their full timeout. This polls `cancel_event` and kills the process tree the
+    moment it is set (the runner also sets it once a winner is decided).
+
+    Returns a CompletedProcess; a cancelled run has returncode
+    `PROBE_CANCELLED_EXIT_CODE`. Raises `subprocess.TimeoutExpired` like `run`.
+    """
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=_PROBE_CWD,
+        creationflags=creation_flags(),
+    )
+    output = {}
+
+    def communicate():
+        output["stdout"], output["stderr"] = process.communicate()
+
+    reader = threading.Thread(target=communicate, daemon=True)
+    reader.start()
+    deadline = time.monotonic() + timeout
+    while True:
+        reader.join(0.1)
+        if not reader.is_alive():
+            break
+        if cancel_event.is_set() or time.monotonic() >= deadline:
+            terminate_process_tree(process)
+            reader.join(5)
+            if not cancel_event.is_set():
+                raise subprocess.TimeoutExpired(command, timeout)
+            return subprocess.CompletedProcess(
+                command, PROBE_CANCELLED_EXIT_CODE, output.get("stdout") or "", "Probe cancelled."
+            )
+    return subprocess.CompletedProcess(
+        command, process.returncode, output.get("stdout") or "", output.get("stderr") or ""
+    )
+
 
 # ── Individual probe functions ─────────────────────────────────────────────
 
@@ -144,17 +197,7 @@ def probe_yt_dlp(
     command.append(str(url))
 
     try:
-        completed = subprocess.run(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-            cwd=_PROBE_CWD,
-        )
+        completed = run_probe_command(command, cancel_event, timeout=30)
     except subprocess.TimeoutExpired:
         return {
             "ok": False,
@@ -283,17 +326,7 @@ def probe_n_m3u8dl_re(
     ]
 
     try:
-        completed = subprocess.run(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-            cwd=_PROBE_CWD,
-        )
+        completed = run_probe_command(command, cancel_event, timeout=30)
     except subprocess.TimeoutExpired:
         return {
             "ok": False,
@@ -365,17 +398,7 @@ def probe_streamlink(
     command.append(str(url))
 
     try:
-        completed = subprocess.run(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-            cwd=_PROBE_CWD,
-        )
+        completed = run_probe_command(command, cancel_event, timeout=30)
     except subprocess.TimeoutExpired:
         return {
             "ok": False,

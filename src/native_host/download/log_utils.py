@@ -15,7 +15,13 @@ from pathlib import Path
 # params (h/e/sig/…) and temp cookie/config file stems. Keep the patterns
 # narrow — a broad "redact long tokens" rule would eat filenames and hashes.
 _HEADER_VALUE_RE = re.compile(r"(?i)(cookie|authorization)(\s*:\s*)([^\n\"'\]]+)")
-_SIGNED_PARAM_RE = re.compile(r"(?i)([?&](?:h|e|sig|signature|token|auth|key)=)([^&\"'\s#]+)")
+# Signed-URL query params across the common CDNs: YouTube (`sig`, `lsig`), CloudFront
+# (`Signature`, `Policy`, `Key-Pair-Id`), S3 SigV4 (`X-Amz-*`), Akamai (`hdnts`), and
+# the generic `token` / `access_token` / `auth` / `key`. Expiry timestamps stay readable.
+_SIGNED_PARAM_RE = re.compile(
+    r"(?i)([?&](?:h|e|sig|lsig|signature|token|access_token|auth|key|policy|key-pair-id|hdnts|"
+    r"x-amz-[a-z0-9-]+)=)([^&\"'\s#]+)"
+)
 _TEMP_COOKIES_RE = re.compile(r"qwin-cookies-[^\"'\s\\/,]*\.txt")
 _TEMP_HDRS_RE = re.compile(r"qwin-ytdlp-hdrs-[^\"'\s\\/,]*\.conf")
 
