@@ -11,6 +11,7 @@ import { registerDownloadHandlers } from "./download.js";
 import { registerSettingsHandlers } from "./settings.js";
 import { registerThumbnailFrameHandlers } from "./thumbnailFrame.js";
 import { registerThumbnailFramesHandlers } from "./thumbnailFrames.js";
+
 import type { BackgroundContext } from "../types.js";
 
 export {

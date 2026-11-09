@@ -65,8 +65,8 @@ export function registerDownloadHandlers(ctx: BackgroundContext): void {
 
   register({
     name: "pauseDownload",
-    handle(message: MessageOf<"pauseDownload">) {
-      return { ok: true, ...controlActiveDownload(message.jobId, "pause") };
+    async handle(message: MessageOf<"pauseDownload">) {
+      return { ok: true, ...(await controlActiveDownload(message.jobId, "pause")) };
     },
   });
 

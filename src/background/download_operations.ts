@@ -9,6 +9,8 @@
  */
 
 import { ACTIVE_DOWNLOAD_STATUSES } from "../shared/download_statuses.js";
+import { browserApi } from "../shared/browser_api.js";
+import { releaseBrowserDownload } from "./download/browser.js";
 import type {
   BackgroundSettings,
   DownloadJobRecord,
@@ -102,9 +104,68 @@ export function createOperations(deps: DownloadOrchestratorDeps) {
     return video as VideoRecord;
   }
 
-  function controlActiveDownload(jobId: string, nativeType: string): { jobId: string } {
+  /**
+   * Pause / resume / cancel for a browser-path job, through `chrome.downloads` itself.
+   *
+   * Those jobs own no native port, so every control used to fall into the "not active
+   * anymore" throw — and Cancel only relabelled the row while the transfer carried on and
+   * its `onChanged` later flipped it to `done`. `null` from a resume means the browser
+   * refused (the item is gone, or not resumable); the caller restarts the job instead.
+   */
+  async function controlBrowserDownload(
+    job: DownloadJobRecord,
+    downloadId: number,
+    nativeType: string,
+  ): Promise<{ jobId: string } | null> {
+    const jobId = job.id;
+    if (nativeType === "pause") {
+      if (job.status !== "running" && job.status !== "connecting") {
+        throw new Error("That download is not running.");
+      }
+      if (!(await browserApi.downloads.pause(downloadId))) {
+        throw new Error("The browser could not pause that download.");
+      }
+      deps.updateDownload(jobId, { status: "paused", speed: "", eta: "", message: "Download paused." });
+      return { jobId };
+    }
+    if (nativeType === "resume") {
+      if (!(await browserApi.downloads.resume(downloadId))) {
+        return null;
+      }
+      deps.updateDownload(jobId, { status: "running", message: "Downloading via browser..." });
+      return { jobId };
+    }
+    // Cancel. The row is written before `onChanged` reports the interruption, and that
+    // later event reads the `canceled` status and keeps it — a transfer that completes in
+    // the gap cannot overwrite the user's decision with `done` (`download/browser.ts`).
+    deps.updateDownload(jobId, { status: "canceling", message: "Canceling download..." });
+    await browserApi.downloads.cancel(downloadId);
+    releaseBrowserDownload(downloadId);
+    deps.updateDownload(jobId, { status: "canceled", stage: "", speed: "", eta: "", message: "Download canceled." });
+    return { jobId };
+  }
+
+  async function controlActiveDownload(jobId: string, nativeType: string): Promise<{ jobId: string }> {
     const port = deps.downloadPortsById[jobId];
     if (!port) {
+      await deps.ensureStateLoaded();
+      const job = downloadsById()[jobId];
+      // A `queued` row has no port yet: it is waiting for a gate slot. Pausing it takes it
+      // out of the line, so it never starts behind the user's back; Resume puts it back
+      // at the end (`resumeDownload` → the gate).
+      if (job && nativeType === "pause" && job.status === "queued" && deps.withdrawQueuedDownload?.(jobId)) {
+        deps.updateDownload(jobId, {
+          status: "paused",
+          message: "Paused before it started — press Resume to queue it again.",
+        });
+        return { jobId };
+      }
+      if (job && typeof job.browserDownloadId === "number") {
+        const result = await controlBrowserDownload(job, job.browserDownloadId, nativeType);
+        if (result) {
+          return result;
+        }
+      }
       throw new Error("That download is not active anymore. Use Retry to start it again.");
     }
 
@@ -143,6 +204,13 @@ export function createOperations(deps: DownloadOrchestratorDeps) {
     if (job.status !== "paused") {
       throw new Error("That download is not paused.");
     }
+    if (typeof job.browserDownloadId === "number") {
+      const resumed = await controlBrowserDownload(job, job.browserDownloadId, "resume");
+      if (resumed) {
+        return resumed;
+      }
+      // The browser no longer has it (or cannot resume it): start the transfer again.
+    }
     if (!job.url) {
       throw new Error("That download does not have a URL to resume.");
     }
@@ -163,6 +231,21 @@ export function createOperations(deps: DownloadOrchestratorDeps) {
     const job = getDownloadJob(jobId);
     if (["done", "error", "canceled"].includes(job.status as string)) {
       throw new Error("This download is no longer active.");
+    }
+
+    // Out of the gate's line first. Writing `canceled` alone used to leave the item
+    // queued, and the gate started it later anyway, over the top of the canceled row.
+    if (job.status === "queued" && deps.withdrawQueuedDownload?.(jobId)) {
+      deps.updateDownload(jobId, { status: "canceled", message: "Download canceled before it started." });
+      return { jobId };
+    }
+    if (typeof job.browserDownloadId === "number" && job.status !== "paused") {
+      return (await controlBrowserDownload(job, job.browserDownloadId, "cancel")) as { jobId: string };
+    }
+    if (typeof job.browserDownloadId === "number") {
+      // A paused browser transfer still exists on the browser's side; cancel it there too.
+      await browserApi.downloads.cancel(job.browserDownloadId);
+      releaseBrowserDownload(job.browserDownloadId);
     }
 
     const cleanupPatch = await deps.cleanupDownloadArtifacts(jobId, job);
