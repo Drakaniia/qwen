@@ -36,6 +36,10 @@ export interface RuntimeResponse {
   videoId?: string;
   videos?: unknown;
   formats?: unknown;
+  /** Why `formats` came back empty, in one sentence (`background/format_helpers.ts`). */
+  unavailableReason?: string;
+  /** Media length in seconds, `0` when the helper could not tell. */
+  duration?: number;
   settings?: { overlayEnabled?: boolean; theme?: string };
 }
 
@@ -79,7 +83,7 @@ let sendMessageWithResponse: OverlayDeps["sendMessageWithResponse"] | null = nul
 let getLastDetectedVideos: OverlayDeps["getLastDetectedVideos"] = () => [];
 
 /**
- * The closed dialog state, and the only place these eight fields are written.
+ * The closed dialog state, and the only place these fields are written.
  *
  * `hideOverlay` resets to exactly this, and the two "open a view" entry points
  * reset to this *plus* their own overrides (`open: true` and a `title`/`view`) — so
@@ -97,6 +101,9 @@ const DEFAULT_DIALOG: {
   hasBack: boolean;
   statusText: string;
   nativeError: string;
+  unavailableReason: string;
+  /** Media length in seconds from the `formats` reply; `0` hides it in the header. */
+  duration: number;
   videos: VideoLike[];
   formats: FormatLike[];
 } = Object.freeze({
@@ -106,6 +113,8 @@ const DEFAULT_DIALOG: {
   hasBack: false,
   statusText: LOADING_TEXT,
   nativeError: "",
+  unavailableReason: "",
+  duration: 0,
   videos: [],
   formats: [],
 });
@@ -197,6 +206,8 @@ function renderDialog() {
       hasBack: dialog.hasBack,
       statusText: dialog.statusText,
       nativeError: dialog.nativeError,
+      unavailableReason: dialog.unavailableReason,
+      duration: dialog.duration,
       emptyText: EMPTY_TEXT,
       videos: dialog.videos,
       formats: dialog.formats,
@@ -325,6 +336,11 @@ async function onVideoSelected(video: VideoLike) {
     hasBack: true,
     statusText: LOADING_TEXT,
     nativeError: formatsResponse.error || "",
+    // The format list can now legitimately come back empty, with the reason why in its
+    // place (`background/format_helpers.ts`). The overlay renders the same component as
+    // the popup, so it gets the same honest state rather than a dead row.
+    unavailableReason: formatsResponse.unavailableReason || "",
+    duration: Number(formatsResponse.duration) > 0 ? Number(formatsResponse.duration) : 0,
     formats: Array.isArray(formatsResponse.formats) ? formatsResponse.formats : [],
   });
 
