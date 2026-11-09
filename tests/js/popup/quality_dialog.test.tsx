@@ -3,13 +3,15 @@
  *
  * These are the assertions from the old `tests/js/shared/quality_dialog.test.js` that
  * still describe real behaviour — the loading row, the five-column format table, the
- * "best" fallback row, the title with its CC suffix, and the native-error note — run
+ * unavailable state, the title with its CC suffix, and the native-error note — run
  * against the component. What is gone are the tests of the imperative module's own
  * machinery: `showRoot`/`hideRoot` injection, `hideOnSelect`/`hideOnBack` flags, the
  * inline-style branch, and the promise resolver, which is now `state/app.ts`.
  */
-import { cleanup, render } from "@testing-library/preact";
+import { act, cleanup, fireEvent, render } from "@testing-library/preact";
 import { afterEach, describe, expect, it } from "vitest";
+
+import { clear as clearSelection, selectedCount, toggle } from "../../../src/ui/useStickySelection.js";
 
 import { QualityDialogMount } from "../../../src/popup/components/QualityDialogMount.js";
 import {
@@ -102,16 +104,29 @@ describe("format table", () => {
     expect(button.getAttribute("aria-label")).toBe(cellsOf(button).join(", "));
   });
 
-  it("renders the header row", () => {
+  it("renders the header row, the group name in the quality column", () => {
     void chooseQuality({ formats: [FORMAT] });
     const header = render(<QualityDialogMount />).container.querySelector(".quality-header") as HTMLElement;
-    expect([...header.children].map((c) => c.textContent)).toEqual(["Quality", "Size", "Format", "Bitrate", "Source"]);
+    expect([...header.children].map((c) => c.textContent)).toEqual(["Video", "Size", "Format", "Bitrate", "Source"]);
   });
 
-  it("falls back to the single 'best' choice for an empty format list", () => {
+  it("replaces the table with the reason when there are no formats", () => {
+    // An empty list is a real answer now. It used to render a single synthetic
+    // `Best available MP4` option that always failed on click, because the helper had
+    // just refused the URL — a normal-looking row over a raw yt-dlp error.
+    void chooseQuality({ formats: [], unavailableReason: "This stream is DRM-protected." });
+    const host = render(<QualityDialogMount />).container;
+
+    expect(host.querySelector(".quality-table")).toBeNull();
+    expect(host.querySelectorAll(".quality-option")).toHaveLength(0);
+    expect(host.querySelector(".qwin-overlay-empty")?.textContent).toBe("This stream is DRM-protected.");
+  });
+
+  it("still says something when no reason was given", () => {
     void chooseQuality({ formats: [] });
-    const [button] = render(<QualityDialogMount />).container.querySelectorAll(".quality-option");
-    expect(cellsOf(button)).toEqual(["Best available MP4", "Unknown", "VIDEO", "Unknown", "detected"]);
+    expect(render(<QualityDialogMount />).container.querySelector(".qwin-overlay-empty")?.textContent).toBe(
+      "No downloadable versions were found for this video.",
+    );
   });
 
   it("titles the dialog from the video, with the CC suffix", () => {
@@ -133,6 +148,110 @@ describe("format table", () => {
     void chooseQuality({ formats: [FORMAT] });
     showQualityLoading();
     expect(render(<QualityDialogMount />).container.querySelectorAll(".quality-option")).toHaveLength(0);
+  });
+});
+
+describe("video and audio groups", () => {
+  const AUDIO_KIND = {
+    formatId: "140",
+    kind: "audio",
+    acodec: "mp4a.40.2",
+    abr: 129.5,
+    ext: "m4a",
+    sizeBytes: 3_000_000,
+  };
+  const AUDIO_VCODEC = { formatId: "251", vcodec: "none", acodec: "opus", abr: 160, ext: "webm" };
+  const AUDIO_FIELDS = { formatId: "a1", acodec: "mp3", ext: "mp3" };
+
+  const groups = (host: Element) =>
+    [...host.querySelectorAll("section.quality-table")].map((section) => ({
+      label: section.getAttribute("aria-label"),
+      rows: [...section.querySelectorAll(".quality-option")].map((row) => cellsOf(row)[0]),
+    }));
+
+  it("puts every audio-only format under Audio only, whichever way yt-dlp said so", () => {
+    void chooseQuality({ formats: [AUDIO_KIND, FORMAT, AUDIO_VCODEC, AUDIO_FIELDS] });
+    expect(groups(render(<QualityDialogMount />).container)).toEqual([
+      { label: "Video", rows: ["1080p"] },
+      { label: "Audio only", rows: ["130 kbps", "160 kbps", "Unknown"] },
+    ]);
+  });
+
+  it("shows bitrate, size, codec and container for an audio row", () => {
+    void chooseQuality({ formats: [AUDIO_KIND] });
+    const host = render(<QualityDialogMount />).container;
+    const header = host.querySelector(".quality-header") as HTMLElement;
+    expect([...header.children].map((c) => c.textContent)).toEqual(["Audio only", "Size", "Codec", "Format", "Source"]);
+    expect(cellsOf(optionIn(host)).slice(0, 4)).toEqual(["130 kbps", "2.9 MB", "mp4a.40.2", "M4A"]);
+  });
+
+  it("keeps a muxed format with audio fields and a height under Video", () => {
+    void chooseQuality({ formats: [{ ...FORMAT, acodec: "mp4a.40.2", abr: 128, vcodec: "avc1" }] });
+    expect(groups(render(<QualityDialogMount />).container).map((g) => g.label)).toEqual(["Video"]);
+  });
+
+  it("shows the duration in the header when the reply carried one", () => {
+    void chooseQuality({ title: "Song", formats: [FORMAT], duration: 213 });
+    const host = render(<QualityDialogMount />).container;
+    expect(host.querySelector(".qwin-overlay-header")?.textContent).toContain("3:33");
+
+    void chooseQuality({ title: "Song", formats: [FORMAT] });
+    expect(render(<QualityDialogMount />).container.querySelector("[aria-label^='Duration']")).toBeNull();
+  });
+});
+
+describe("modal focus", () => {
+  it("moves focus to the first choice, and back to the opener on close", async () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+
+    const host = render(<QualityDialogMount />).container;
+    await act(async () => {
+      void chooseQuality({ formats: [FORMAT] });
+    });
+    expect(document.activeElement).toBe(optionIn(host));
+
+    await act(async () => onQualityDialogCancel());
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  it("closes on Escape without letting the frame's handler see the key", async () => {
+    const promise = chooseQuality({ formats: [FORMAT] });
+    render(<QualityDialogMount />);
+    await act(async () => {});
+    toggle("row-1");
+    let reachedDocument = false;
+    const frame = () => (reachedDocument = true);
+    document.addEventListener("keydown", frame);
+
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement || document.body, { key: "Escape" });
+    });
+
+    await expect(promise).resolves.toBeNull();
+    expect(qualityDialog.value.open).toBe(false);
+    expect(reachedDocument).toBe(false);
+    expect(selectedCount.value).toBe(1);
+    document.removeEventListener("keydown", frame);
+    clearSelection();
+  });
+
+  it("keeps Tab inside the card", async () => {
+    const host = render(<QualityDialogMount />).container;
+    await act(async () => {
+      void chooseQuality({ formats: [FORMAT, { ...FORMAT, formatId: "720p", height: 720 }] });
+    });
+    const cancel = host.querySelector(".qwin-overlay-cancel") as HTMLButtonElement;
+    const first = optionIn(host);
+
+    cancel.focus();
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(cancel);
   });
 });
 

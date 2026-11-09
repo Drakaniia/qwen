@@ -130,10 +130,19 @@ export const qualityRequestSerial = signal(0);
 
 export interface QualityDialogState {
   open: boolean;
-  view: "loading" | "videos" | "formats";
+  /** No `videos`: that step is the overlay's (see `QualityDialogMount`). */
+  view: "loading" | "formats";
   title: string;
   statusText: string;
   nativeError: string;
+  /**
+   * Why the format list is empty, in one sentence (`background/format_helpers.ts`).
+   * Rendered *instead of* the table — an empty list is a real answer now, where it used
+   * to be papered over with a synthetic option that always failed.
+   */
+  unavailableReason: string;
+  /** Seconds, from the formats reply; `null` when it named none. Shown in the header. */
+  duration: number | null;
   hasBack: boolean;
   formats: unknown[];
 }
@@ -144,6 +153,8 @@ export const qualityDialog = signal<QualityDialogState>({
   title: "",
   statusText: QUALITY_LOADING_TEXT,
   nativeError: "",
+  unavailableReason: "",
+  duration: null,
   hasBack: false,
   formats: [],
 });
@@ -213,6 +224,8 @@ export function showQualityLoading(title = "Loading versions..."): number {
     title,
     statusText: QUALITY_LOADING_TEXT,
     nativeError: "",
+    unavailableReason: "",
+    duration: null,
     hasBack: false,
     formats: [],
   });
@@ -237,11 +250,15 @@ export function chooseQuality({
   title,
   formats,
   nativeError,
+  unavailableReason,
+  duration,
   hasSubtitles,
 }: {
   title?: string;
   formats?: unknown[];
   nativeError?: string;
+  unavailableReason?: string;
+  duration?: number | null;
   hasSubtitles?: boolean;
 }): Promise<FormatChoice> {
   const suffix = hasSubtitles ? " — CC" : "";
@@ -250,6 +267,8 @@ export function chooseQuality({
     view: "formats",
     title: title ? `Compare versions: ${title}${suffix}` : "Compare versions",
     nativeError: nativeError || "",
+    unavailableReason: unavailableReason || "",
+    duration: typeof duration === "number" && duration > 0 ? duration : null,
     formats: formats || [],
   });
   return new Promise<FormatChoice>((resolve) => {

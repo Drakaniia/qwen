@@ -205,7 +205,7 @@ function MediaList() {
       // one, so the spread is safe here and nowhere else.
       {...(keys.containerProps as HTMLAttributes<HTMLUListElement>)}
       aria-label="Detected media"
-      class="flex flex-col gap-2 p-4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+      class="flex flex-col gap-2 p-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
     >
       {renderBlocks(rows).map((block) => {
         if (block.kind === "children") {

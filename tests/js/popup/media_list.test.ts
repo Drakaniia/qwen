@@ -24,7 +24,9 @@ import {
   isAudio,
   mediaStatus,
   mediaStatusLabel,
+  resetSizeThresholdSeed,
   scanStatus,
+  seedSizeThreshold,
   setScanStatus,
   sizeThreshold,
   sizeThresholdLabel,
@@ -189,24 +191,25 @@ describe("§6.7: the size threshold and its live consequence line", () => {
     expect(displayedVideos.value.map((video) => video.id)).toContain("u1");
   });
 
-  it("excludes candidates below the threshold and counts them", () => {
-    // STREAM is 512 KB and UNKNOWN_SIZE has no `sizeBytes`, so both fall out at 1 MB.
+  it("excludes measured candidates below the threshold and counts them", () => {
+    // STREAM is 512 KB, so it falls out at 1 MB; UNKNOWN_SIZE has no `sizeBytes` and stays.
     sizeThreshold.value = MB;
-    expect(displayedVideos.value.map((video) => video.id).sort()).toEqual(["m1", "v1"]);
-    expect(hiddenBySize.value).toBe(2);
+    expect(displayedVideos.value.map((video) => video.id).sort()).toEqual(["m1", "u1", "v1"]);
+    expect(hiddenBySize.value).toBe(1);
     expect(sizeThresholdLabel.value).toBe("1 MB");
   });
 
-  it("excludes an unmeasured candidate once a threshold is active", () => {
-    // `Any` passes unknown sizes; `≥ 1 MB` cannot honestly pass one, because the whole
-    // point of the filter is a lower bound and there is no evidence above it.
+  it("keeps an unmeasured candidate while a threshold is active", () => {
+    // Most streams report no size until downloaded (`Settings.minSizeBytes`). Reading
+    // "unknown" as "0 bytes" hid exactly those rows, and with the threshold now seeded
+    // from Options it would have hidden them on every popup open.
     sizeThreshold.value = MB;
-    expect(displayedVideos.value.map((video) => video.id)).not.toContain("u1");
+    expect(displayedVideos.value.map((video) => video.id)).toContain("u1");
   });
 
   it("says what the filter did", () => {
     sizeThreshold.value = MB;
-    expect(filterSummary.value).toBe("2 of 4 detected · 2 hidden below 1 MB.");
+    expect(filterSummary.value).toBe("3 of 4 detected · 1 hidden below 1 MB.");
   });
 
   it("says so when the filter matches nothing, rather than reporting the pre-filter count", () => {
@@ -219,8 +222,36 @@ describe("§6.7: the size threshold and its live consequence line", () => {
     // Only CLIP is ≥ 50 MB, and a non-empty list means "N of M" is a real claim about
     // what is on screen — the "Nothing below X" branch is for an empty one only.
     sizeThreshold.value = 50 * MB;
-    expect(displayedVideos.value.map((video) => video.id)).toEqual(["v1"]);
-    expect(filterSummary.value).toBe("1 of 4 detected · 3 hidden below 50 MB.");
+    expect(displayedVideos.value.map((video) => video.id)).toEqual(["v1", "u1"]);
+    expect(filterSummary.value).toBe("2 of 4 detected · 2 hidden below 50 MB.");
+  });
+});
+
+describe("the threshold starts at Options' `minSizeBytes`", () => {
+  beforeEach(() => resetSizeThresholdSeed());
+
+  it("seeds from the first settings read", () => {
+    seedSizeThreshold(5 * MB);
+    expect(sizeThreshold.value).toBe(5 * MB);
+    // The seed is a starting value: STREAM (512 KB) goes, the unmeasured row stays.
+    expect(displayedVideos.value.map((video) => video.id)).toContain("u1");
+    expect(displayedVideos.value.map((video) => video.id)).not.toContain("v2");
+  });
+
+  it("does not snap back over the user's own choice on a later refresh", () => {
+    seedSizeThreshold(5 * MB);
+    sizeThreshold.value = null;
+    seedSizeThreshold(5 * MB);
+    expect(sizeThreshold.value).toBeNull();
+  });
+
+  it("reads null, zero and garbage as Any", () => {
+    for (const value of [null, 0, undefined, "lots"]) {
+      resetSizeThresholdSeed();
+      sizeThreshold.value = MB;
+      seedSizeThreshold(value);
+      expect(sizeThreshold.value, String(value)).toBeNull();
+    }
   });
 
   it("reports the detection summary when nothing has been filtered", () => {

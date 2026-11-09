@@ -20,7 +20,8 @@ vi.mock("../../../src/popup/popup_actions.js", () => ({
 
 const { runDownloadAction } = await import("../../../src/popup/popup_actions.js");
 
-const job = (id: string, status: string) => ({ id, status, title: id, percent: 40 }) as DownloadJob;
+const job = (id: string, status: string, extra: Partial<DownloadJob> = {}) =>
+  ({ id, status, title: id, percent: 40, ...extra }) as DownloadJob;
 
 function tray(): HTMLElement {
   return render(<DownloadsView />).container as HTMLElement;
@@ -49,6 +50,55 @@ beforeEach(() => {
 });
 
 afterEach(() => cleanup());
+
+describe("the tray's groups", () => {
+  /** Each rendered group's heading and the job ids under it, in order. */
+  const groups = (host: Element) =>
+    [...host.querySelectorAll("section")].map((section) => ({
+      heading: section.querySelector("h2")?.textContent,
+      // A row's text carries its title, which is the id, twice; the lookahead stops at the
+      // next field so `j-q1` is not read as `j-q1j-q140`.
+      ids: [...section.querySelectorAll("li")].map((li) => li.textContent?.match(/j-[a-z0-9]+?(?=j-|$)/)?.[0]),
+    }));
+
+  it("splits moving, waiting, failed and done jobs, and counts the queue", () => {
+    currentDownloads.value = [
+      job("j-done", "done", { updatedAt: 5 }),
+      job("j-q2", "queued", { createdAt: 2 }),
+      job("j-running", "running"),
+      job("j-error", "error"),
+      job("j-q1", "queued", { createdAt: 1 }),
+      job("j-paused", "paused"),
+      job("j-canceled", "canceled", { updatedAt: 9 }),
+    ];
+    expect(groups(tray())).toEqual([
+      { heading: "Active", ids: ["j-running", "j-paused"] },
+      { heading: "Queued · 2", ids: ["j-q1", "j-q2"] },
+      { heading: "Failed", ids: ["j-error"] },
+      { heading: "Finished", ids: ["j-canceled", "j-done"] },
+    ]);
+  });
+
+  it("renders no heading for an empty group", () => {
+    currentDownloads.value = [job("j-done", "done")];
+    const host = tray();
+    expect(groups(host).map((group) => group.heading)).toEqual(["Finished"]);
+    expect(host.textContent).toContain("Nothing is downloading right now.");
+  });
+
+  it("offers Clear finished when only failures are left — it forgets those records too", () => {
+    currentDownloads.value = [job("j-error", "error")];
+    const host = tray();
+    expect([...host.querySelectorAll("button")].some((b) => b.textContent?.includes("Clear finished"))).toBe(true);
+  });
+
+  it("caps the finished group at 20 and says how many it left out", () => {
+    currentDownloads.value = Array.from({ length: 23 }, (_, index) => job(`j-${index}`, "done"));
+    const host = tray();
+    expect(host.querySelectorAll("li")).toHaveLength(20);
+    expect(host.textContent).toContain("3 more in All downloads");
+  });
+});
 
 describe("the tray's bulk verb", () => {
   it("is absent when nothing is running", () => {

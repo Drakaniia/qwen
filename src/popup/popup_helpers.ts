@@ -25,7 +25,7 @@ import {
 } from "./state/app.js";
 import { currentDownloads } from "./state/downloads.js";
 import { DEFAULT_SYNC_INFO, syncedHistory, syncInfo } from "./state/filters.js";
-import { currentVideos, setScanStatus } from "./state/videos.js";
+import { currentVideos, seedSizeThreshold, setScanStatus } from "./state/videos.js";
 import type { GetVideosResponse, HelperStatusResponse, PopupResponse, SyncHistoryResponse } from "./popup_state.js";
 
 // ─── The extension boundary ─────────────────────────────────────────────────
@@ -126,6 +126,11 @@ function applySettings(next: GetVideosResponse["settings"]): boolean {
   // for the checker, and the two forms are otherwise the same expression.
   const syncEnabled = next !== undefined && next.downloadSyncEnabled !== false;
   setMusicMode(next && next.musicMode ? true : false);
+  // Options' "Hide videos smaller than" is the size filter's *starting* value; the
+  // seed ignores every read after the first, so a refresh cannot undo the Meter.
+  if (next) {
+    seedSizeThreshold(next.minSizeBytes);
+  }
   // Applied rather than written by `setTheme`, because this is a value that arrived
   // from storage — it must not be saved straight back out.
   theme.value = next?.theme || "system";

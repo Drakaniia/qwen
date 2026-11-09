@@ -77,7 +77,7 @@ function SearchField({ inputRef }: { inputRef: RefObject<HTMLInputElement | null
             event.currentTarget.blur();
           }
         }}
-        class="ring-focus h-[var(--control-height-md)] w-56 rounded-row border border-border bg-surface pl-7 pr-8 text-body text-text placeholder:text-text-tertiary"
+        class="ring-focus h-control-md w-56 rounded-input border border-border bg-surface pl-7 pr-8 text-body text-text placeholder:text-text-tertiary"
       />
       {value ? null : (
         <kbd class="pointer-events-none absolute right-2 rounded-badge border border-border px-1 text-caption text-text-tertiary">

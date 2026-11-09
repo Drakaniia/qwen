@@ -132,14 +132,46 @@ function isFiltered(state: FilterState): boolean {
  */
 export const sizeThreshold = signal<number | null>(null);
 
-/** What survives the threshold, before the text/facet/sort controls run. */
+let sizeThresholdSeeded = false;
+
+/**
+ * Start the threshold at Options' "Hide videos smaller than" (`Settings.minSizeBytes`).
+ *
+ * Once per popup life, on the first settings read: `applySettings` runs on every
+ * refresh, and re-seeding there would snap the Meter back under a user who had just
+ * moved it. `null`, `0` and garbage all mean `Any`.
+ */
+export function seedSizeThreshold(bytes: unknown): void {
+  if (sizeThresholdSeeded) {
+    return;
+  }
+  sizeThresholdSeeded = true;
+  const floor = Number(bytes);
+  sizeThreshold.value = Number.isFinite(floor) && floor > 0 ? floor : null;
+}
+
+/** Test hook: let the next settings read seed the threshold again. */
+export function resetSizeThresholdSeed(): void {
+  sizeThresholdSeeded = false;
+}
+
+/**
+ * What survives the threshold, before the text/facet/sort controls run.
+ *
+ * A row whose size is unknown always survives. Most streams report no size until they
+ * are downloaded, and reading "unknown" as "0 bytes" hid exactly the rows a user most
+ * often came for — with a threshold persisted from Options, on every popup open.
+ */
 export const sizedVideos = computed<VideoCandidate[]>(() => {
   const videos = visibleVideos.value;
   const floor = sizeThreshold.value;
   if (floor === null) {
     return videos;
   }
-  return videos.filter((video) => Number(video.sizeBytes || 0) >= floor);
+  return videos.filter((video) => {
+    const size = Number(video.sizeBytes || 0);
+    return !(size > 0) || size >= floor;
+  });
 });
 
 /**

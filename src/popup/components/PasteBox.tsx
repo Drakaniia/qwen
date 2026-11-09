@@ -87,7 +87,9 @@ export function PasteBox() {
 
       <Button type="submit" variant="primary" disabled={pending} aria-busy={pending} class="shrink-0">
         {pending ? (
-          <span class="inline-block w-16 animate-pulse rounded-badge bg-accent-fg/40" aria-hidden="true" />
+          // An empty inline-block has no height of its own, so without `h-3` this shimmer
+          // rendered 0px tall and the pending button read as blank. Same box as `VideoRow`'s.
+          <span class="inline-block h-3 w-16 animate-pulse rounded-badge bg-accent-fg/40" aria-hidden="true" />
         ) : (
           "Download"
         )}

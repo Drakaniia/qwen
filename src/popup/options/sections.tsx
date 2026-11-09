@@ -7,6 +7,8 @@
  * `theme.css` token, and a second copy is how this project ended up with three.
  */
 import type { ComponentChildren } from "preact";
+
+import { CONCURRENCY_MAX, CONCURRENCY_MIN, clampConcurrency, PREFERRED_HEIGHTS } from "../../shared/contracts.js";
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import { AdvancedSection, HelperSection } from "./diagnostics.js";
@@ -149,12 +151,88 @@ function FolderField() {
                 commitFolder();
               }
             }}
-            class="ring-focus h-[var(--control-height-md)] min-w-0 flex-1 rounded-input border border-border bg-surface px-3 text-body text-text"
+            class="ring-focus h-control-md min-w-0 flex-1 rounded-input border border-border bg-surface px-3 text-body text-text"
           />
           <Button onClick={() => void chooseFolder()}>Browse...</Button>
         </div>
       )}
     </Field>
+  );
+}
+
+/** `0` is the contract's "no cap"; every other entry is a height in px. */
+function heightLabel(height: number): string {
+  return height ? `${height}p` : "Best available";
+}
+
+/**
+ * The height cap for downloads that name no format (`Settings.preferredMaxHeight`).
+ *
+ * A `<select>`, not a `Segmented`: seven options, one of them two words long, do not fit
+ * a segmented track at the options page's narrowest, and the Audio format control right
+ * above it is already a select.
+ */
+function PreferredQualityField() {
+  const current = settings.value.preferredMaxHeight;
+  return (
+    <Field
+      label="Preferred quality"
+      hint="Used when you download without picking a format — batches, the on-page button and retries. A format you pick always wins."
+    >
+      {({ id, describedBy }) => (
+        <select
+          id={id}
+          aria-describedby={describedBy}
+          value={String(current)}
+          onChange={(event) => {
+            const height = Number(event.currentTarget.value);
+            void commit(
+              "preferredMaxHeight",
+              { preferredMaxHeight: height },
+              height ? `Capped at ${height}p.` : "Best available quality.",
+            );
+          }}
+          class="ring-focus h-control-md self-start rounded-input border border-border bg-surface px-3 text-body text-text"
+        >
+          {PREFERRED_HEIGHTS.map((height) => (
+            <option key={height} value={String(height)}>
+              {heightLabel(height)}
+            </option>
+          ))}
+        </select>
+      )}
+    </Field>
+  );
+}
+
+/** One segment per allowed value, built from the contract's bounds rather than retyped. */
+const CONCURRENCY_SEGMENTS = Array.from({ length: CONCURRENCY_MAX - CONCURRENCY_MIN + 1 }, (_, offset) => {
+  const value = String(CONCURRENCY_MIN + offset);
+  return { value, label: value };
+});
+
+/** `Settings.maxConcurrentDownloads`; the background queues everything past it. */
+function ConcurrencyField() {
+  return (
+    <div class="flex flex-col gap-2">
+      <span class="text-row text-text">Simultaneous downloads</span>
+      <Segmented
+        segments={CONCURRENCY_SEGMENTS}
+        value={String(clampConcurrency(settings.value.maxConcurrentDownloads))}
+        onChange={(next) => {
+          const count = clampConcurrency(next);
+          void commit(
+            "maxConcurrentDownloads",
+            { maxConcurrentDownloads: count },
+            count === 1 ? "One download at a time." : `${count} downloads at a time.`,
+          );
+        }}
+        ariaLabel="Simultaneous downloads"
+        class="max-w-72"
+      />
+      <Saved field="maxConcurrentDownloads" />
+      <p class="text-caption text-text-muted">Downloads past this number wait in a queue and start in order.</p>
+    </div>
   );
 }
 
@@ -175,7 +253,7 @@ function DownloadsSection() {
             onChange={(event) =>
               void commit("audioFormat", { audioFormat: event.currentTarget.value }, "Audio format saved.")
             }
-            class="ring-focus h-[var(--control-height-md)] self-start rounded-input border border-border bg-surface px-3 text-body text-text"
+            class="ring-focus h-control-md self-start rounded-input border border-border bg-surface px-3 text-body text-text"
           >
             {AUDIO_FORMATS.map((format) => (
               <option key={format} value={format}>
@@ -187,6 +265,11 @@ function DownloadsSection() {
       </Field>
       <Saved field="audioFormat" />
 
+      <PreferredQualityField />
+      <Saved field="preferredMaxHeight" />
+
+      <ConcurrencyField />
+
       <div class="flex flex-col gap-2">
         <span class="text-row text-text">Hide videos smaller than</span>
         <Meter
@@ -196,7 +279,9 @@ function DownloadsSection() {
           class="max-w-72 self-start"
         />
         <Saved field="minSizeBytes" />
-        <p class="text-caption text-text-muted">The starting value for the popup's size filter.</p>
+        <p class="text-caption text-text-muted">
+          The popup's size filter starts here each time it opens. Videos whose size is not known yet always show.
+        </p>
       </div>
 
       <Toggle
@@ -261,7 +346,8 @@ export const SECTIONS: readonly {
 }[] = [
   {
     title: "Downloads",
-    terms: "folder path browse location audio format mp3 flac size filter minimum subtitles captions cc",
+    terms:
+      "folder path browse location audio format mp3 flac preferred quality resolution height 1080p 720p 4k best simultaneous concurrent parallel queue at once size filter minimum subtitles captions cc",
     status: () => null,
     body: () => <DownloadsSection />,
   },
