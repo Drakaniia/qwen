@@ -9,9 +9,11 @@ import {
   isRetryableSourceError,
   pageFallbackVideoForSource,
   resolveMediaCandidatesForSource,
+  userFriendlyDownloadError,
 } from "./download_fallbacks.js";
 import * as videoUtils from "./video_utils.js";
 import * as headerUtils from "./header_utils.js";
+import { probeMediaUrls } from "./media_probe.js";
 import { SIZE_PROBE_LIMIT_PER_GROUP, probeVideoSize, updateVideoSize } from "./size_probe.js";
 import type {
   DownloadFallbackDeps,
@@ -163,7 +165,22 @@ async function ensureComparisonSizes(
   return video;
 }
 
+/**
+ * The helper's own refusal, reproduced here so it costs no process spawn.
+ *
+ * `native_paths.validate_download_url` raises exactly this sentence for anything that is
+ * not http(s), and it is right to: a `blob:` handle is a MediaSource pointer, not a file
+ * the helper could open. Checking first keeps an MSE-only row from paying a native-host
+ * spawn (0.4–3.5s) to be told what the extension already knew.
+ */
+const NON_FETCHABLE_URL_ERROR =
+  "Only http:// and https:// media, playlist, or supported video page URLs can be sent to " +
+  "yt-dlp. Browser-only blob:, data:, file:, and DRM-protected URLs cannot be downloaded this way.";
+
 async function requestNativeFormats(video: VideoRecord, nativeRequestFn: NativeRequestFn): Promise<NativeResponse> {
+  if (!/^https?:/i.test(String(video.url || ""))) {
+    throw new Error(NON_FETCHABLE_URL_ERROR);
+  }
   const requestId = `formats_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const currentSettings = tabState.getSettings();
   return nativeRequestFn({
@@ -196,8 +213,19 @@ interface NativeFormatsResult {
   thumbnailUrl: string;
   formats: FormatOption[];
   nativeError: string;
+  /**
+   * Why there are no formats, in one sentence, or `""` when there are some. The dialog
+   * renders this *instead of* the table — see {@link unavailableReasonFor}.
+   */
+  unavailableReason: string;
   hasSubtitles: boolean;
   subtitleLanguages: number;
+  /**
+   * The host's top-level media duration in seconds, passed through when it sent one
+   * (`0` otherwise). Per-format `kind` / `vcodec` / `acodec` / `abr` / `ext` / `protocol`
+   * ride on each entry of `formats` untouched — see `normalizeNativeFormatOption`.
+   */
+  duration: number;
 }
 
 async function getNativeFormatsForVideo(
@@ -330,6 +358,76 @@ async function getNativeFormatsForVideo(
         }
       }
     }
+
+    // ── The last rung: ask the server ───────────────────────────────────────
+    //
+    // Reached only when yt-dlp AND every detected candidate have already failed, so the
+    // cost is one HEAD (plus at most one ranged GET) per unclassified URL, once per
+    // failed video rather than once per page.
+    //
+    // `video.probeUrls` is the content script's list of resource-timing URLs it had to
+    // drop for looking like nothing in particular (`content.ts:unclassifiedResourceUrls`),
+    // carried on the page-fallback row. The rest of the list is what this layer already
+    // knows: a probed URL becomes a real detected video first, exactly as the resolver
+    // fallback above does, so the reply's `videoId` points at a record whose URL is the
+    // probed one and the download then resolves to it (`popup_actions.ts` prefers
+    // `formatsResponse.videoId`).
+    if (!response) {
+      const probed = await probeMediaUrls(
+        [
+          video.url || "",
+          video.pageUrl || "",
+          video.frameUrl || "",
+          ...(Array.isArray(video.probeUrls) ? video.probeUrls : []),
+        ],
+        {
+          nativeRequest: nativeRequestFn,
+          isBlockedMediaUrl: (url: string, contentType = "") => videoFilters.isBlockedVideoUrl(url, contentType),
+          normalizeUrl: headerUtils.normalizeUrl,
+          nativeRequestHeadersForVideo: headerUtils.nativeRequestHeadersForVideo,
+          userAgent: navigator.userAgent || "",
+          pageUrl: video.pageUrl || video.frameUrl || "",
+        },
+      );
+
+      if (probed.length) {
+        log("info", `Probe found ${probed.length} media source(s) no pattern recognized`);
+        await status(`Checking ${probed.length} probed source(s)...`);
+      }
+
+      for (const source of probed) {
+        try {
+          log("info", `Trying probed ${source.kind} source`, source.url.substring(0, 120));
+          const detected = await addDetectedVideoFn(tabId, {
+            url: source.url,
+            format: source.format,
+            source: "media-probe",
+            contentType: source.contentType,
+            title: lookupVideo.title || video.title || "",
+            pageUrl: video.pageUrl || video.frameUrl || "",
+            frameUrl: video.frameUrl || "",
+            downloadable: true,
+            duration: video.duration || null,
+            width: video.width || null,
+            height: video.height || null,
+            thumbnailUrl: video.thumbnailUrl || "",
+          });
+          const probedVideo: VideoRecord = detected || video;
+          response = await requestNativeFormats(probedVideo, nativeRequestFn);
+          formatLookupVideo = probedVideo;
+          nativeError = "";
+          log(
+            "info",
+            `Probed source succeeded`,
+            `Found ${response && response.formats ? response.formats.length : 0} format(s)`,
+          );
+          break;
+        } catch (sourceError) {
+          nativeError = (sourceError as Error).message || String(sourceError);
+          log("error", "Probed source failed", nativeError);
+        }
+      }
+    }
   }
 
   if (!response) {
@@ -342,10 +440,17 @@ async function getNativeFormatsForVideo(
     log("warn", "Native host returned response but no formats found", JSON.stringify(response).substring(0, 300));
   }
 
-  const nativeFormats =
-    response && response.formats && response.formats.length
-      ? response.formats.map((format) => normalizeNativeFormatOption(format, formatLookupVideo))
-      : [];
+  // Audio-only renditions arrive in their own `audioFormats` list (`yt_dlp_command.py`)
+  // so a consumer that does not know `kind` can never show 128 kbps as a video quality.
+  // Both surfaces that render this reply — the popup's and the overlay's `QualityDialog` —
+  // split one list on `kind`/`vcodec` into Video and Audio-only sections, so the two
+  // lists are joined here, video first. Each audio `id` is a complete selector
+  // (`<fid>/bestaudio`) that the host passes through verbatim when it comes back as the
+  // chosen `formatId`.
+  const nativeFormats = [
+    ...(response && Array.isArray(response.formats) ? response.formats : []),
+    ...(response && Array.isArray(response.audioFormats) ? response.audioFormats : []),
+  ].map((format) => normalizeNativeFormatOption(format, formatLookupVideo));
 
   const firstHardNativeError = Boolean(firstNativeError && isHardAccessError(firstNativeError));
   const hardNativeError = Boolean(nativeError && !nativeFormats.length && isHardAccessError(nativeError));
@@ -448,23 +553,67 @@ async function getNativeFormatsForVideo(
     videoId: refreshedVideo.id || formatLookupVideo.id || (lookupVideo.id as string),
     title: finalTitle,
     thumbnailUrl: serverThumbnail || refreshedVideo.thumbnailUrl || "",
-    formats: formats.length
-      ? formats
-      : [
-          normalizeNativeFormatOption(
-            { id: "best", label: "Best available MP4", ext: "mp4", note: "Recommended" },
-            lookupVideo,
-          ),
-        ],
+    // An empty list, not a synthetic `Best available MP4` row. That row was a lie the
+    // user could click: the helper had just refused the URL, so the download that came
+    // back was always the same error, printed under a normal-looking option.
+    formats,
     nativeError,
+    unavailableReason: formats.length ? "" : unavailableReasonFor(refreshedVideo, nativeError),
     hasSubtitles: response && response.hasSubtitles ? true : false,
     subtitleLanguages: (response && response.subtitleLanguages) || 0,
+    duration: response && typeof response.duration === "number" && response.duration > 0 ? response.duration : 0,
   };
+}
+
+// ── Unavailability ───────────────────────────────────────────────────────
+
+/**
+ * The one situation with no URL-shaped answer at all.
+ *
+ * A `blob:` source is a MediaSource handle: the bytes live in the player's own buffer
+ * and disappear with the page, so no fetch, no probe and no extractor can reach them.
+ * There is no recording path to point at (AGENTS.md: it was deleted on purpose), so the
+ * sentence says what is true and what still might work: the page's own URL.
+ */
+const MSE_ONLY_REASON =
+  "This video plays through a browser-managed stream and exposes no link the helper can " +
+  "fetch. Try downloading the page's own address instead — paste it into the popup.";
+
+function isMseOnlySource(video: VideoRecord): boolean {
+  if (video.source === "mse-player") {
+    return true;
+  }
+  return [video.url || "", ...downloadHelpers.variantsForVideo(video).map((variant) => variant.url || "")].some((url) =>
+    String(url).toLowerCase().startsWith("blob:"),
+  );
+}
+
+/**
+ * Why a video produced no formats, as the sentence the dialog shows in place of a row.
+ *
+ * Order is the contract: an MSE handle is a fact about the source that the helper's
+ * error text cannot express (all it can say is "only http(s) URLs"), so it is named
+ * first. Everything else is the helper's own message through
+ * `userFriendlyDownloadError`, falling back to the raw text because a specific yt-dlp
+ * complaint is more useful than a generic apology.
+ */
+function unavailableReasonFor(video: VideoRecord, nativeError: string): string {
+  if (isMseOnlySource(video)) {
+    return MSE_ONLY_REASON;
+  }
+  const friendly = userFriendlyDownloadError(nativeError);
+  if (friendly) {
+    return friendly;
+  }
+  const details = String(nativeError || "").trim();
+  return details || "No downloadable versions were found for this video.";
 }
 
 // ── Public surface ───────────────────────────────────────────────────────
 //
-// Exactly one export: `getVideoFormats`, `getFormatsForUrl` and `getBestVideoFormats`
-// are the only messages that enumerate formats, and `BackgroundContext.formatHelpers`
-// is narrowed to this name.
-export { getNativeFormatsForVideo };
+// `getVideoFormats`, `getFormatsForUrl` and `getBestVideoFormats` are the only messages
+// that enumerate formats, and `BackgroundContext.formatHelpers` is narrowed to
+// `getNativeFormatsForVideo` alone. `unavailableReasonFor` is exported for its own test:
+// it is a pure function over a record and an error string, and the popup's "why not"
+// sentence is the part of this file most worth pinning down without a native host.
+export { getNativeFormatsForVideo, unavailableReasonFor };

@@ -119,6 +119,19 @@ describe("refreshCachedHelperStatus", () => {
     expect(ping.cachedHelperStatus.connected).toBe(false);
   });
 
+  it("reports a throwing connectNative as disconnected, with its error, instead of rejecting", async () => {
+    const ping = await freshPing();
+    vi.spyOn(chrome.runtime, "connectNative").mockImplementation(() => {
+      throw new Error("Access to the specified native messaging host is forbidden.");
+    });
+
+    // Resolves: the 30s interval calls this with `void`, so a rejection was an unhandled
+    // rejection every 30 seconds.
+    await expect(ping.refreshCachedHelperStatus(vi.fn(), HOST)).resolves.toBeUndefined();
+    expect(ping.cachedHelperStatus.connected).toBe(false);
+    expect(ping.cachedHelperStatus.error).toContain("forbidden");
+  });
+
   it("broadcasts only when the connected value changes", async () => {
     const ping = await freshPing();
     const notify = vi.fn();
