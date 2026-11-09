@@ -110,11 +110,12 @@ def _capture_argv(fn, **kwargs):
     real_url = kwargs.pop("url", "https://x.com/a.m3u8")
     completed = kwargs.pop("completed")
 
-    def fake_run(command, **_kw):
+    def fake_run(command, *_args, **_kw):
         seen["argv"] = list(command)
         return completed
 
-    with patch.object(probe_backends.subprocess, "run", side_effect=fake_run):
+    # The probes run through `run_probe_command` (cancellable Popen), not subprocess.run.
+    with patch.object(probe_backends, "run_probe_command", side_effect=fake_run):
         fn(url=real_url, cancel_event=threading.Event(), **kwargs)
     return seen["argv"]
 
@@ -161,13 +162,29 @@ def test_streamlink_probe_forwards_cookies_and_headers():
     assert any("Referer" in str(a) for a in argv)
 
 
+def test_probe_is_killed_by_its_cancel_event():
+    """A cancel must stop a running probe now, not after its 30s timeout."""
+    import sys
+    import threading
+    import time
+
+    cancel = threading.Event()
+    threading.Timer(0.5, cancel.set).start()
+    started = time.monotonic()
+    completed = probe_backends.run_probe_command(
+        [sys.executable, "-c", "import time; time.sleep(30)"], cancel, timeout=30
+    )
+    assert time.monotonic() - started < 10
+    assert completed.returncode == probe_backends.PROBE_CANCELLED_EXIT_CODE
+
+
 def test_probe_backends_stay_backward_compatible():
     """New probe params are optional — old two-positional-arg calls keep working."""
     import threading
 
     with patch.object(
-        probe_backends.subprocess,
-        "run",
+        probe_backends,
+        "run_probe_command",
         return_value=_Completed(stdout='{"formats": [{"format_id": "b"}]}'),
     ):
         result = probe_backends.probe_yt_dlp("https://x.com/v", threading.Event(), ["yt-dlp"])

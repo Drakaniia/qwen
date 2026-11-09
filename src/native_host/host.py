@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
+import os
 import sys
 from pathlib import Path
 
 _host_dir = Path(__file__).resolve().parent
-for _root, _dirs, _files in _host_dir.walk():
-    if _root.name == "__pycache__" or _root.name.startswith("_"):
-        continue
+# os.walk, not Path.walk: Path.walk is 3.12+, and the project targets 3.11 (ruff.toml).
+for _root, _dirs, _files in os.walk(_host_dir):
+    _dirs[:] = [d for d in _dirs if d != "__pycache__" and not d.startswith("_")]
     _path = str(_root)
     if _path not in sys.path:
         sys.path.insert(0, _path)
@@ -17,6 +18,7 @@ import download_manager as _download_manager  # noqa: F401
 import download_task as _download_task  # noqa: F401
 import format_list as _format_list  # noqa: F401
 import folder_picker  # noqa: F401
+import media_probe as _media_probe  # noqa: F401
 import media_resolver as _media_resolver  # noqa: F401
 import process_control as _process_control
 import thumbnail_frame as _thumbnail_frame  # noqa: F401
@@ -55,6 +57,7 @@ HOST_VERSION = "1.0.0"
 # imports above. Each of those modules owns the message types it dispatches:
 #   download_manager -> download, pause, resume, cancel
 #   format_list      -> formats, enumeratePlaylist
+#   media_probe      -> probeMediaUrls
 #   media_resolver   -> resolveMediaCandidates
 #   thumbnail_frame  -> thumbnailFrame
 #   artifacts        -> openFile, showFile, deleteArtifacts
@@ -94,6 +97,10 @@ def main():
         try:
             message = read_native_message()
         except EOFError:
+            # The browser closed the port. Nothing can read our progress any more, and
+            # a downloader left running would race the resumed job the extension offers
+            # for this interruption, so stop every task -- partial files are kept.
+            _download_manager.shutdown_all_downloads()
             return 0
         except Exception as exc:
             print(f"Native messaging protocol error: {exc}", file=sys.stderr)

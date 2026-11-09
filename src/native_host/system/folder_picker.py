@@ -9,6 +9,10 @@ from native_paths import default_download_dir, has_unexpanded_env_vars
 from native_protocol import HostError, folder_response, send_native_message
 from process_control import creation_flags
 
+# The dialog waits on a human, so this is generous -- but finite: a picker hidden
+# behind another window must not pin the request (and its PowerShell) forever.
+FOLDER_PICKER_TIMEOUT_SECONDS = 300
+
 
 def initial_folder_for_picker(folder):
     candidates = []
@@ -62,8 +66,14 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
             encoding="utf-8",
             errors="replace",
             env=env,
+            timeout=FOLDER_PICKER_TIMEOUT_SECONDS,
             creationflags=creation_flags(),
         )
+    except subprocess.TimeoutExpired as exc:
+        raise HostError(
+            f"The folder picker was open for {FOLDER_PICKER_TIMEOUT_SECONDS // 60} minutes without a choice;"
+            " it was closed. Try again."
+        ) from exc
     except OSError as exc:
         raise HostError(f"Could not start the Windows folder picker: {exc}") from exc
 

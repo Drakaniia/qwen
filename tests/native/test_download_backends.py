@@ -20,7 +20,10 @@ invoked here -- the assertions only read `config.backend`.
 """
 
 import re
+import shutil
 import sys
+import tempfile
+import threading
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -62,10 +65,23 @@ class _FakeTask:
 
 
 def _task_for_winner(winner):
-    """The task `run_download` builds when `probe_runner_fn` names `winner`."""
+    """The plan `run_download`'s task runs when `probe_runner_fn` names `winner`.
+
+    The probe phase runs on the task's own thread (`prepare`), so the stand-in task
+    calls it directly. It reserves a real `Clip/` folder, hence the scratch download
+    folder (under the temp dir, which is inside the user profile `native_paths` allows).
+    """
     _FakeTask.last = None
+    scratch = tempfile.mkdtemp(prefix="qwin-test-")
+    try:
+        return _plan_for_winner(winner, scratch)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _plan_for_winner(winner, scratch):
     download_manager.run_download(
-        {"id": "job-1", "url": "https://x.com/a.m3u8", "title": "Clip"},
+        {"id": "job-1", "url": "https://x.com/a.m3u8", "title": "Clip", "downloadFolder": scratch},
         task_class=_FakeTask,
         yt_dlp_command_resolver=lambda: ["yt-dlp"],
         ffmpeg_location_resolver=lambda: "ffmpeg",
@@ -75,7 +91,8 @@ def _task_for_winner(winner):
         probe_runner_fn=lambda **_kwargs: ProbeResult(winner=winner, command=[winner], label=winner),
     )
     assert _FakeTask.last is not None, f"probe winner {winner!r} started no task"
-    return _FakeTask.last.kwargs
+    kwargs = _FakeTask.last.kwargs
+    return {**kwargs, **kwargs["prepare"](threading.Event())}
 
 
 def _probe_backends(url, message=None, **overrides):
