@@ -84,6 +84,9 @@ function findAllVideos(root: Document | ShadowRoot | Element = document): HTMLVi
 function scanVideoElements(): VideoCandidate[] {
   const candidates: VideoCandidate[] = [];
   const videos = findAllVideos();
+  // Computed on the first `<video>` rather than per element: it is one pass over the
+  // resource-timing buffer, and `null` is what tells `??=` it is still uncomputed.
+  let probeUrls: string[] | null = null;
 
   for (const video of videos) {
     const videoCandidates: VideoCandidate[] = [];
@@ -115,7 +118,10 @@ function scanVideoElements(): VideoCandidate[] {
       videoCandidates.push(youtubeCandidate);
     }
 
-    const pageFallbackCandidate = pageDetection.pageFallbackCandidateForVideo(video);
+    const pageFallbackCandidate = pageDetection.pageFallbackCandidateForVideo(
+      video,
+      (probeUrls ??= unclassifiedResourceUrls()),
+    );
     const storedPageFallbackCandidate = pageDetection.addBuiltCandidate(candidates, pageFallbackCandidate);
     if (storedPageFallbackCandidate) {
       videoCandidates.push(storedPageFallbackCandidate);
@@ -155,6 +161,58 @@ function scanPerformanceEntries(): VideoCandidate[] {
     pageDetection.addCandidate(candidates, entry.name, "performance");
   }
   return candidates;
+}
+
+/**
+ * Bound on {@link unclassifiedResourceUrls}. One probe is a HEAD plus at most one ranged
+ * GET, and this list only ever reaches the host after every other detection has failed.
+ */
+const PROBED_RESOURCE_LIMIT = 6;
+
+/**
+ * Resource-timing URLs the classifier dropped — the only URLs the extension throws away
+ * without ever asking the server about them.
+ *
+ * `scanPerformanceEntries` keeps the entries `isLikelyVideoRequest` recognizes and the
+ * rest are discarded on the strength of their *string* alone. This collects a bounded
+ * sample of those for `background/media_probe.ts` to interrogate when enumeration fails:
+ * a stream fetched by hls.js from `/play?t=<token>` is an `xmlhttprequest` with no
+ * extension and no CDN-shaped hostname, and no pattern was ever going to name it.
+ *
+ * Restricted to `fetch`/`xmlhttprequest` initiators — the only resource types a player's
+ * own loader uses. An `<img>` or a stylesheet can never be the manifest, and probing one
+ * would spend a request to learn nothing.
+ *
+ * They ride on the page-fallback candidate (`page_detection.ts`), which is the row a
+ * failing site ends up showing, rather than on every row or in a new per-tab store.
+ */
+function unclassifiedResourceUrls(): string[] {
+  const urls: string[] = [];
+  if (!performance || typeof performance.getEntriesByType !== "function") {
+    return urls;
+  }
+
+  const seen = new Set<string>();
+  for (const entry of performance.getEntriesByType("resource") as PerformanceResourceTiming[]) {
+    const url = entry.name || "";
+    if (!url || seen.has(url) || !/^https?:/i.test(url)) {
+      continue;
+    }
+    if (entry.initiatorType !== "fetch" && entry.initiatorType !== "xmlhttprequest") {
+      continue;
+    }
+    // Already detected by the ordinary scanners, or a URL the block list forbids us
+    // from touching at all — either way, not something to ask about.
+    if (videoFilters.isLikelyVideoRequest(url, "media", "") || videoFilters.isBlockedVideoUrl(url, "")) {
+      continue;
+    }
+    seen.add(url);
+    urls.push(url);
+    if (urls.length >= PROBED_RESOURCE_LIMIT) {
+      break;
+    }
+  }
+  return urls;
 }
 
 function scanInlinePlayerScripts(): VideoCandidate[] {

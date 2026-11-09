@@ -315,9 +315,16 @@ function create(options: PageDetectionOptions) {
     }
 
     const isWebSocketUrl = absoluteUrl.startsWith("ws://") || absoluteUrl.startsWith("wss://");
+    // Trust the element. `isLikelyRealVideoBox` is the same "this is a real player, not a
+    // tracking pixel or a decorative loop" gate the overlay uses, and it says nothing
+    // about the URL — so a `<video>` the page is genuinely playing is media whatever
+    // `/opaque/a1b2c3` or `/play?t=<token>` looks like. Without this the DOM sweep asked
+    // the URL classifier about the one source that already knows better.
+    const realPlayer = video !== null && videoFilters.isLikelyRealVideoBox(videoElementDetails(video));
     const likelyVideo =
       absoluteUrl.startsWith("blob:") ||
       isWebSocketUrl ||
+      realPlayer ||
       videoFilters.isLikelyVideoRequest(absoluteUrl, "media", mimeType);
 
     if (!likelyVideo) {
@@ -328,7 +335,12 @@ function create(options: PageDetectionOptions) {
     const candidate: VideoCandidate = {
       url: absoluteUrl,
       format: detectFormat(absoluteUrl, mimeType),
-      source,
+      // A `blob:` source is a MediaSource handle, not a file: the bytes only exist
+      // inside the player's own buffer, so no URL can ever be handed to the helper.
+      // Tagging it is what lets the popup say plainly that this row cannot be saved
+      // instead of offering a quality list that could not be filled (path A of
+      // `docs/guides/download-detection-alternatives.md`).
+      source: absoluteUrl.startsWith("blob:") ? "mse-player" : source,
       contentType: mimeType || "",
       pageUrl: location.href,
       frameUrl: location.href,
@@ -414,7 +426,16 @@ function create(options: PageDetectionOptions) {
     return videoFilters.isLikelyRealVideoBox(details);
   }
 
-  function pageFallbackCandidateForVideo(video: HTMLVideoElement): VideoCandidate | null {
+  /**
+   * The page URL standing in for a `<video>` whose real source the extension could not
+   * name — plus, from `probeUrls`, the URLs it had to drop on sight.
+   *
+   * This is the row a failing site ends up with, which is why the probe's input rides
+   * here: `background/format_helpers.ts` reads `probeUrls` off this record when native
+   * enumeration and every detected candidate have both failed, and asks the server what
+   * those URLs actually are (`background/media_probe.ts`).
+   */
+  function pageFallbackCandidateForVideo(video: HTMLVideoElement, probeUrls: string[] = []): VideoCandidate | null {
     const pageUrl = toAbsoluteUrl(location.href);
     if (!pageUrl || currentYouTubeVideoPageUrl() || !videoFilters.isDownloadableUrl(pageUrl, "")) {
       return null;
@@ -437,6 +458,7 @@ function create(options: PageDetectionOptions) {
       thumbnailUrl: thumbnailCandidates[0] || "",
       thumbnailCandidates,
       downloadable: true,
+      ...(probeUrls.length ? { probeUrls } : {}),
       ...details,
     };
 
