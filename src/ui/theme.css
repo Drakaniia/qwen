@@ -185,6 +185,21 @@
  */
 
 /*
+ * `--control-height-md` as utilities. A token outside Tailwind's namespaces generates
+ * nothing on its own, which is why markup used to spell it `h-[var(--control-height-md)]`
+ * and `Button` hard-coded `h-[34px]` - two arbitrary values for one token. Not a colour,
+ * so it lives once, here, rather than in the three palette blocks.
+ */
+@utility h-control-md {
+  height: var(--control-height-md);
+}
+
+@utility size-control-md {
+  width: var(--control-height-md);
+  height: var(--control-height-md);
+}
+
+/*
  * ─── Materials (spec §4.1) ───────────────────────────────────────────────────────
  *
  * Plain classes, not Tailwind utilities, because each material is three coordinated
