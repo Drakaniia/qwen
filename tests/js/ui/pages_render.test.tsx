@@ -21,7 +21,16 @@ import { OptionsPage } from "../../../src/popup/options/OptionsPage.js";
 import { filterLists, helper, historyCount, settings } from "../../../src/popup/options/state.js";
 
 beforeEach(() => {
-  settings.value = { downloadFolder: "", audioFormat: "mp3", overlayEnabled: true, downloadSyncEnabled: true };
+  settings.value = {
+    downloadFolder: "",
+    audioFormat: "mp3",
+    overlayEnabled: true,
+    downloadSyncEnabled: true,
+    minSizeBytes: null,
+    downloadSubtitles: true,
+    maxConcurrentDownloads: 3,
+    preferredMaxHeight: 0,
+  };
   helper.value = { connected: false, version: "", error: "", lastChecked: 0, dependencies: {} };
   filterLists.value = [];
   historyCount.value = 0;
@@ -91,7 +100,9 @@ describe("OptionsPage", () => {
 
   it("shows the audio formats as options on the select", () => {
     const { container } = render(<OptionsPage />);
-    const values = [...container.querySelectorAll("select option")].map((node) => node.getAttribute("value"));
+    // Scoped to the audio select: Preferred quality is a select on the same page.
+    const audio = container.querySelector("select") as HTMLSelectElement;
+    const values = [...audio.querySelectorAll("option")].map((node) => node.getAttribute("value"));
     expect(values).toEqual(["mp3", "m4a", "flac", "opus", "wav", "aac", "ogg"]);
   });
 

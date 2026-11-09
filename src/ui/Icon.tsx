@@ -95,6 +95,7 @@ const ICONS = Object.freeze({
   // Solid, not stroked: a stroked play triangle reads as an outline and loses its
   // silhouette at 14px, which is the size the download row gives it.
   play: { d: "M8 5.5v13l11-6.5-11-6.5Z", filled: true },
+
   pause: { d: "M7.5 5h3v14h-3Z M13.5 5h3v14h-3Z", filled: true },
   stop: { d: "M6.5 6.5h11v11h-11Z", filled: true },
   bolt: { d: "M13.5 3 6 13.2h4.6L10.2 21 18 10.6h-4.7L13.5 3Z", filled: true },

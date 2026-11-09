@@ -44,14 +44,13 @@ const VARIANTS: Record<ButtonVariant, string> = {
   ghost: "bg-transparent text-text-muted hover:bg-raised hover:text-text",
 };
 
-// `md` is 34px, which is not on Tailwind's height scale. It is spelled out rather
-// than rounded to `h-8`/`h-9` because the spec names 28/34/40 (spec §5.2) and a
-// control's height is a type-scale metric, not one of the 4/8/12 spacing steps in
-// spec §5.3. `theme.css` should absorb it as `--control-height-md`; until then
-// this is the one arbitrary value in the system.
+// `md` is 34px, which is not on Tailwind's height scale. It is not rounded to
+// `h-8`/`h-9` because the spec names 28/34/40 (spec §5.2) and a control's height is a
+// type-scale metric, not one of the 4/8/12 spacing steps in spec §5.3. `theme.css`
+// owns it as `--control-height-md` and exposes it as `h-control-md`/`size-control-md`.
 const HEIGHTS: Record<ButtonSize, { text: string; ghost: string }> = {
   sm: { text: "h-7 px-2 gap-1", ghost: "size-7" },
-  md: { text: "h-[34px] px-3 gap-2", ghost: "size-[34px]" },
+  md: { text: "h-control-md px-3 gap-2", ghost: "size-control-md" },
   lg: { text: "h-10 px-4 gap-2", ghost: "size-10" },
 };
 
