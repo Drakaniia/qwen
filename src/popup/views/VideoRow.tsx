@@ -53,6 +53,19 @@ function isAudioCandidate(video: VideoCandidate): boolean {
 }
 
 /**
+ * A player whose stream only exists in its own MediaSource buffer.
+ *
+ * `mse-player` is the tag `page_detection.ts` puts on a `blob:` source. The URL test is
+ * the belt to that braces — a row detected before the tag existed, or a variant folded
+ * into a group from one. Nothing else on a row is ever a `blob:` handle: a fetchable
+ * stream has a real scheme. Such a row gets an explanation and no action — nothing can
+ * fetch it, and AGENTS.md forbids a recording path.
+ */
+function isMseSource(video: VideoCandidate): boolean {
+  return video.source === "mse-player" || String(video.url || "").startsWith("blob:");
+}
+
+/**
  * Whether a video whose ladder is out is worth one ffmpeg spawn (H4).
  *
  * Deliberately wider than the reported bug — "empty ladder, any format" also admits a
@@ -172,6 +185,7 @@ export function VideoRow({ video, active, selected, id, inFolder = false }: Vide
   const isAudio = isAudioCandidate(video);
   const pending = pendingVideoId.value === video.id;
   const job = runningJobFor(video.id, currentDownloads.value);
+  const mse = isMseSource(video);
 
   // The ordered ladder, advanced on `onError` rather than latched (spec §6, D4/D15).
   // A too-small or 403'd URL is only one of up to three sources now, so one failure is
@@ -274,8 +288,9 @@ export function VideoRow({ video, active, selected, id, inFolder = false }: Vide
         // disappearing leaves a button with no identity, and this row has no second line
         // to explain it. `w-12` not the paste box's `w-16`: this is a `size="sm"` button
         // and the wider block overflows it. Not the `Skeleton` component — that is
-        // `bg-raised`, which is invisible inside a filled primary button.
-        <span class="inline-block h-2.5 w-12 animate-pulse rounded-badge bg-accent-fg/40" aria-hidden="true" />
+        // `bg-raised`, which is invisible inside a filled primary button. `h-3`, the
+        // nearest spacing step: `2.5` is off the scale (`theme.css`, Spacing).
+        <span class="inline-block h-3 w-12 animate-pulse rounded-badge bg-accent-fg/40" aria-hidden="true" />
       ) : (
         <>
           <Icon name="download" size={14} />
@@ -308,8 +323,10 @@ export function VideoRow({ video, active, selected, id, inFolder = false }: Vide
       <span class="relative aspect-video w-20 shrink-0 overflow-hidden rounded-badge bg-raised">
         {thumbnail || backdrop ? (
           <img
-            class={`size-full object-cover transition-[filter,opacity] duration-150 ${
-              backdrop ? "scale-110 opacity-50 blur-[6px]" : ""
+            // `transition` already lists `filter` and `opacity`; `blur-sm` (8px) is the
+            // nearest step on Tailwind's blur scale to the 6px this used to spell out.
+            class={`size-full object-cover transition duration-150 ${
+              backdrop ? "scale-110 opacity-50 blur-sm" : ""
             }`.trim()}
             alt=""
             loading="lazy"
@@ -381,7 +398,17 @@ export function VideoRow({ video, active, selected, id, inFolder = false }: Vide
           </p>
         ) : null}
 
-        {video.downloadable ? null : (
+        {video.downloadable ? null : mse ? (
+          // The bytes live in the player's own MediaSource buffer and vanish with the page,
+          // so no fetch, no byte probe and no yt-dlp extractor can reach them. The "Open the
+          // stream" link is deliberately absent: a `blob:` handle is scoped to the page's own
+          // origin and blob store, so opening it from the popup opens nothing. The page's
+          // own row (`page-fallback`) is what yt-dlp can still try.
+          <p class="text-caption text-text-muted">
+            This player streams from memory, so Qwin cannot save it directly. If the site is supported, download the
+            page itself instead.
+          </p>
+        ) : (
           // D17 (spec §1.6, acceptance criterion 13). This branch used to point the user
           // at a screen-recording control that was deleted in dad38be / f38e6fe / 8c5c698
           // and never existed in this UI. The literal phrase is deliberately absent from

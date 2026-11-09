@@ -12,11 +12,11 @@
  * object, so a hand-rolled write is erased by the next settings save from any surface
  * - including the popup's own theme control.
  *
- * Two settings the spec flagged are deliberately absent: `autoDownload` and
- * `maxConcurrentDownloads`. They were deleted from `tab_state.js` in Phase 1 and
- * `rg` over the tree now matches nothing but the spec text, so there is nothing for a
- * toggle to write. A control that changes nothing is worse than no control, so they
- * stay gone.
+ * `autoDownload` is deliberately absent: it was deleted from `tab_state.js` in Phase 1
+ * and nothing reads it, and a control that changes nothing is worse than no control.
+ * `maxConcurrentDownloads` came back once the background grew a real queue
+ * (`download/queue.ts`) for it to limit; `preferredMaxHeight` arrived with it.
+
  *
  * `getSettings` has no wrapper in `popup_api.js` and adding one would change the
  * frozen 24-export contract, so it goes through the module's existing generic
@@ -25,7 +25,14 @@
 import { signal } from "@preact/signals";
 
 import { browserApi } from "../../shared/browser_api.js";
-import type { HelperStatus, Settings as ContractSettings, ThemeMode } from "../../shared/contracts.js";
+import {
+  clampConcurrency,
+  CONCURRENCY_DEFAULT,
+  PREFERRED_HEIGHTS,
+  type HelperStatus,
+  type Settings as ContractSettings,
+  type ThemeMode,
+} from "../../shared/contracts.js";
 import { CACHE_KEY_PREFIX, FILTER_LISTS } from "../../shared/filter_list_config.js";
 import * as PopupApi from "../../shared/popup_api.js";
 
@@ -57,31 +64,31 @@ export type { HelperStatus, ThemeMode };
  * supplies `"system"` as an in-memory default rather than as stored data, so a profile
  * that has never saved a theme has no `theme` key at all. Optional is what the storage
  * layer actually looks like; `loadSettings` fills it in and every read defaults it.
+ *
+ * Every other key is the contract's own type, not a local copy: `minSizeBytes` and
+ * `downloadSubtitles` used to be re-declared here as optional while the shared record
+ * lacked them, and two declarations of one stored key is how they drift.
  */
 export type Settings = Pick<
   ContractSettings,
-  "downloadFolder" | "audioFormat" | "overlayEnabled" | "downloadSyncEnabled"
+  | "downloadFolder"
+  | "audioFormat"
+  | "overlayEnabled"
+  | "downloadSyncEnabled"
+  | "minSizeBytes"
+  | "downloadSubtitles"
+  | "maxConcurrentDownloads"
+  | "preferredMaxHeight"
 > & {
   /** Spec D6. Absent means System. */
   theme?: ThemeMode;
-  /**
-   * The popup's size threshold (spec §6.7), persisted so it is the *default* rather
-   * than a per-visit value. `null` is "Any" - not "0 bytes" - so an unknown-size
-   * candidate still passes, which is why the Meter has a null stop.
-   *
-   * Not in `contracts.ts`: `null` is not expressible as a stored number without
-   * conflating "no filter" with "zero bytes", and the shared record may not be edited
-   * in this phase. `saveSettings` merges arbitrary keys, so the value round-trips
-   * through `qwinSettings` unchanged.
-   */
-  minSizeBytes?: number | null;
-  /**
-   * Subtitle default (spec §8). `!== false` semantics, matching
-   * `background/types.ts:128`: the helper downloads subtitles unless told not to.
-   * Optional for the same reason it is optional there - the key is absent until written.
-   */
-  downloadSubtitles?: boolean;
 };
+
+/** A stored height cap, or `0` (no cap) for anything Options does not offer. */
+function knownHeight(value: unknown): number {
+  const height = Number(value);
+  return (PREFERRED_HEIGHTS as readonly number[]).includes(height) ? height : 0;
+}
 
 export interface FilterListRow {
   key: string;
@@ -101,6 +108,10 @@ export const settings = signal<Settings>({
   audioFormat: "mp3",
   overlayEnabled: true,
   downloadSyncEnabled: true,
+  minSizeBytes: null,
+  downloadSubtitles: true,
+  maxConcurrentDownloads: CONCURRENCY_DEFAULT,
+  preferredMaxHeight: 0,
 });
 
 export const helper = signal<HelperStatus>({
@@ -215,8 +226,12 @@ export async function loadSettings(): Promise<void> {
     overlayEnabled: stored.overlayEnabled !== false,
     downloadSyncEnabled: stored.downloadSyncEnabled !== false,
     theme: mode,
-    minSizeBytes: typeof size === "number" ? size : null,
+    minSizeBytes: typeof size === "number" && size > 0 ? size : null,
     downloadSubtitles: stored.downloadSubtitles !== false,
+    // An absent key is a profile that predates the setting: the clamp turns it into
+    // the contract's default rather than a `NaN` the Segmented cannot select.
+    maxConcurrentDownloads: clampConcurrency(stored.maxConcurrentDownloads),
+    preferredMaxHeight: knownHeight(stored.preferredMaxHeight),
   };
   // Applied here rather than at the call site: `loadAll` is the only boot path, and a
   // second `applyTheme` in the page would be one more place the attribute can drift.

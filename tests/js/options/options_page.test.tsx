@@ -7,8 +7,8 @@
  * shipping `✓`/`✗`, and the confirmations land beside the control that changed rather
  * than in one line at the foot of the page.
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/preact";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/preact";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OptionsPage } from "../../../src/popup/options/OptionsPage.js";
 import {
@@ -29,6 +29,8 @@ const STORED: Settings = {
   theme: "system",
   minSizeBytes: null,
   downloadSubtitles: true,
+  maxConcurrentDownloads: 3,
+  preferredMaxHeight: 0,
 };
 
 beforeEach(() => {
@@ -68,15 +70,90 @@ describe("section structure", () => {
     }
   });
 
-  it("shows no toggle for the two settings the background no longer reads", () => {
+  it("shows no toggle for the setting the background no longer reads", () => {
     const { container } = render(<OptionsPage />);
-    expect(container.innerHTML).not.toMatch(/autoDownload|maxConcurrentDownloads|max concurrent/i);
+    expect(container.innerHTML).not.toMatch(/autoDownload|auto-download/i);
   });
 
   it("offers the audio containers the helper accepts", () => {
-    const { container } = render(<OptionsPage />);
-    const values = [...container.querySelectorAll("select option")].map((node) => node.getAttribute("value"));
+    render(<OptionsPage />);
+    const select = screen.getByLabelText("Audio format");
+    const values = [...select.querySelectorAll("option")].map((node) => node.getAttribute("value"));
     expect(values).toEqual(["mp3", "m4a", "flac", "opus", "wav", "aac", "ogg"]);
+  });
+
+  it("offers every preferred-quality cap the contract lists, best first", () => {
+    settings.value = { ...STORED, preferredMaxHeight: 1080 };
+    render(<OptionsPage />);
+    const select = screen.getByLabelText("Preferred quality") as HTMLSelectElement;
+    expect([...select.options].map((node) => node.textContent)).toEqual([
+      "Best available",
+      "2160p",
+      "1440p",
+      "1080p",
+      "720p",
+      "480p",
+      "360p",
+    ]);
+    expect(select.value).toBe("1080");
+  });
+
+  it("shows simultaneous downloads as a 1-6 radiogroup on the stored value", () => {
+    settings.value = { ...STORED, maxConcurrentDownloads: 4 };
+    render(<OptionsPage />);
+    const group = screen.getByRole("radiogroup", { name: "Simultaneous downloads" });
+    expect([...group.querySelectorAll('[role="radio"]')].map((n) => n.textContent)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+    ]);
+    expect(group.querySelector('[aria-checked="true"]')?.textContent).toBe("4");
+  });
+});
+
+describe("download controls persist through saveSettings", () => {
+  const saves = () =>
+    vi
+      .mocked(chrome.runtime.sendMessage)
+      .mock.calls.map(([message]) => message as { type?: string; settings?: unknown })
+      .filter((message) => message.type === "saveSettings");
+
+  beforeEach(() => {
+    vi.mocked(chrome.runtime.sendMessage).mockClear();
+    (
+      chrome.runtime.sendMessage as unknown as {
+        mockImplementation(fn: (message: unknown, callback?: (reply: unknown) => void) => void): void;
+      }
+    ).mockImplementation((_message, callback) => callback?.({ ok: true, settings: STORED }));
+  });
+
+  it("writes the clicked concurrency", async () => {
+    render(<OptionsPage />);
+    const group = screen.getByRole("radiogroup", { name: "Simultaneous downloads" });
+    const five = [...group.querySelectorAll<HTMLElement>('[role="radio"]')].find((n) => n.textContent === "5");
+    await act(async () => five?.click());
+    expect(saves()).toEqual([{ type: "saveSettings", settings: { maxConcurrentDownloads: 5 } }]);
+  });
+
+  it("writes the chosen height cap as a number", async () => {
+    render(<OptionsPage />);
+    const select = screen.getByLabelText("Preferred quality") as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: "720" } });
+    });
+    expect(saves()).toEqual([{ type: "saveSettings", settings: { preferredMaxHeight: 720 } }]);
+  });
+
+  it("is found by the words a user would search for", async () => {
+    render(<OptionsPage />);
+    for (const words of ["simultaneous", "preferred quality", "1080p"]) {
+      query.value = words;
+      await settle();
+      expect(headings(), words).toEqual(["Downloads"]);
+    }
   });
 });
 

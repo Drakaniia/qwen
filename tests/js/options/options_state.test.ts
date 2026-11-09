@@ -11,9 +11,10 @@
  * that the overlay toggle pushes `setOverlayEnabled` at the open tab: saving alone would
  * leave an already-open page showing the old state until reload.
  *
- * The two settings the spec flagged as dead (`autoDownload`, `maxConcurrentDownloads`)
- * have no assertion here on purpose — this file asserts they are *absent* from what the
- * page sends, which is the only form that test can take.
+ * `autoDownload`, which the spec flagged as dead, has no assertion here on purpose —
+ * this file asserts it is *absent* from what the page sends, which is the only form that
+ * test can take. `maxConcurrentDownloads` is live again (the background's queue reads
+ * it), so it has real tests below.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -63,6 +64,8 @@ const STORED_SETTINGS: Settings = {
   theme: "system",
   minSizeBytes: null,
   downloadSubtitles: true,
+  maxConcurrentDownloads: 3,
+  preferredMaxHeight: 0,
 };
 
 /**
@@ -144,7 +147,36 @@ describe("settings", () => {
     const settingsPayloads = sent
       .filter((message) => message.type === "saveSettings")
       .map((message) => Object.keys(message.settings as object).join(","));
-    expect(settingsPayloads.join(" ")).not.toMatch(/autoDownload|maxConcurrentDownloads/);
+    expect(settingsPayloads.join(" ")).not.toMatch(/autoDownload/);
+  });
+
+  it("persists concurrency and the quality cap through saveSettings, one key each", async () => {
+    await commit("maxConcurrentDownloads", { maxConcurrentDownloads: 5 }, "5 downloads at a time.");
+    await commit("preferredMaxHeight", { preferredMaxHeight: 720 }, "Capped at 720p.");
+
+    const saves = sent.filter((message) => message.type === "saveSettings");
+    expect(saves).toEqual([
+      { type: "saveSettings", settings: { maxConcurrentDownloads: 5 } },
+      { type: "saveSettings", settings: { preferredMaxHeight: 720 } },
+    ]);
+    expect(settings.value.maxConcurrentDownloads).toBe(5);
+    expect(settings.value.preferredMaxHeight).toBe(720);
+    expect(note.value).toMatchObject({ field: "preferredMaxHeight", text: "Capped at 720p." });
+  });
+
+  it("reads an old profile's missing or out-of-range values as the contract's defaults", async () => {
+    mockSendMessage((message, callback) => {
+      sent.push(message as Record<string, unknown>);
+      callback?.({ ok: true, settings: { maxConcurrentDownloads: 40, preferredMaxHeight: 999 } });
+    });
+    await loadSettings();
+    expect(settings.value.maxConcurrentDownloads).toBe(6);
+    expect(settings.value.preferredMaxHeight).toBe(0);
+
+    mockSendMessage((_message, callback) => callback?.({ ok: true, settings: {} }));
+    await loadSettings();
+    expect(settings.value.maxConcurrentDownloads).toBe(3);
+    expect(settings.value.minSizeBytes).toBeNull();
   });
 
   it("defaults an unrecognised or absent theme to system rather than trusting it", async () => {

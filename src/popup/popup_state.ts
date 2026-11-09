@@ -57,6 +57,10 @@ export interface FormatsResponse extends PopupResponse {
   title?: string;
   formats?: unknown[];
   nativeError?: string;
+  /** Why `formats` is empty, in one sentence — rendered instead of the table. */
+  unavailableReason?: string;
+  /** The video's length in seconds, when the helper reported one. Shown in the dialog header. */
+  duration?: number | null;
   hasSubtitles?: boolean;
 }
 

@@ -412,7 +412,10 @@ describe("pausableDownloadJobs — the tray's Pause all", () => {
   });
 
   it("keeps input order and does not mutate the array it was given", () => {
-    const jobs = [{ id: "b", status: "running" }, { id: "a", status: "connecting" }] as DownloadJob[];
+    const jobs = [
+      { id: "b", status: "running" },
+      { id: "a", status: "connecting" },
+    ] as DownloadJob[];
     expect(pausableDownloadJobs(jobs).map((j) => j.id)).toEqual(["b", "a"]);
     expect(jobs).toHaveLength(2);
   });

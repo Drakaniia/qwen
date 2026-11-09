@@ -10,6 +10,10 @@ import { onQualityDialogBack, onQualityDialogCancel, onQualityFormatSelected, qu
  * The dialog is the only thing here. The promise it resolves, and the request serial
  * that invalidates an abandoned `getVideoFormats`, live in `popup_actions.js` because
  * they belong to the download flow rather than to the view.
+ *
+ * No `videos` / `onSelectVideo`: the "which video?" step is the overlay's. The popup
+ * opens the dialog from a row, so it already knows the video, and passing an empty list
+ * and a no-op handler here only kept a view alive that nothing could reach.
  */
 export function QualityDialogMount() {
   const dialog = qualityDialog.value;
@@ -22,11 +26,11 @@ export function QualityDialogMount() {
       hasBack={dialog.hasBack}
       statusText={dialog.statusText}
       nativeError={dialog.nativeError}
-      videos={[]}
+      unavailableReason={dialog.unavailableReason}
+      duration={dialog.duration}
       formats={dialog.formats as never[]}
       onBack={onQualityDialogBack}
       onCancel={onQualityDialogCancel}
-      onSelectVideo={() => {}}
       onSelectFormat={onQualityFormatSelected}
     />
   );

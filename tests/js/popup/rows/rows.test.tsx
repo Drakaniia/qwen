@@ -294,7 +294,7 @@ describe("VideoRow: the thumbnail ladder (spec §6, D4/D15)", () => {
     // A thumbnail that resolved too small to recognise still identifies the video; a
     // bare play icon does not.
     expect(image(host)?.getAttribute("src")).toBe(THREE[2]);
-    expect(image(host)?.className).toContain("blur-[6px]");
+    expect(image(host)?.className).toContain("blur-sm");
   });
 
   it("renders no <img> for a blob: thumbnail, which can never resolve in an extension page", () => {

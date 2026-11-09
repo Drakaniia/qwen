@@ -24,6 +24,34 @@ import { JobRow } from "./JobRow.js";
  */
 const FINISHED_TRAY_LIMIT = 20;
 
+/** A missing status is `queued`, the same reading `isActiveDownload` gives it. */
+const isQueued = (job: DownloadJob) => String(job.status ?? "queued") === "queued";
+
+/** Newest first by `updatedAt` — see {@link JobGroup}. */
+const newestFirst = (jobs: DownloadJob[]) =>
+  [...jobs].sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+
+/**
+ * The tray's four groups, in the order a user scans for them: what is moving, what is
+ * waiting its turn, what needs a decision, what is done.
+ *
+ * `queued` used to sit inside "Active downloads" and `error` inside "Recently finished".
+ * Now that every download goes through the background's concurrency queue, a batch of
+ * twenty shows three moving rows and seventeen waiting ones, and a failure sorted among
+ * successes by time was a row the user had to go looking for.
+ */
+function groupJobs(jobs: DownloadJob[]) {
+  const active = jobs.filter((job) => isActiveDownload(job) && !isQueued(job));
+  const queued = jobs
+    .filter((job) => isActiveDownload(job) && isQueued(job))
+    // Queue order is start order, so the row about to start sits at the top.
+    .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0));
+  const terminal = jobs.filter((job) => !isActiveDownload(job));
+  const failed = newestFirst(terminal.filter((job) => job.status === "error"));
+  const finished = newestFirst(terminal.filter((job) => job.status !== "error"));
+  return { active, queued, failed, finished };
+}
+
 /**
  * The popup's downloads tray (spec §6.8, D15).
  *
@@ -31,8 +59,9 @@ const FINISHED_TRAY_LIMIT = 20;
  * tab is a row here, and every job's actions work from any tab — the background resolves
  * jobs by `jobId`, never by tab. `DownloadJob.tabId` is provenance for the row's site chip.
  *
- * Terminal jobs collapse into a "Recently finished" group: full history is `downloads.html`'s
- * job, not a tray's, and the popup's height is the reason.
+ * Jobs are grouped by {@link groupJobs}; a group with no rows does not render. Terminal
+ * groups are capped: full history is `downloads.html`'s job, not a tray's, and the popup's
+ * height is the reason.
  *
  * Each row hands `JobRow` the whole `DownloadJob`, which already carries `speed`, `eta`,
  * `downloadedSize`, `totalSize`, `connections` and `stage` — the six fields acceptance #4
@@ -41,7 +70,7 @@ const FINISHED_TRAY_LIMIT = 20;
 export function DownloadsView() {
   const jobs = currentDownloads.value;
   const active = activeDownloads.value;
-  const finished = jobs.filter((job) => !isActiveDownload(job));
+  const groups = groupJobs(jobs);
   const connected = helperStatus.value.connected;
   const bulk = bulkControlFor(active);
 
@@ -92,19 +121,19 @@ export function DownloadsView() {
           the tray keeps ordinary per-control focus and only Media gets `useListKeys`. */}
       {bulk ? <BulkVerb jobs={bulk.jobs} verb={bulk.verb} /> : null}
 
-      {active.length ? (
-        <ul role="list" aria-label="Active downloads" class="flex flex-col gap-2 p-4">
-          {active.map((job) => (
-            <JobRow key={job.id || job.videoId} job={job} />
-          ))}
-        </ul>
-      ) : (
-        <p class="px-4 py-3 text-caption text-text-muted">Nothing is downloading right now.</p>
-      )}
+      {active.length ? null : <p class="px-4 py-3 text-caption text-text-muted">Nothing is downloading right now.</p>}
 
-      {finished.length ? <FinishedGroup jobs={finished} /> : null}
+      <JobGroup id="active" title="Active" jobs={groups.active} />
+      <JobGroup id="queued" title="Queued" count={groups.queued.length} jobs={groups.queued} />
+      {/* No "Retry all": the popup API has no retry-many message, and each failed row
+          already carries its own Retry. */}
+      <JobGroup id="failed" title="Failed" jobs={groups.failed} limit={FINISHED_TRAY_LIMIT} />
+      <JobGroup id="finished" title="Finished" jobs={groups.finished} limit={FINISHED_TRAY_LIMIT} />
 
-      {finished.length ? <ClearFinished /> : null}
+      {/* `clearDownloads` forgets every terminal record, failed ones included — so the
+          button shows whenever either terminal group does, exactly as it did when both
+          lived under one heading. */}
+      {groups.failed.length || groups.finished.length ? <ClearFinished /> : null}
     </>
   );
 }
@@ -188,27 +217,47 @@ async function clearFinished(): Promise<void> {
 }
 
 /**
- * Terminal jobs, newest first, under a real heading (spec §6.8).
+ * One tray group under a real heading (spec §6.8), or nothing when it is empty.
  *
- * `updatedAt` rather than insertion order: a job that finished twenty minutes ago should
- * sit above one that finished an hour ago, and `applyJobUpdate` merges progress ticks
- * in place so the array's own order is the order they were *started*.
+ * The terminal groups arrive newest first by `updatedAt` rather than in insertion order:
+ * a job that finished twenty minutes ago should sit above one that finished an hour ago,
+ * and `applyJobUpdate` merges progress ticks in place so the array's own order is the
+ * order they were *started*.
  *
- * Capped at {@link FINISHED_TRAY_LIMIT}, with the overflow said out loud — a silent
- * truncation reads as "that was all of them". The footer's "All downloads" link is already
- * one click away, so this line points at it rather than adding a second one.
+ * `limit` caps a terminal group at {@link FINISHED_TRAY_LIMIT}, with the overflow said out
+ * loud — a silent truncation reads as "that was all of them". The footer's "All downloads"
+ * link is already one click away, so this line points at it rather than adding a second
+ * one. Active and queued jobs are never capped: the tray is a live status list.
  */
-function FinishedGroup({ jobs }: { jobs: DownloadJob[] }) {
-  const ordered = [...jobs].sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
-  const overflow = ordered.length - FINISHED_TRAY_LIMIT;
+function JobGroup({
+  id,
+  title,
+  jobs,
+  count,
+  limit,
+}: {
+  id: string;
+  title: string;
+  jobs: DownloadJob[];
+  /** Shown beside the heading; the queue is the group whose length is the news. */
+  count?: number;
+  limit?: number;
+}) {
+  if (!jobs.length) {
+    return null;
+  }
+  const shown = limit ? jobs.slice(0, limit) : jobs;
+  const overflow = jobs.length - shown.length;
+  const headingId = `qwin-${id}-heading`;
 
   return (
-    <section aria-labelledby="qwin-finished-heading">
-      <h2 id="qwin-finished-heading" class="section-label text-section text-text-tertiary px-4 pt-2 pb-1">
-        Recently finished
+    <section aria-labelledby={headingId}>
+      <h2 id={headingId} class="section-label text-section text-text-tertiary px-4 pt-2 pb-1">
+        {title}
+        {count ? <span class="nums"> · {count}</span> : null}
       </h2>
-      <ul role="list" aria-label="Recently finished" class="flex flex-col gap-2 p-4">
-        {ordered.slice(0, FINISHED_TRAY_LIMIT).map((job) => (
+      <ul role="list" aria-labelledby={headingId} class="flex flex-col gap-2 px-4 pt-1 pb-3">
+        {shown.map((job) => (
           <JobRow key={job.id || job.videoId} job={job} />
         ))}
       </ul>
