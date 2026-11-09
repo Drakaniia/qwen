@@ -6,6 +6,7 @@ import { isActiveDownload, TERMINAL_DOWNLOAD_STATUSES } from "../shared/download
 // install starts at is read from there rather than retyped. Safe in the service
 // worker: `motion.ts`'s only import is `import type`, which erases.
 import { POPUP_DEFAULT_WIDTH } from "../ui/motion.js";
+import { CONCURRENCY_DEFAULT } from "../shared/contracts.js";
 import type { BackgroundSettings, DownloadJobRecord, TabId, VideoPatch, VideoRecord } from "./types.js";
 
 const STORAGE_VIDEOS = "qwinVideosByTab";
@@ -31,6 +32,10 @@ let settings: BackgroundSettings = {
   overlayEnabled: true,
   popupWidth: POPUP_DEFAULT_WIDTH,
   theme: "system",
+  downloadSubtitles: true,
+  maxConcurrentDownloads: CONCURRENCY_DEFAULT,
+  preferredMaxHeight: 0,
+  minSizeBytes: null,
 };
 let stateLoaded = false;
 let stateLoadPromise: Promise<unknown> | null = null;
@@ -69,6 +74,9 @@ function load(): Promise<unknown> {
       videosByTab = cleanStoredVideos((items[STORAGE_VIDEOS] || {}) as Record<string, unknown>);
       settings = Object.assign({}, settings, items[STORAGE_SETTINGS] || {});
       downloadsById = (items[STORAGE_DOWNLOADS] || {}) as Record<string, DownloadJobRecord>;
+      // The stored toggle is the truth; `download_sync.ts` boots with sync on, and used to
+      // stay on after every restart until someone touched the Options switch again.
+      downloadSync.setSyncEnabled(settings.downloadSyncEnabled !== false);
       // Shrink a store that was already oversized before the retention rule existed,
       // rather than waiting for the next download to finish.
       const pruned = pruneTerminalJobs();
@@ -237,14 +245,17 @@ function updateDownload(jobId: string, patch: VideoPatch): Promise<unknown> {
   const merged: DownloadJobRecord = Object.assign({}, existing, patch, { updatedAt: Date.now() });
   downloadsById[jobId] = merged;
 
-  // Sync completed/failed/canceled downloads to storage.sync history.
-  // This runs asynchronously — does not block the download update.
-  if (downloadSync.isSyncEnabled() && isFinalStatus(merged.status)) {
-    downloadSync.addSyncedDownload(merged);
-    persistSyncHistoryToStorage();
-    // Before the persist below, so the write that leaves here is already the pruned map —
-    // a terminal status makes `scheduleDownloadsPersist` write immediately, so there is no
-    // second write.
+  if (isFinalStatus(merged.status)) {
+    // Sync completed/failed/canceled downloads to storage.sync history.
+    // This runs asynchronously — does not block the download update.
+    if (downloadSync.isSyncEnabled()) {
+      downloadSync.addSyncedDownload(merged);
+      persistSyncHistoryToStorage();
+    }
+    // On EVERY terminal transition, sync or not — it used to sit inside the sync branch,
+    // so turning history sync off also turned retention off. Before the persist below, so
+    // the write that leaves here is already the pruned map: a terminal status makes
+    // `scheduleDownloadsPersist` write immediately, so there is no second write.
     pruneTerminalJobs();
   }
 

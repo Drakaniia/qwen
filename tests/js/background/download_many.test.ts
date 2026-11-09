@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { ACTIVE_DOWNLOAD_STATUSES } from "../../../src/shared/download_statuses.js";
 
-// A macrotask, not a microtask: releasing the first 3 admits the next rows through several
-// awaits (the `waiting` resume, then `start`), and a fixed microtask count would race that.
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+import { fakeDeps, flush, type FakePort } from "./download_fakes.js";
 
 /**
  * enumeratePlaylist handler contract: items become tab-scoped video rows, and the host's
@@ -68,229 +65,172 @@ describe("enumeratePlaylistVideos", () => {
 });
 
 /**
- * The 3-at-a-time gate.
+ * The gate itself.
  *
- * The fake below is modelled on the REAL `startNativeDownloadFromVideo` contract after
- * B1: it returns the moment the native port is open, and the download runs on a detached
- * `port.onMessage` listener, reaching settlement later through `settled`. An older fake
- * that resolved on a manually-pumped promise modelled a download-duration promise the real
- * starter never produces — it proved the arithmetic while gating nothing.
+ * The starter below is modelled on the REAL `startNativeDownloadFromVideo` contract: it
+ * returns the moment the native port is open, and the download reaches settlement later
+ * through `settled`. An older fake that resolved on a manually-pumped promise modelled a
+ * download-duration promise the real starter never produces — it proved the arithmetic
+ * while gating nothing.
  */
-describe("downloadMany queue", () => {
-  /** One native port held open, exactly like the real one until a terminal message. */
-  function openPorts() {
-    const open: Array<() => void> = [];
+describe("createDownloadQueue", () => {
+  function heldStarts() {
+    const open = new Map<string, () => void>();
     return {
       open,
-      settle(id: string): void {
-        const index = open.findIndex((fn) => (fn as { id?: string }).id === id);
-        if (index >= 0) {
-          open.splice(index, 1)[0]();
-        }
+      starter(jobId: string) {
+        return async () => {
+          let release = (): void => {};
+          const settled = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          open.set(jobId, release);
+          return { jobId, settled };
+        };
       },
-      start: async (_tab: number, id: string, _format: string, jobId: string) => {
-        let release = (): void => {};
-        const settled = new Promise<void>((resolve) => {
-          release = resolve;
-        });
-        const entry = Object.assign(release, { id });
-        open.push(entry);
-        // The real starter's return value: a job id, nothing more.
-        return { jobId: jobId || `job_${id}`, settled };
+      settleAll() {
+        const releases = [...open.values()];
+        open.clear();
+        releases.forEach((fn) => fn());
       },
     };
   }
 
-  // A macrotask, not a microtask: releasing the first 3 admits `d` and `e` through
-  // several awaits (the `waiting` resume, then `start`), and a fixed microtask count
-  // would race that.
-
   it("holds its slot until the download SETTLES, not until it starts", async () => {
-    let active = 0;
-    let peak = 0;
-    const ports = openPorts();
-    const { createBoundedQueue } = await import("../../../src/background/download/queue.js");
-    const queue = createBoundedQueue(3, (async (tab: number | undefined, id: string, format: string, jobId: string) => {
-      active += 1;
-      peak = Math.max(peak, active);
-      try {
-        return await ports.start(tab as number, id, format, jobId);
-      } finally {
-        // `start` has returned, so the starter's own bookkeeping is done — what is still
-        // outstanding is the transfer, and that is what the slot must wait for.
-        active -= 1;
-      }
-    }) as never);
+    const held = heldStarts();
+    const { createDownloadQueue } = await import("../../../src/background/download/queue.js");
+    const queue = createDownloadQueue(() => 3);
 
     const ids = ["a", "b", "c", "d", "e"];
-    const pending = ids.map((id) => queue.add(7, id, "best", `pre_${id}`));
+    const tickets = ids.map((id) => queue.add(id, held.starter(id)));
     await flush();
 
-    // All five starters have RETURNED by now — the gate still admits no more than three,
-    // because the returned `settled` promise has not resolved for any of them.
-    expect(ports.open.length).toBe(3);
+    // All three starters have RETURNED by now — the gate still admits no more, because
+    // the returned `settled` promise has not resolved for any of them.
+    expect(held.open.size).toBe(3);
+    expect(tickets.map((ticket) => ticket.queued)).toEqual([false, false, false, true, true]);
+    expect(tickets.map((ticket) => ticket.ahead)).toEqual([0, 0, 0, 0, 1]);
 
-    // Settle the open ports in waves; a single pass would hang on the ones it admits.
-    while (ports.open.length) {
-      ports.open.splice(0).forEach((fn) => fn());
+    let guard = 0;
+    while (held.open.size && guard++ < 10) {
+      held.settleAll();
       await flush();
     }
-
-    const slots = await Promise.all(pending);
-    expect(slots.map((slot) => slot.jobId)).toEqual(ids.map((id) => `pre_${id}`));
-    expect(peak).toBe(3);
+    const slots = await Promise.all(tickets.map((ticket) => ticket.slot));
+    expect(slots.map((slot) => slot?.jobId)).toEqual(ids);
   });
 
   it("admits every item of a burst larger than the limit exactly once", async () => {
     const started: string[] = [];
-    const ports = openPorts();
-    const { createBoundedQueue } = await import("../../../src/background/download/queue.js");
-    const queue = createBoundedQueue(3, (async (
-      _tab: number | undefined,
-      id: string,
-      _format: string,
-      jobId: string,
-    ) => {
-      started.push(id);
-      return ports.start(7, id, "best", jobId);
-    }) as never);
+    const held = heldStarts();
+    const { createDownloadQueue } = await import("../../../src/background/download/queue.js");
+    const queue = createDownloadQueue(() => 3);
 
     const ids = Array.from({ length: 25 }, (_value, index) => `v${index}`);
-    const pending = ids.map((id) => queue.add(7, id, "best", `job_${id}`));
+    ids.forEach((id) =>
+      queue.add(id, () => {
+        started.push(id);
+        return held.starter(id)();
+      }),
+    );
     await flush();
     expect(started).toHaveLength(3);
 
     let guard = 0;
-    while (ports.open.length && guard++ < 60) {
-      ports.open.splice(0).forEach((fn) => fn());
+    while (held.open.size && guard++ < 60) {
+      held.settleAll();
       await flush();
     }
-
-    await Promise.all(pending);
-    expect(started.sort()).toEqual([...ids].sort());
-    expect(new Set(started).size).toBe(ids.length);
+    expect(started).toEqual(ids);
   });
 
-  it("does not deadlock when a starter settles synchronously", async () => {
-    const started: string[] = [];
-    const { createBoundedQueue } = await import("../../../src/background/download/queue.js");
-    const queue = createBoundedQueue(3, (async (
-      _tab: number | undefined,
-      id: string,
-      _format: string,
-      jobId: string,
-    ) => {
-      started.push(id);
-      // e.g. the "duplicate blocked" path, which opens nothing at all.
-      return { jobId: jobId || `job_${id}`, settled: Promise.resolve() };
-    }) as never);
+  it("reads the limit live: a raised limit admits more on the next admission, a lowered one stops nothing", async () => {
+    let limit = 1;
+    const held = heldStarts();
+    const { createDownloadQueue } = await import("../../../src/background/download/queue.js");
+    const queue = createDownloadQueue(() => limit);
 
-    const slots = await Promise.all(["a", "b", "c", "d", "e"].map((id) => queue.add(7, id, "best", `job_${id}`)));
+    queue.add("a", held.starter("a"));
+    queue.add("b", held.starter("b"));
+    await flush();
+    expect([...held.open.keys()]).toEqual(["a"]);
 
-    expect(started).toHaveLength(5);
-    expect(slots).toHaveLength(5);
+    // Raised: the next admission (here, a new add) fills every free slot, line first.
+    limit = 3;
+    queue.add("c", held.starter("c"));
+    await flush();
+    expect([...held.open.keys()]).toEqual(["a", "b", "c"]);
+
+    // Lowered: nothing running is touched; the next item just waits for enough to settle.
+    limit = 1;
+    const late = queue.add("d", held.starter("d"));
+    expect(late.queued).toBe(true);
+    held.open.get("a")?.();
+    held.open.delete("a");
+    await flush();
+    expect(held.open.has("d")).toBe(false);
+  });
+
+  it("withdraws a waiting item: it never starts, and its ticket resolves null", async () => {
+    const held = heldStarts();
+    const changes: string[][] = [];
+    const { createDownloadQueue } = await import("../../../src/background/download/queue.js");
+    const queue = createDownloadQueue(
+      () => 1,
+      (ids) => changes.push([...ids]),
+    );
+
+    queue.add("a", held.starter("a"));
+    const b = queue.add("b", held.starter("b"));
+    queue.add("c", held.starter("c"));
+
+    expect(queue.withdraw("b")).toBe(true);
+    expect(queue.withdraw("b")).toBe(false);
+    expect(await b.slot).toBeNull();
+    expect(changes.at(-1)).toEqual(["c"]);
+
+    held.settleAll();
+    await flush();
+    expect([...held.open.keys()]).toEqual(["c"]);
   });
 
   it("one item failing does not cancel its siblings", async () => {
-    const { createBoundedQueue } = await import("../../../src/background/download/queue.js");
-    const fakeStart = async (_tab: number, id: string, _format: string, jobId: string) => {
-      if (id === "bad") {
-        throw new Error("nope");
-      }
-      return { jobId: jobId || `job_${id}`, settled: Promise.resolve() };
-    };
-    const queue = createBoundedQueue(3, fakeStart as never);
-    const results = await Promise.allSettled(
-      ["ok1", "bad", "ok2", "ok3", "ok4"].map((id) => queue.add(7, id, "best", `job_${id}`)),
+    const { createDownloadQueue } = await import("../../../src/background/download/queue.js");
+    const queue = createDownloadQueue(() => 3);
+    const tickets = ["ok1", "bad", "ok2", "ok3", "ok4"].map((id) =>
+      queue.add(id, async () => {
+        if (id === "bad") {
+          throw new Error("nope");
+        }
+        return { jobId: id, settled: Promise.resolve() };
+      }),
     );
+    const results = await Promise.allSettled(tickets.map((ticket) => ticket.slot));
     // Four siblings, not two: the rejected item must give its slot back, or everything
     // queued behind it waits for a settlement that never comes.
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(4);
   });
+
+  it("counts an occupied slot until it is released, once", async () => {
+    const held = heldStarts();
+    const { createDownloadQueue } = await import("../../../src/background/download/queue.js");
+    const queue = createDownloadQueue(() => 1);
+
+    const release = queue.occupy();
+    expect(queue.add("a", held.starter("a")).queued).toBe(true);
+    release();
+    release();
+    await flush();
+    expect([...held.open.keys()]).toEqual(["a"]);
+    expect(queue.add("b", held.starter("b")).queued).toBe(true);
+  });
 });
 
 /**
- * The gate as wired, end to end: `downloadMany` → `createBoundedQueue` →
- * `startNativeDownloadFromVideo`'s port. The port fake is the real contract — it accepts
- * the request and stays silent until the test delivers a terminal message, which is
- * exactly the window in which the old gate had already let the whole playlist through.
+ * The gate as wired, end to end: `downloadMany` → the queue →
+ * `startNativeDownloadFromVideo`'s port.
  */
 describe("downloadMany", () => {
-  interface FakePort {
-    jobId: string;
-    emit: (message: Record<string, unknown>) => void;
-  }
-
-  function fakeDeps(videoCount: number) {
-    const jobs: Record<string, Record<string, unknown>> = {};
-    const openPorts: FakePort[] = [];
-
-    const deps = {
-      api: { runtime: { connectNative: (): unknown => null, lastError: null } },
-      callTabsQuery: async () => [{ url: "https://example.com/watch" }],
-      ensureStateLoaded: async () => {},
-      downloadPortsById: {} as Record<string, unknown>,
-      getSettings: () => ({}),
-      getDownloadsById: () => jobs,
-      nativeRequestHeadersForVideo: async () => [],
-      normalizeUrl: (url: string) => url,
-      userAgent: () => "UA",
-      detectFormat: () => "MP4",
-      titleFromUrl: () => "untitled",
-      resetDownloadProgressDetails: () => ({}),
-      artifactPatchFromMessage: () => ({}),
-      isRetryableSourceError: () => false,
-      userFriendlyDownloadError: (error: unknown) => String(error),
-      variantsForVideo: () => [],
-      findVariant: (video: Record<string, unknown>) => video,
-      // The REAL set, not a hand-picked subset: `"queued"` is in it, which is what let the
-      // duplicate check match a row against its own placeholder and open no port at all.
-      blockingDownloadStatuses: ACTIVE_DOWNLOAD_STATUSES,
-      updateDownload: (jobId: string, patch: Record<string, unknown>) => {
-        jobs[jobId] = { ...(jobs[jobId] || { id: jobId }), ...patch };
-      },
-      getTabVideos: async () =>
-        Array.from({ length: videoCount }, (_value, index) => ({
-          id: `v${index}`,
-          url: `https://example.com/v${index}.mp4`,
-          title: `Video ${index}`,
-          format: "MP4",
-          pageUrl: "https://example.com/watch",
-          downloadable: true,
-        })),
-    };
-
-    deps.api.runtime.connectNative = () => {
-      let listener: (message: Record<string, unknown>) => void = () => {};
-      const disconnectListeners: Array<() => void> = [];
-      const handle = {
-        jobId: "",
-        emit(message: Record<string, unknown>) {
-          listener(message);
-        },
-      };
-      openPorts.push(handle);
-      return {
-        postMessage(message: Record<string, unknown>) {
-          handle.jobId = String(message.id || "");
-        },
-        disconnect() {},
-        onMessage: {
-          addListener(fn: (message: Record<string, unknown>) => void) {
-            listener = fn;
-          },
-        },
-        onDisconnect: {
-          addListener(fn: () => void) {
-            disconnectListeners.push(fn);
-          },
-        },
-      };
-    };
-
-    return { deps, jobs, openPorts };
-  }
-
   it("opens three native ports for a ten-row selection and one more per settlement", async () => {
     const { deps, jobs, openPorts } = fakeDeps(10);
     const { create } = await import("../../../src/background/download/index.js");
@@ -308,9 +248,12 @@ describe("downloadMany", () => {
     expect(openPorts.map((port) => port.jobId)).toEqual(reply.jobIds);
 
     // Every row is visible before its port exists, so the tray reads "Queued" rather than
-    // looking stalled on the 97 items the gate is holding.
-    expect(Object.values(jobs).map((job) => job.status)).toEqual(Array(10).fill("queued"));
-    expect(Object.values(jobs).map((job) => job.message)[3]).toBe("Queued #4 of 10.");
+    // looking stalled on the rows the gate is holding.
+    const statuses = Object.values(jobs).map((job) => job.status);
+    expect(statuses.slice(0, 3)).toEqual(Array(3).fill("connecting"));
+    expect(statuses.slice(3)).toEqual(Array(7).fill("queued"));
+    expect(Object.values(jobs).map((job) => job.message)[3]).toBe("Waiting for a free slot.");
+    expect(Object.values(jobs).map((job) => job.message)[5]).toBe("Waiting for a free slot (2 ahead).");
 
     const settle = (port: FakePort): void => port.emit({ type: "done", id: port.jobId, filepath: "C:/x.mp4" });
     // 10 rows, 3 at a time: 3 waves of 3 and a tail of 1.
@@ -320,6 +263,8 @@ describe("downloadMany", () => {
       expect(openPorts.length).toBe(Math.max(0, Math.min(3, 10 - (wave + 1) * 3)));
     }
     expect(openPorts).toHaveLength(0);
+    // The line renumbers as it moves: the last row was 6 ahead and is now running.
+    expect(Object.values(jobs).every((job) => job.status === "done")).toBe(true);
   });
 
   it("releases the slot on a terminal error too, so a failure cannot stall the batch", async () => {
@@ -352,15 +297,11 @@ describe("downloadMany", () => {
     // against itself, returned `{ existing: true }` for all six, opened no port at all, and
     // the tray sat on six permanent "Queued" rows. Three real ports is the whole difference.
     expect(openPorts).toHaveLength(3);
-
-    // The gate-held rows still read "Queued"; the three it admitted were overwritten by
-    // `startNativeDownloadFromVideo`. Status is useless as the discriminator here — the
-    // starter also parks on `"queued"` ("Sent to native helper.") — so the message is it.
-    const held = Object.values(jobs).filter((job) => String(job.message).startsWith("Queued #"));
+    const held = Object.values(jobs).filter((job) => job.status === "queued");
     expect(held.map((job) => job.message)).toEqual([
-      "Queued #4 of 6.",
-      "Queued #5 of 6.",
-      "Queued #6 of 6.",
+      "Waiting for a free slot.",
+      "Waiting for a free slot (1 ahead).",
+      "Waiting for a free slot (2 ahead).",
     ]);
   });
 
@@ -395,19 +336,27 @@ describe("downloadMany", () => {
     const { create } = await import("../../../src/background/download/index.js");
     const api = create(deps as never);
 
-    await expect(api.downloadMany(7, ["v0", "v1", "v2", "v3"])).rejects.toThrow(
-      "None of those downloads could start.",
-    );
-    // The batch is self-driving, so the rows behind the first wave only learn they failed
-    // after the throw — flush before looking at them.
+    await expect(api.downloadMany(7, ["v0", "v1", "v2", "v3"])).rejects.toThrow("None of those downloads could start.");
     await flush();
 
-    // A queued placeholder here is never promoted, so it is a row the user can only ever
-    // cancel by hand: the batch already reported failure. `message` still reads "Queued #n"
-    // on a failed row — the per-item catch writes `status`/`error`, not the message — so
-    // `status` is the discriminator. Nothing started here, so no row can be legitimately
-    // sitting on the starter's own "queued".
+    // A queued placeholder here would never be promoted, so it is a row the user could
+    // only ever cancel by hand: the batch already reported failure.
     expect(Object.values(jobs).filter((job) => job.status === "queued")).toEqual([]);
     expect(Object.values(jobs).every((job) => job.status === "error")).toBe(true);
+  });
+
+  it("answers with the waiting ids when every slot is already busy elsewhere", async () => {
+    const { deps, jobs, openPorts } = fakeDeps(5, { maxConcurrentDownloads: 1 });
+    const { create } = await import("../../../src/background/download/index.js");
+    const api = create(deps as never);
+
+    await api.startNativeDownload(7, "v0");
+    expect(openPorts).toHaveLength(1);
+
+    // The popup must not hang until v0 finishes: the batch is queued, and says so.
+    const reply = await api.downloadMany(7, ["v1", "v2"]);
+    expect(reply.jobIds).toHaveLength(2);
+    expect(reply.jobIds.map((jobId) => jobs[jobId].status)).toEqual(["queued", "queued"]);
+    expect(openPorts).toHaveLength(1);
   });
 });

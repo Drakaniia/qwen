@@ -95,7 +95,7 @@ function create(): MessageRouter {
     // CRITICAL: Validate sender origin.
     // Only allow messages from the extension's own runtime context.
     // This prevents external extensions or compromised contexts from
-    // invoking any message handler (download, recording, etc.).
+    // invoking any message handler (download, settings, etc.).
     if (!sender || sender.id !== getExtensionId()) {
       if (sendResponse) {
         sendResponse(errorResponse("Unauthorized sender."));

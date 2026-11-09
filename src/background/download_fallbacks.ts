@@ -66,6 +66,42 @@ const ERROR_MAPPINGS = new Map<string, ErrorMapping>([
     },
   ],
   [
+    // DRM. Nothing downstream can fix this, so it must not read like a transient
+    // failure the user should retry — and it has to be matched before the generic
+    // "no formats" mapping below, which yt-dlp also raises for DRM'd media.
+    "drm",
+    {
+      pattern: /\bDRM\b|Widevine|PlayReady|protected content|encrypted media/i,
+      message: () =>
+        "This stream is DRM-protected (Widevine / PlayReady). The browser only decrypts it " +
+        "for playback, so no downloader can copy it.",
+    },
+  ],
+  [
+    // "Unsupported URL" is yt-dlp's words for "I have no extractor for this address" —
+    // the shape of the message the extension used to show verbatim under a dead row.
+    // Namely: the URL is a page, not a media file, and the stream is loaded by the
+    // player's own JavaScript.
+    "unsupported-url",
+    {
+      pattern: /Unsupported URL|no suitable extractor|is not a valid URL|Unable to extract/i,
+      message: () =>
+        "This page does not expose a downloadable video link — the player loads the stream " +
+        "itself. Start playing the video so the stream loads, then reopen this popup.",
+    },
+  ],
+  [
+    // The helper reached the URL but found nothing it could hand to a downloader.
+    "no-formats",
+    {
+      pattern:
+        /did not find any downloadable video formats|No video formats|no formats found|Requested format is not available/i,
+      message: () =>
+        "The helper reached that address but found no downloadable video in it. It may be a " +
+        "player page or a video segment rather than a media file.",
+    },
+  ],
+  [
     // aria2c unknown option errors — config/compatibility issue, not network
     "aria2c-config",
     {

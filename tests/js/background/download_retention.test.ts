@@ -84,6 +84,18 @@ describe("tab_state download retention (§5.8)", () => {
     expect(Object.keys(tabState.getAllDownloads())).toHaveLength(LIMIT + 1);
   });
 
+  it("prunes on a terminal transition with history sync turned off too", async () => {
+    const downloadSync = await import("../../../src/shared/download_sync.js");
+    downloadSync.setSyncEnabled(false);
+    try {
+      seed(LIMIT + 10, 1);
+      await tabState.updateDownload("job-finishing", { status: "error" });
+      expect(Object.keys(tabState.getAllDownloads())).toHaveLength(LIMIT + 1);
+    } finally {
+      downloadSync.setSyncEnabled(true);
+    }
+  });
+
   it("does not prune on a progress tick", async () => {
     seed(LIMIT + 10, 1);
     await tabState.updateDownload("active-0", { status: "running", percent: 50 });
