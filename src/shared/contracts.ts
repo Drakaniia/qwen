@@ -88,6 +88,12 @@ export interface DetectedVideo {
   playlistTitle?: string;
   /** The folder's cover. Absent when the host could not resolve one (yt-dlp usually can). */
   playlistThumbnailUrl?: string;
+  /**
+   * URLs the content script could not classify, carried on the page-fallback row so
+   * `background/media_probe.ts` has something to ask the server about when every string
+   * heuristic has failed. Bounded by the content script (`PROBED_RESOURCE_LIMIT`).
+   */
+  probeUrls?: string[];
   /** Set by `shared/video_sorting.js:buildGroupedVideo`; the popup's recency key. */
   groupId?: string;
   groupVariants?: DetectedVideo[];
@@ -117,6 +123,13 @@ export interface DownloadJob {
   formatId?: string;
   variantId?: string;
   backend?: string;
+  /**
+   * The `chrome.downloads` id of a browser-path job (`download/browser.ts`). It is what
+   * lets Pause / Resume / Cancel reach a transfer the native helper never owned, and what
+   * the startup reconciliation re-reads to learn how a transfer ended while the service
+   * worker was asleep. Absent on native jobs.
+   */
+  browserDownloadId?: number;
   filepath?: string;
   artifactRoot?: string;
   pageUrl?: string;
@@ -170,6 +183,47 @@ export interface Settings {
    * own. Defaults to `system`.
    */
   theme: ThemeMode;
+  /**
+   * Whether the helper fetches subtitles alongside the video. Sent on every `download`
+   * message (`download/native.ts`); `!== false` semantics, so an absent key means on.
+   */
+  downloadSubtitles: boolean;
+  /**
+   * How many downloads run at once, for every path that starts one — a single click, a
+   * pasted URL, a batch, a retry. Everything past it waits as `queued` in
+   * `download/queue.ts`. Clamped to {@link CONCURRENCY_MIN}..{@link CONCURRENCY_MAX}.
+   */
+  maxConcurrentDownloads: number;
+  /**
+   * The height cap applied when a download asks for `best` rather than a specific
+   * format: a batch, the overlay's one-click button, a retry. `0` means no cap. A format
+   * the user picked in the quality dialog always wins over this. Sent to the helper as
+   * `maxHeight`, which degrades to plain best when nothing fits under the cap.
+   */
+  preferredMaxHeight: number;
+  /**
+   * The popup size filter's starting value, in bytes. `null` (or `0`) shows everything —
+   * the Options control writes `null` for "off". Rows with an unknown size are never
+   * hidden by it: most streams report no size until downloaded.
+   */
+  minSizeBytes: number | null;
+}
+
+/** Bounds for {@link Settings.maxConcurrentDownloads}. */
+export const CONCURRENCY_MIN = 1;
+export const CONCURRENCY_MAX = 6;
+export const CONCURRENCY_DEFAULT = 3;
+
+/** The quality caps Options offers for {@link Settings.preferredMaxHeight}; `0` is no cap. */
+export const PREFERRED_HEIGHTS = [0, 2160, 1440, 1080, 720, 480, 360] as const;
+
+/** Clamp a stored or typed concurrency value into range; garbage falls back to the default. */
+export function clampConcurrency(value: unknown): number {
+  const number = Math.round(Number(value));
+  if (!Number.isFinite(number) || number <= 0) {
+    return CONCURRENCY_DEFAULT;
+  }
+  return Math.min(CONCURRENCY_MAX, Math.max(CONCURRENCY_MIN, number));
 }
 
 /** Spec D6. `system` is the default and is represented by *not* pinning the attribute. */

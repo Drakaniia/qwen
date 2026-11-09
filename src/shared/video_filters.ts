@@ -133,6 +133,28 @@ function isDownloadableUrl(url: string, contentType = ""): boolean {
   return mediaCandidates.isDownloadableMediaUrl(url, contentType);
 }
 
+/**
+ * A row a backend can actually fetch — {@link isDownloadableUrl} minus the `blob:` case.
+ *
+ * `media_candidates.ts:isHttpUrl` counts `blob:` (and `ws:`) as a media URL on purpose,
+ * so `isDownloadableUrl` is the gate for *admitting a candidate into the pipeline* —
+ * without it a real MSE player's row would never survive
+ * `isLikelyFullLengthVideoCandidate`. That is a statement about showing the row.
+ *
+ * This is the other question: can Qwin download it. A `blob:` handle is a MediaSource
+ * pointer into the page's own blob store, so no fetch, no byte probe
+ * (`background/media_probe.ts`) and no yt-dlp extractor can reach it. Qwin cannot save
+ * one (AGENTS.md forbids a recording path), so the row says so instead of offering a
+ * Download button — and `mediaStatus` must not answer "Downloadable video available"
+ * for a page whose only media is an MSE stream.
+ *
+ * The two answer *different* questions and are deliberately both exported; collapsing
+ * them into one function is what produced a Download button that could only ever fail.
+ */
+function isFetchableMediaUrl(url: string, contentType = ""): boolean {
+  return !String(url || "").startsWith("blob:") && isDownloadableUrl(url, contentType);
+}
+
 function isLikelyVideoRequest(url: string, resourceType = "", contentType = ""): boolean {
   return mediaCandidates.isLikelyVideoRequest(url, resourceType, contentType);
 }
@@ -248,12 +270,21 @@ function isLikelyFullLengthVideoCandidate(details: unknown): boolean {
   }
   const candidate = details as MediaCandidateLike;
 
-  if (!isDownloadableUrl(candidate.url || "", candidate.contentType || "")) {
-    return false;
-  }
+  // A `blob:` source is `page_detection.ts`'s `mse-player` tag: a MediaSource handle, so
+  // no backend can fetch it and it is stamped `downloadable: false` (`isFetchableMediaUrl`
+  // above is what stamps it). Both gates below ask "is this a download target", which is
+  // not the question here — this function asks "is this row worth showing", and a real
+  // `<video>` is playing it. The row stays so the UI can say why it cannot be saved;
+  // the word and duration floors below still apply.
+  const msePlayer = candidate.source === "mse-player" || String(candidate.url || "").startsWith("blob:");
+  if (!msePlayer) {
+    if (!isDownloadableUrl(candidate.url || "", candidate.contentType || "")) {
+      return false;
+    }
 
-  if (candidate.downloadable === false) {
-    return false;
+    if (candidate.downloadable === false) {
+      return false;
+    }
   }
 
   if (candidate.source === "manual-url") {
@@ -267,11 +298,15 @@ function isLikelyFullLengthVideoCandidate(details: unknown): boolean {
   }
 
   const youtubePage = isYouTubeVideoPageUrl(candidate.url || "");
+  // `mse-player` is DOM-derived too: the row comes from a `<video>` that passed
+  // `isLikelyRealVideoBox`, so a title like "Episode 3 Part 1" must not read as an
+  // incomplete fragment and delete the row that explains why it cannot be saved.
   const isDomSource =
     candidate.source === "dom-video" ||
     candidate.source === "dom-source" ||
     candidate.source === "page-fallback" ||
-    candidate.source === "youtube-page";
+    candidate.source === "youtube-page" ||
+    candidate.source === "mse-player";
 
   if (!youtubePage && !isDomSource && hasShortOrIncompleteSignal(candidate)) {
     return false;
@@ -368,6 +403,7 @@ export {
   classifyVideoUrl,
   normalizeYouTubeVideoPageUrl,
   isDownloadableUrl,
+  isFetchableMediaUrl,
   isLikelyVideoRequest,
 
   // Display

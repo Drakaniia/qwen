@@ -235,6 +235,54 @@ function runtimeConnectNative(hostName: string): chrome.runtime.Port | null {
   return callSync((name: string) => api.runtime.connectNative(name), hostName);
 }
 
+// --- Downloads ---
+/**
+ * Like {@link invokeAsync}, but for the calls whose only answer is "did it work".
+ *
+ * `downloads.pause` / `resume` / `cancel` resolve with nothing, so `invokeAsync`'s
+ * fallback could not tell a refusal from a success — and the caller needs exactly that
+ * difference: a `resume` the browser refuses (the transfer is gone, or not resumable)
+ * is what sends `download_operations.ts` down the restart path instead.
+ */
+function invokeChecked(call: (callback?: any) => unknown): Promise<boolean> {
+  if (isPromiseApi) {
+    try {
+      return Promise.resolve(call()).then(
+        () => true,
+        () => false,
+      );
+    } catch (_error) {
+      return Promise.resolve(false);
+    }
+  }
+  return new Promise((resolve) => {
+    try {
+      call(() => resolve(!api.runtime.lastError));
+    } catch (_error) {
+      resolve(false);
+    }
+  });
+}
+
+function downloadsSearch(query: chrome.downloads.DownloadQuery): Promise<chrome.downloads.DownloadItem[]> {
+  if (!api.downloads || !api.downloads.search) {
+    return Promise.resolve([]);
+  }
+  return invokeAsync<chrome.downloads.DownloadItem[]>((cb) => api.downloads.search(query, cb), []);
+}
+
+function downloadsPause(downloadId: number): Promise<boolean> {
+  return api.downloads ? invokeChecked((cb) => api.downloads.pause(downloadId, cb)) : Promise.resolve(false);
+}
+
+function downloadsResume(downloadId: number): Promise<boolean> {
+  return api.downloads ? invokeChecked((cb) => api.downloads.resume(downloadId, cb)) : Promise.resolve(false);
+}
+
+function downloadsCancel(downloadId: number): Promise<boolean> {
+  return api.downloads ? invokeChecked((cb) => api.downloads.cancel(downloadId, cb)) : Promise.resolve(false);
+}
+
 // --- Action / BrowserAction ---
 /** `chrome.action` on MV3, `chrome.browserAction` on anything older. Only `openPopup` is read. */
 type PopupOpener = { openPopup?: () => Promise<void> | void };
@@ -323,6 +371,13 @@ const browserApi = {
     openPopup: actionOpenPopup,
   },
 
+  downloads: {
+    search: downloadsSearch,
+    pause: downloadsPause,
+    resume: downloadsResume,
+    cancel: downloadsCancel,
+  },
+
   /** Register a tab lifecycle listener. */
   onTabRemoved(handler: AnyListener): void {
     if (api.tabs && api.tabs.onRemoved) {
@@ -335,6 +390,18 @@ const browserApi = {
       api.tabs.onUpdated.addListener(
         handler as (tabId: number, changeInfo: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) => void,
       );
+    }
+  },
+
+  /**
+   * `downloads.onChanged`. MV3 only replays an event to a listener that was registered
+   * synchronously during the service worker's first turn — one added later, inside a
+   * download's own callback, is gone after the worker sleeps. `background.ts` calls this
+   * once at top level for that reason.
+   */
+  onDownloadChanged(handler: AnyListener): void {
+    if (api.downloads && api.downloads.onChanged) {
+      api.downloads.onChanged.addListener(handler as (delta: chrome.downloads.DownloadDelta) => void);
     }
   },
 
