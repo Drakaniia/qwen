@@ -426,7 +426,11 @@
 .quality-table {
   display: grid;
   gap: 6px;
-  min-width: 520px;
+  /* Sized to the popup's 400px floor (`ui/motion.ts` POPUP_MIN_WIDTH) less the dialog's
+   * insets. It was 520px, which made every dialog in a default-width popup scroll
+   * sideways; the cells wrap (`.quality-cell`), and `.quality-list`'s `overflow-x` is
+   * still the backstop for an extreme label. */
+  min-width: 344px;
 }
 
 .quality-row {

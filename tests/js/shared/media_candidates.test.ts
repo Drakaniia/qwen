@@ -96,7 +96,10 @@ describe("isBlockedMediaUrl", () => {
     ["https://site.example/front-publish/stream-sdk-lib-master/x.js", ""],
     ["https://x.example/ads/y.mp4", ""],
     ["https://example.com/ad/video.mp4", ""],
-    ["https://lulust.com/cdn-cgi/challenge-platform/h/b/precursor/d76008a69eab/0.608:1791187520:x/a45b54e3094435b2", ""],
+    [
+      "https://lulust.com/cdn-cgi/challenge-platform/h/b/precursor/d76008a69eab/0.608:1791187520:x/a45b54e3094435b2",
+      "",
+    ],
     ["https://site.example/cdn-cgi/beacon.min.js", ""],
     ["https://site.example/cdn-cgi/rum", ""],
   ];

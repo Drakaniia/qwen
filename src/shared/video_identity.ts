@@ -8,7 +8,7 @@
  */
 
 import type { MediaCandidateLike } from "./media_rules.js";
-import { classifyVideoUrl, finiteNumber, isDownloadableUrl, lower, textForVideoSignals } from "./video_filters.js";
+import { classifyVideoUrl, finiteNumber, isFetchableMediaUrl, lower, textForVideoSignals } from "./video_filters.js";
 
 // ── Regex constants (shared with video_filters.js) ─────────────────────
 
@@ -292,7 +292,10 @@ function enrichVideoVariant<T extends MediaCandidateLike>(video: T): EnrichedVid
     height: height || null,
     bitrate: bitrate || null,
     tbr: finiteNumber(video.tbr) || bitrate || null,
-    downloadable: video.downloadable === false ? false : isDownloadableUrl(video.url || "", video.contentType || ""),
+    // `isFetchableMediaUrl`, not `isDownloadableUrl`: a `blob:`/MSE row is a row the popup
+    // must show and offer recording for, but it is not a download target and must not
+    // claim to be one. Same stamp as `background.ts:addDetectedVideo`.
+    downloadable: video.downloadable === false ? false : isFetchableMediaUrl(video.url || "", video.contentType || ""),
   };
 }
 
