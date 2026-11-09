@@ -5,6 +5,17 @@ import { isStreamingUrl, isLikelyStreamingUrl, classifyStreamingUrl } from "../s
 import type { TabId, VideoInput } from "./types.js";
 
 /**
+ * The two headers that mean "the server is handing me opaque binary bytes".
+ *
+ * `application/octet-stream` is what a CDN, a PHP proxy or an object store returns for
+ * a file whose type it cannot or will not name — the most common shape for a real
+ * stream URL with no extension. `hasMediaContentType` (`shared/media_protocols.ts`)
+ * deliberately does not match it, so the broad listener pairs it with partial content
+ * instead of accepting it on its own.
+ */
+const OPAQUE_BINARY_RE = /^(?:application|binary)\/octet-stream$/i;
+
+/**
  * Pattern to detect Service Worker script URLs used as request initiators.
  */
 const SERVICE_WORKER_SCOPE_RE =
@@ -178,18 +189,39 @@ export function initWebRequestHandlers(deps: WebRequestDeps): void {
       return;
     }
 
-    // Coc Coc approach: check ALL response content-types for media
-    if (!hasMediaContentType(contentType)) {
-      return;
-    }
-
-    // Also check if the URL matches streaming CDN patterns
+    // ── Four independent ways in, none of them a precondition for another ──
+    //
+    // The URL-pattern tables used to be a *required* second key on top of the
+    // Content-Type: a response whose type was unambiguously `video/mp4` was thrown away
+    // unless its URL also matched one of ~50 hardcoded host/CDN shapes. That is why a
+    // real stream from `/opaque/a1b2c3` or `/play?t=<token>` stayed invisible while the
+    // quality dialog offered a download that could never work.
+    //
+    // 1. The server named a media type. Server truth is sufficient on its own.
+    // 2. The browser stamped the request `media` — Chrome only does that for a request a
+    //    media element started, whatever Content-Type the server chose.
+    // 3. Opaque bytes over a ranged response: `application/octet-stream` + HTTP 206, the
+    //    shape of a progressive file behind a proxy or a signed object-store URL. Both
+    //    halves are required because either alone is how ordinary chunked traffic looks.
+    // 4. The URL matches a streaming pattern (the old path, unchanged).
+    const mediaType = hasMediaContentType(contentType);
+    const mediaRequest = details.type === "media";
+    const opaqueRange =
+      OPAQUE_BINARY_RE.test(contentType.split(";", 1)[0].trim()) && Number(details.statusCode) === 206;
     const streamingResult = classifyStreamingUrl(details.url, contentType);
-    if (streamingResult.type === "unknown" && !isLikelyStreamingUrl(details.url)) {
+    const patternMatch = streamingResult.type !== "unknown" || isLikelyStreamingUrl(details.url);
+
+    if (!mediaType && !mediaRequest && !opaqueRange && !patternMatch) {
       return;
     }
 
-    const source = streamingResult.isStreaming ? "streaming-pattern" : "headers-broad";
+    const source = mediaType
+      ? "headers-broad"
+      : mediaRequest
+        ? "media-request"
+        : streamingResult.isStreaming
+          ? "streaming-pattern"
+          : "headers-broad";
 
     void addDetectedVideo(details.tabId, {
       url: details.url,

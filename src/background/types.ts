@@ -89,6 +89,16 @@ export interface FormatOption {
   bitrate?: number | null;
   size?: string;
   sizeBytes?: number | null;
+  /**
+   * Passed through verbatim from the host's `formats` entry (the `...format` spread in
+   * `normalizeNativeFormatOption`): `kind` is `video` / `audio` / `muxed`, and an
+   * audio-only entry has no `height` but an `acodec` — nothing on this side filters it.
+   */
+  kind?: string;
+  vcodec?: string;
+  acodec?: string;
+  abr?: number | null;
+  protocol?: string;
 }
 
 /**
@@ -121,15 +131,10 @@ export type JobPatch = Record<string, unknown>;
 export type VideoPatch = Record<string, unknown>;
 
 /**
- * `storage.local["qwinSettings"]`.
- *
- * Widens `contracts.ts`'s `Settings` with the keys the native request reads but
- * the contract does not declare. `downloadSubtitles` is `!== false` semantics:
- * the helper downloads subtitles unless explicitly told not to.
+ * `storage.local["qwinSettings"]`. Every key is declared on `contracts.ts`'s
+ * `Settings` now; the alias stays so the background's many call sites keep one name.
  */
-export type BackgroundSettings = Settings & {
-  downloadSubtitles?: boolean;
-};
+export type BackgroundSettings = Settings;
 
 /**
  * What `notifyPopup` broadcasts.
@@ -171,6 +176,14 @@ export interface NativeCandidate {
   confidence?: number;
 }
 
+/** One entry of the host's `probeMediaUrls` reply — what the server said that URL is. */
+export interface NativeMediaProbe {
+  url?: string;
+  /** `hls` | `dash` | `mp4` | `webm` | `mkv` | `flv` | `ts` | `ogv` | `audio` | `page` | `video` | `unknown`. */
+  kind?: string;
+  contentType?: string;
+}
+
 /**
  * A native-host reply.
  *
@@ -187,7 +200,11 @@ export interface NativeResponse {
   hasSubtitles?: boolean;
   subtitleLanguages?: number;
   formats?: Record<string, unknown>[];
+  /** `formats`' audio-only companions (`kind: "audio"`), joined onto it by `format_helpers.ts`. */
+  audioFormats?: Record<string, unknown>[];
   candidates?: NativeCandidate[];
+  /** `probeMediaUrls`'s answer: one record per URL, in the order they were sent. */
+  results?: NativeMediaProbe[];
   /**
    * `thumbnailFrame`'s answer (`hls-thumbnail-spec.md` §4.1): a
    * `data:image/jpeg;base64,…` frame, or `""` when ffmpeg ran and produced none.
@@ -242,8 +259,8 @@ export interface NativeDownloadOptions {
    * Called once when the job settles — `done`, `error`, `canceled`, an unsupported
    * browser format, or the native port disconnecting. `download/queue.ts` releases its
    * slot here rather than when this call returns, because the transfer runs on a
-   * detached port listener that nothing awaits. Omitted by every caller outside the
-   * batch queue.
+   * detached port listener that nothing awaits. Set by `download/index.ts`'s gate for
+   * every start; omitted by the in-place source fallback, which reuses the job's slot.
    */
   onSettled?: () => void;
 }
@@ -255,6 +272,12 @@ export interface BrowserDownloadOptions {
   requestHeaders: RequestHeader[];
   attemptedUrls: string[];
   backend: string;
+  /**
+   * The gate's release (`download/queue.ts`), called once when the transfer completes,
+   * is interrupted or is canceled — not when `chrome.downloads.download` returns. Omitted
+   * by the native error fallback, whose slot was already released when the helper failed.
+   */
+  onFinished?: () => void;
 }
 
 /** Return value of every download entry point: the job id it created or reused. */
@@ -370,6 +393,12 @@ export interface DownloadOrchestratorDeps {
   setSettings(settings: BackgroundSettings): void;
   titleFromUrl(url: string): string;
   updateDownload(jobId: string, patch: JobPatch): void;
+  /**
+   * Take a still-waiting job out of the download gate. Patched in by `download/index.ts`,
+   * which owns the gate; `download_operations.ts` calls it so a cancel or pause of a
+   * `queued` row really stops it from starting later. Absent ⇒ nothing is ever waiting.
+   */
+  withdrawQueuedDownload?(jobId: string): boolean;
   userAgent(): string;
   userFriendlyDownloadError(error: unknown): string;
   variantsForVideo(video: VideoRecord): VideoRecord[];
@@ -440,7 +469,7 @@ export interface BackgroundContext {
   getBestDownloadableVideo(tabId: TabId): Promise<VideoRecord>;
   startBestNativeDownload(tabId: TabId, formatId?: string, variantId?: string): Promise<DownloadStartResult>;
   downloadMany(tabId: TabId, videoIds: string[], formatId?: string): Promise<{ jobIds: string[] }>;
-  controlActiveDownload(jobId: string, nativeType: string): { jobId: string };
+  controlActiveDownload(jobId: string, nativeType: string): Promise<{ jobId: string }>;
   resumeDownload(tabId: TabId, jobId: string): Promise<DownloadStartResult>;
   cancelDownload(tabId: TabId, jobId: string): Promise<{ jobId: string }>;
   retryDownload(tabId: TabId, jobId: string): Promise<DownloadStartResult>;

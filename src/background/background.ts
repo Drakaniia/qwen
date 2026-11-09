@@ -39,11 +39,13 @@ import { registerAllHandlers } from "./message-handlers/index.js";
 import { runInit } from "./background_init.js";
 import { clearCaptures, rememberCaptures, withCaptures } from "./thumbnail_captures.js";
 import { create as createThumbnailFrames } from "./thumbnail_frames.js";
+import { proxyFetch } from "./proxy_fetch.js";
 import type {
   BackgroundContext,
   DownloadJobRecord,
   DownloadOrchestratorDeps,
   ExtensionApi,
+  HandlerMessage,
   MessageOf,
   BackgroundMessageType,
   NativeRequestFn,
@@ -62,7 +64,6 @@ const {
   detectFormat,
   contentTypeFromHeaders,
   contentLengthFromHeaders,
-  isDownloadableUrl,
   isLikelyVideoRequest,
   VIDEO_EXTENSION_RE,
   HLS_RE,
@@ -211,7 +212,14 @@ async function addDetectedVideo(tabId: TabId, input: VideoInput, notify = true):
     playlistTitle: input.playlistTitle || current?.playlistTitle || "",
     playlistThumbnailUrl: input.playlistThumbnailUrl || current?.playlistThumbnailUrl || "",
     contentType: input.contentType || "",
-    downloadable: current?.downloadable === false ? false : isDownloadableUrl(normalizedUrl, input.contentType),
+    // `isFetchableMediaUrl`, not `isDownloadableUrl`: the latter deliberately admits a
+    // `blob:` handle so a real MSE player's row survives at all (`shared/media_candidates.ts:
+    // isHttpUrl`), but nothing can fetch one — it is a pointer into the page's own blob
+    // store. Stamping it downloadable is what put a Download button on an MSE row and made
+    // `mediaStatus` call a page with no fetchable media "Downloadable video available".
+    // Same stamp as `shared/video_identity.ts:enrichVideoVariant`.
+    downloadable:
+      current?.downloadable === false ? false : videoFilters.isFetchableMediaUrl(normalizedUrl, input.contentType),
     width: Number.isFinite(width) && width > 0 ? width : current?.width || null,
     height: Number.isFinite(height) && height > 0 ? height : current?.height || null,
     duration: Number.isFinite(duration) && duration > 0 ? duration : current?.duration || null,
@@ -451,53 +459,26 @@ import { HELPER_PING_INTERVAL_MS, refreshCachedHelperStatus, pingNativeHost } fr
 
 // ── CORS proxy: content script fetch requests ──────────────────────────
 //
-// Coc Coc's approach: when content scripts encounter CORS-blocked media
-// URLs, they proxy the request through the background service worker.
-// The background worker has no CORs restrictions and can fetch any URL.
-//
-// Message format:
-//   { type: "proxyFetch", url: string, method?: string, headers?: object }
-// Response:
-//   { ok: true, body: string, contentType: string }
-//   { ok: false, error: string }
-//
-// Registered here rather than in `message-handlers/` because it needs no part of the
-// context object — it is the one handler the entry point owns outright.
+// The policy (who may ask, for what) lives in `proxy_fetch.ts`. Registered here rather
+// than in `message-handlers/` because it needs no part of the context object — it is the
+// one handler the entry point owns outright.
 
 register({
   name: "proxyFetch",
-  async handle(message: MessageOf<"proxyFetch">) {
-    const method = message.method || "GET";
-    const url = message.url;
-    if (!url) {
-      return { ok: false, error: "Missing URL" };
-    }
-
-    try {
-      const fetchHeaders: Record<string, string> = { Accept: "*/*" };
-      if (message.headers && typeof message.headers === "object") {
-        Object.assign(fetchHeaders, message.headers);
-      }
-
-      const response = await fetch(url, {
-        method,
-        headers: fetchHeaders,
-        credentials: message.includeCredentials ? "include" : "omit",
-      });
-
-      const contentType = response.headers.get("Content-Type") || "";
-      const body = await response.text();
-
-      return {
-        ok: true,
-        body,
-        contentType,
-        status: response.status,
-      };
-    } catch (error) {
-      return { ok: false, error: (error as Error).message || String(error) };
-    }
+  handle(message: HandlerMessage<MessageOf<"proxyFetch">>) {
+    return proxyFetch(message, message.sender);
   },
+});
+
+// ── Browser-path downloads ───────────────────────────────────────────────────
+//
+// ONE `downloads.onChanged` listener, registered synchronously on the worker's first turn.
+// MV3 only wakes a sleeping worker for listeners registered this way; the per-download
+// listener `download/browser.ts` used to add inside `downloads.download`'s callback was
+// lost on the first suspension, and the row sat on `running` forever.
+
+browserApi.onDownloadChanged((delta: chrome.downloads.DownloadDelta) => {
+  void getDownloadOrchestration().onBrowserDownloadChanged(delta);
 });
 
 // ── Wire webRequest handlers ─────────────────────────────────────────────
@@ -597,3 +578,9 @@ browserApi.onTabUpdated((tabId: number, changeInfo: chrome.tabs.OnUpdatedInfo) =
 // ── Initialize background service worker ─────────────────────────────────
 
 runInit({ notifyPopup, HOST_NAME });
+
+// After `runInit`'s `tabState.load()`: settle the jobs a previous worker lifetime left
+// "active" (see `download/index.ts:reconcileInterruptedJobs`).
+void getDownloadOrchestration()
+  .reconcileInterruptedJobs()
+  .catch((error: unknown) => console.warn("[qwin] startup download reconciliation failed:", error));

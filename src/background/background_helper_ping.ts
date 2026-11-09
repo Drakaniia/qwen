@@ -25,7 +25,13 @@ let helperPingTimer: ReturnType<typeof setInterval> | null = null;
  * @param hostName - Native messaging host name to ping
  */
 export async function refreshCachedHelperStatus(notifyPopup: NotifyPopup, hostName: string): Promise<void> {
-  const result = await pingNativeHost(hostName);
+  // This runs every 30s from a bare `setInterval`, so a rejection here is an unhandled
+  // rejection every 30s. `pingNativeHost` already resolves on every path it knows of; the
+  // catch is the backstop for the ones it does not.
+  const result: PingResult = await pingNativeHost(hostName).catch((error: unknown) => ({
+    ok: false as const,
+    error: (error as Error)?.message || String(error),
+  }));
   const previousConnected = cachedHelperStatus.connected;
 
   if (result && result.ok) {
@@ -87,7 +93,17 @@ export function pingNativeHost(hostName: string): Promise<PingResult> {
   return new Promise((resolve) => {
     const id = `ping_${Date.now()}`;
     let settled = false;
-    const port = browserApi.runtime.connectNative(hostName);
+    let port: chrome.runtime.Port | null = null;
+    try {
+      // The raw call, not `browserApi.runtime.connectNative`: that wrapper turns a throw
+      // into `null`, and the throw's message ("Specified native messaging host not
+      // found", "Access to the specified native messaging host is forbidden") is the
+      // only diagnosis Options can show.
+      port = browserApi.raw.runtime.connectNative(hostName);
+    } catch (error) {
+      resolve({ ok: false, error: `Native messaging is not connected: ${(error as Error)?.message || error}` });
+      return;
+    }
 
     const finish = (result: PingResult) => {
       if (settled) {
@@ -129,6 +145,11 @@ export function pingNativeHost(hostName: string): Promise<PingResult> {
       });
     });
 
-    port.postMessage({ type: "ping", id });
+    try {
+      port.postMessage({ type: "ping", id });
+    } catch (error) {
+      clearTimeout(timeout);
+      finish({ ok: false, error: (error as Error)?.message || String(error) });
+    }
   });
 }
